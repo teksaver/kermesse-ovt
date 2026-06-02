@@ -190,6 +190,10 @@ Le projet requiert PHP `^8.2` (CodeIgniter 4.7.x). La CI utilise PHP 8.3.
 
 ## Migrations post-déploiement
 
-Les migrations de base de données seront gérées par un appel sécurisé à `POST /ops/migrate` avec validation HMAC, fraîcheur de timestamp, protection anti-rejeu et verrouillage base de données. Ce mécanisme sera implémenté dans la **Story 1.3**.
+Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA256.
 
-En attendant, les fichiers SQL de migrations sont inclus dans l'artefact (`database/migrations_sql/`) pour référence.
+Après chaque déploiement applicatif, une étape post-deploy doit appeler cette route pour appliquer les migrations SQL en attente. Voir `docs/migration-runner.md` pour le contrat complet (en-têtes, payload signé, codes de réponse, verrouillage).
+
+Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
+
+Les fichiers SQL de migrations sont inclus dans l'artefact (`database/migrations_sql/`).

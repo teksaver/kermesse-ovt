@@ -48,3 +48,97 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+  validate-mariadb:
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+          MARIADB_DATABASE: kermesse_test
+          MARIADB_USER: kermesse_ci
+          MARIADB_PASSWORD: ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=20s
+
+    env:
+      PHP_VERSION: '8.3'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, xml, intl, json, mysqli, sqlite3
+          coverage: none
+
+      - name: Install MySQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client
+
+      - name: Validate SQL migrations against MariaDB
+        run: |
+          for sql_file in database/migrations_sql/*.sql; do
+            if [ -f "$sql_file" ]; then
+              echo "Applying: $sql_file"
+              mysql -h 127.0.0.1 -u kermesse_ci -pci_password kermesse_test < "$sql_file"
+            fi
+          done
+          echo "All SQL migrations applied successfully."
+
+      - name: Verify schema tables exist
+        run: |
+          TABLES=$(mysql -h 127.0.0.1 -u kermesse_ci -pci_password kermesse_test -N -e "SHOW TABLES;")
+          for expected in schema_versions ops_nonces owners kermesses access_tokens email_events; do
+            if echo "$TABLES" | grep -qw "$expected"; then
+              echo "✓ Table $expected exists"
+            else
+              echo "✗ Table $expected is MISSING"
+              exit 1
+            fi
+          done
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: |
+          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run MariaDB integration tests
+        env:
+          database.tests.hostname: 127.0.0.1
+          database.tests.database: kermesse_test
+          database.tests.username: kermesse_ci
+          database.tests.password: ci_password
+          database.tests.DBDriver: MySQLi
+          database.tests.DBPrefix: ''
+          database.tests.port: 3306
+          database.tests.charset: utf8mb4
+          database.tests.DBCollat: utf8mb4_general_ci
+          CI_ENVIRONMENT: testing
+          kermesse.opsMigrationProductionOnly: 'false'
+          kermesse.opsMigrationHmacSecret: ci_test_hmac_secret_32_bytes_min
+          kermesse.opsMigrationLockName: kermesse_ci_migration_lock
+        run: vendor/bin/phpunit --testsuite App --group mariadb

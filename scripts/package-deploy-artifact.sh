@@ -71,6 +71,9 @@ mkdir -p "${STAGING_DIR}/docs"
 if [ -f "${PROJECT_ROOT}/docs/deployment-ouvaton.md" ]; then
   cp "${PROJECT_ROOT}/docs/deployment-ouvaton.md" "${STAGING_DIR}/docs/"
 fi
+if [ -f "${PROJECT_ROOT}/docs/migration-runner.md" ]; then
+  cp "${PROJECT_ROOT}/docs/migration-runner.md" "${STAGING_DIR}/docs/"
+fi
 
 # 2. Installation des dépendances Composer de production
 echo "Installation des dépendances Composer (sans dev)..."

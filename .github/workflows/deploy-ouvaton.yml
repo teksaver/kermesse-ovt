@@ -15,6 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
 
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+          MARIADB_DATABASE: kermesse_test
+          MARIADB_USER: kermesse_ci
+          MARIADB_PASSWORD: ci_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=20s
+
     env:
       PHP_VERSION: '8.3'
 
@@ -50,6 +67,21 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+      - name: Install MySQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y default-mysql-client
+
+      - name: Validate SQL migrations against MariaDB
+        run: |
+          for sql_file in database/migrations_sql/*.sql; do
+            if [ -f "$sql_file" ]; then
+              echo "Applying: $sql_file"
+              mysql -h 127.0.0.1 -u kermesse_ci -pci_password kermesse_test < "$sql_file"
+            fi
+          done
+          echo "All SQL migrations applied successfully."
 
       # --- Packaging ---
       - name: Run packaging script
@@ -96,8 +128,9 @@ jobs:
       # IMPORTANT : l'etape de deploiement applicatif ne doit jamais ecraser le .env de production.
       # Le .env de production est gere par .github/workflows/sync-production-env.yml.
       #
-      # Futur : apres la Story 1.3 et le runner de migrations securise,
-      # ajouter une etape post-deploiement vers POST /ops/migrate avec authentification HMAC.
+      # Post-deploiement : appeler POST /ops/migrate avec authentification HMAC
+      # une fois l'etape de deploiement applicatif activee. Voir
+      # docs/migration-runner.md pour le payload signe et les en-tetes requis.
       - name: Deploy to Ouvaton (placeholder)
         run: |
           echo "================================================================="
@@ -105,3 +138,24 @@ jobs:
           echo "Ouvaton protocol, host, and credentials must be confirmed first."
           echo "See docs/deployment-ouvaton.md for setup instructions."
           echo "================================================================="
+
+      - name: Run post-deploy migrations
+        env:
+          BASE_URL: ${{ secrets.KERMESSE_PUBLIC_BASE_URL }}
+          OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+
+          BODY='{}'
+          TIMESTAMP="$(date +%s)"
+          NONCE="$(openssl rand -hex 16)"
+          BODY_HASH="$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)"
+          PAYLOAD="$(printf '%s\n%s\nPOST\nops/migrate\n%s' "$TIMESTAMP" "$NONCE" "$BODY_HASH")"
+          SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
+
+          curl -fsS -X POST "${BASE_URL%/}/ops/migrate" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
+            -H "X-Kermesse-Nonce: ${NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGNATURE}" \
+            -d "$BODY"
