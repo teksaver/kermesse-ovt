@@ -5,8 +5,8 @@
     <title>Kermesse</title>
     <meta name="description" content="Application de gestion de kermesse">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" type="image/png" href="/favicon.ico">
-    <link rel="stylesheet" href="/assets/css/app.css">
+    <link rel="shortcut icon" type="image/png" href="<?= base_url('favicon.ico') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
 </head>
 <body>
 <main class="app-shell">
@@ -29,6 +29,6 @@
         </dl>
     </section>
 </main>
-<script src="/assets/js/app.js" defer></script>
+<script src="<?= base_url('assets/js/app.js') ?>" defer></script>
 </body>
 </html>
