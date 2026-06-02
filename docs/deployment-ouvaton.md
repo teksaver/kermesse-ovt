@@ -4,10 +4,12 @@
 
 Ouvaton est un hébergement mutualisé. **Le serveur de production ne doit jamais exécuter :**
 
+- Docker ou Docker Compose
 - `composer install` ou `composer update`
 - `npm install` ou tout outil Node.js
 - `phpunit` ou tout framework de test
 - `php spark migrate` ou toute commande CodeIgniter CLI
+- `mysql < migration.sql` ou tout import SQL manuel côté serveur
 - Compilation d'assets (Vite, Tailwind, Webpack…)
 - Opérations de cache warmup
 
@@ -18,6 +20,8 @@ Tout est préparé par GitHub Actions et livré en artefact prêt à exécuter.
 ### Étape 1 : CI (automatique)
 
 Le workflow `.github/workflows/ci.yml` s'exécute sur chaque `push` et `pull_request` vers `main` et `develop`. Il valide `composer.json`, installe les dépendances et exécute les tests.
+
+Sur `push` vers `main` ou `pull_request` ciblant `main`, la CI produit aussi l'artefact `kermesse-deploy.zip` après validation. Les validations MariaDB de CI utilisent un service MariaDB GitHub Actions isolé ; elles ne représentent pas la base de production Ouvaton.
 
 ### Étape 2 : Synchronisation du `.env` de production (manuel)
 
@@ -43,7 +47,10 @@ Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche via `workflow_d
 1. Checkout, setup PHP, validation Composer, tests
 2. Exécution de `scripts/package-deploy-artifact.sh`
 3. Publication de l'archive `kermesse-deploy.zip` comme artefact GitHub (14 jours)
-4. (Futur) Transfert vers Ouvaton via le protocole confirmé
+4. Transfert vers Ouvaton via le protocole confirmé, quand le job `deploy` sera activé
+5. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+
+Ce workflow ne déclare pas de service MariaDB Docker : la production Ouvaton utilise la base MariaDB managée déjà fournie par l'hébergeur.
 
 ## Contenu de l'artefact
 
@@ -117,11 +124,19 @@ Variables critiques à configurer :
 
 - `CI_ENVIRONMENT = production`
 - `app.baseURL` — URL publique réelle
-- `database.default.*` — identifiants MariaDB Ouvaton
+- `database.default.*` — identifiants de connexion à la MariaDB managée Ouvaton déjà existante
 - `session.savePath` — chemin absolu sur le serveur Ouvaton (dépend de l'arborescence)
 - `email.*` — configuration SMTP
 - `kermesse.tokenSecret` — secret de 32 octets minimum
 - `kermesse.opsMigrationHmacSecret` — secret du runner ops
+
+## Base MariaDB managée
+
+La base MariaDB de production est créée et administrée par Ouvaton. Le projet ne doit pas tenter de créer une base Docker, de démarrer un conteneur, ni d'administrer MariaDB depuis le serveur de production.
+
+L'application CodeIgniter se connecte uniquement à cette base via les variables `database.default.hostname`, `database.default.database`, `database.default.username`, `database.default.password` et `database.default.port` écrites dans le `.env` de production par `.github/workflows/sync-production-env.yml`.
+
+Les changements de schéma sont appliqués après déploiement par l'endpoint applicatif `POST /ops/migrate`. Cet endpoint utilise la connexion DB de l'application déjà configurée ; il ne nécessite ni client `mysql`, ni accès CLI serveur.
 
 ## Préservation du `.env` de production
 
@@ -178,10 +193,13 @@ Le workflow de déploiement est structuré avec un job `deploy` désactivé (`if
 
 1. Confirmer le protocole disponible sur le compte Ouvaton
 2. Configurer les secrets GitHub Actions correspondants
-3. Retirer la condition `if: false` du job `deploy`
-4. Adapter l'étape de transfert selon le protocole :
-   - FTP/FTPS : `SamKirkland/FTP-Deploy-Action` ou `lftp`
-   - SFTP : `rsync` via SSH ou `scp`
+3. Remplacer le placeholder `Deploy to Ouvaton` par une vraie étape de transfert qui échoue en cas d'erreur
+4. Retirer la condition `if: false` du job `deploy`
+5. Adapter l'étape de transfert selon le protocole :
+   - FTPS : `lftp` ou une action de transfert fichier compatible
+   - SFTP : transfert fichier SFTP uniquement, sans shell distant ni `rsync`
+
+Le workflow de déploiement refuse les refs autres que `main` et vérifie qu'un run CI réussi existe pour le SHA à déployer. Cela évite de packager ou migrer la production depuis une branche de travail.
 
 ## Version PHP
 
@@ -192,7 +210,7 @@ Le projet requiert PHP `^8.2` (CodeIgniter 4.7.x). La CI utilise PHP 8.3.
 
 Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA256.
 
-Après chaque déploiement applicatif, une étape post-deploy doit appeler cette route pour appliquer les migrations SQL en attente. Voir `docs/migration-runner.md` pour le contrat complet (en-têtes, payload signé, codes de réponse, verrouillage).
+Après chaque déploiement applicatif, une étape post-deploy doit appeler cette route pour appliquer les migrations SQL en attente sur la MariaDB managée Ouvaton déjà configurée. Voir `docs/migration-runner.md` pour le contrat complet (en-têtes, payload signé, codes de réponse, verrouillage).
 
 Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
 

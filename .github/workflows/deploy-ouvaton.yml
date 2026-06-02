@@ -9,28 +9,13 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-and-package:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_ROOT_PASSWORD: ci_root_password
-          MARIADB_DATABASE: kermesse_test
-          MARIADB_USER: kermesse_ci
-          MARIADB_PASSWORD: ci_password
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
-          --health-start-period=20s
 
     env:
       PHP_VERSION: '8.3'
@@ -38,6 +23,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Require successful CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          successful_runs="$(gh run list \
+            --workflow CI \
+            --commit "$GITHUB_SHA" \
+            --branch main \
+            --status success \
+            --json databaseId \
+            --jq 'length')"
+
+          if [ "$successful_runs" -lt 1 ]; then
+            echo "::error::No successful CI run found for ${GITHUB_SHA} on main. Run CI before deploying."
+            exit 1
+          fi
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -66,22 +70,7 @@ jobs:
         run: composer install --prefer-dist --no-progress
 
       - name: Run tests
-        run: composer test
-
-      - name: Install MySQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y default-mysql-client
-
-      - name: Validate SQL migrations against MariaDB
-        run: |
-          for sql_file in database/migrations_sql/*.sql; do
-            if [ -f "$sql_file" ]; then
-              echo "Applying: $sql_file"
-              mysql -h 127.0.0.1 -u kermesse_ci -pci_password kermesse_test < "$sql_file"
-            fi
-          done
-          echo "All SQL migrations applied successfully."
+        run: vendor/bin/phpunit --exclude-group mariadb
 
       # --- Packaging ---
       - name: Run packaging script
@@ -115,8 +104,8 @@ jobs:
 
       # Emplacement reserve pour l'etape d'envoi distant.
       # La methode de transfert exacte depend des capacites du compte Ouvaton :
-      #   - FTP/FTPS : utiliser SamKirkland/FTP-Deploy-Action ou lftp
-      #   - SFTP : utiliser ssh/scp/rsync via SSH
+      #   - FTPS : utiliser lftp ou une action de transfert fichier compatible
+      #   - SFTP : utiliser un transfert fichier SFTP, sans shell distant ni rsync
       #
       # Secrets GitHub requis, a configurer dans l'environnement 'production' :
       #   OUVATON_DEPLOY_PROTOCOL  - ftp, ftps ou sftp
@@ -127,10 +116,13 @@ jobs:
       #
       # IMPORTANT : l'etape de deploiement applicatif ne doit jamais ecraser le .env de production.
       # Le .env de production est gere par .github/workflows/sync-production-env.yml.
+      # L'application deployee se connecte a la MariaDB managée Ouvaton via database.default.*
+      # dans ce .env ; ce workflow ne cree pas et n'administre pas la base de production.
       #
       # Post-deploiement : appeler POST /ops/migrate avec authentification HMAC
-      # une fois l'etape de deploiement applicatif activee. Voir
-      # docs/migration-runner.md pour le payload signe et les en-tetes requis.
+      # une fois l'etape de deploiement applicatif activee. Cet appel vise l'application
+      # Ouvaton deployee, qui utilise la connexion MariaDB managée configuree dans .env.
+      # Voir docs/migration-runner.md pour le payload signe et les en-tetes requis.
       - name: Deploy to Ouvaton (placeholder)
         run: |
           echo "================================================================="
@@ -138,6 +130,7 @@ jobs:
           echo "Ouvaton protocol, host, and credentials must be confirmed first."
           echo "See docs/deployment-ouvaton.md for setup instructions."
           echo "================================================================="
+          exit 1
 
       - name: Run post-deploy migrations
         env:
@@ -145,6 +138,21 @@ jobs:
           OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail
+
+          if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
+            echo "::error::BASE_URL and OPS_MIGRATION_HMAC_SECRET are required."
+            exit 1
+          fi
+
+          if [ "${BASE_URL#https://}" = "$BASE_URL" ]; then
+            echo "::error::BASE_URL must start with https:// for production migrations."
+            exit 1
+          fi
+
+          if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
+            echo "::error::OPS_MIGRATION_HMAC_SECRET must be at least 32 characters."
+            exit 1
+          fi
 
           BODY='{}'
           TIMESTAMP="$(date +%s)"

@@ -6,6 +6,8 @@ Le runner de migrations applique les fichiers SQL situés dans `database/migrati
 
 Ce mécanisme remplace `php spark migrate` car le serveur Ouvaton ne dispose pas d'accès CLI.
 
+En production, le runner s'exécute dans l'application CodeIgniter déjà déployée. Il utilise la connexion `database.default.*` du `.env` de production pour atteindre la MariaDB managée Ouvaton existante. Il ne démarre pas Docker, ne crée pas la base de données et n'utilise pas de client `mysql` côté serveur.
+
 ## Contrat d'authentification HMAC
 
 Chaque appel à `/ops/migrate` doit fournir trois en-têtes obligatoires :
@@ -112,7 +114,7 @@ Les valeurs `applied`, `skipped` et `failed` sont des compteurs. Aucun SQL brut,
 
 ## Intégration GitHub Actions
 
-Après déploiement de l'artefact applicatif, ajouter une étape post-deploy qui appelle `POST /ops/migrate` avec les en-têtes HMAC.
+Après déploiement de l'artefact applicatif, l'étape post-deploy appelle `POST /ops/migrate` avec les en-têtes HMAC. Cet appel vise l'URL publique Ouvaton de l'application ; les migrations s'appliquent via la connexion MariaDB configurée dans le `.env` de production.
 
 Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
 
@@ -120,3 +122,4 @@ Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement
 - Logger le secret HMAC, la signature, le nonce brut ou le token
 - Exposer le détail d'un refus HMAC dans une réponse HTTP
 - Appeler `/ops/migrate` sans HTTPS en production
+- Lancer Docker, `php spark migrate`, `mysql`, Composer ou PHPUnit sur le serveur Ouvaton

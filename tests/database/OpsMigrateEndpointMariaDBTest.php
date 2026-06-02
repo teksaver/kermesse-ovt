@@ -159,6 +159,14 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         $this->assertStringNotContainsString('stack trace', strtolower($responseBody));
         $this->assertStringNotContainsString('.php', $responseBody);
         $this->assertStringNotContainsString($this->testSecret, $responseBody);
-        $this->assertStringContainsString('"ok":false', $responseBody);
+
+        $json = json_decode($responseBody, true);
+
+        $this->assertSame([
+            'ok' => false,
+            'applied' => 0,
+            'skipped' => 0,
+            'failed' => 1,
+        ], $json);
     }
 }

@@ -84,6 +84,25 @@ Executer les tests applicatifs :
 docker compose run --rm app composer test
 ```
 
+Executer les tests MariaDB et le runner de migrations contre la base locale Docker :
+
+```bash
+docker compose run --rm \
+  -e "database.tests.hostname=db" \
+  -e "database.tests.database=kermesse" \
+  -e "database.tests.username=kermesse_user" \
+  -e "database.tests.password=kermesse_password" \
+  -e "database.tests.DBDriver=MySQLi" \
+  -e "database.tests.DBPrefix=" \
+  -e "database.tests.port=3306" \
+  -e "database.tests.charset=utf8mb4" \
+  -e "database.tests.DBCollat=utf8mb4_general_ci" \
+  -e "kermesse.opsMigrationProductionOnly=false" \
+  app vendor/bin/phpunit --testsuite App --group mariadb
+```
+
+Ces commandes testent l'application avec la MariaDB locale du service `db`. Elles ne touchent jamais la base Ouvaton.
+
 Valider la configuration Compose :
 
 ```bash
@@ -108,12 +127,15 @@ Le fichier `.env` n'est pas cree automatiquement et n'est pas requis pour demarr
 
 Si un `.env` existe deja dans le depot, CodeIgniter peut le charger parce que le projet est monte dans le conteneur. Ce fichier doit rester local, non commite et syntaxiquement valide.
 
-Les tests existants continuent d'utiliser leur configuration PHPUnit et ne dependent pas de MariaDB tant qu'aucun test applicatif MariaDB n'a ete ajoute.
+La commande standard `composer test` garde la configuration PHPUnit par defaut et peut skipper les tests MariaDB. Pour exercer MariaDB localement, utiliser explicitement la commande `--group mariadb` documentee plus haut avec les variables `database.tests.*` vers le service `db`.
 
 ## Separation avec Ouvaton
 
 Cet environnement local sert au developpement et aux tests manuels. Il ne modifie pas la strategie de production :
 
 - Ouvaton reste runtime-only.
+- Ouvaton n'utilise pas Docker, Docker Compose, Composer, PHPUnit ou CLI serveur.
+- La base Ouvaton est une MariaDB managée existante ; l'application s'y connecte via les credentials du `.env` de production.
 - Le packaging de production reste gere par GitHub Actions.
+- Les migrations de production passent par `POST /ops/migrate` sur l'application deployee, pas par un client `mysql` local ou distant.
 - Aucun vrai `.env` ou secret de production ne doit etre ajoute au depot.

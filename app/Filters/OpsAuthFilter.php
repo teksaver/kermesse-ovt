@@ -28,7 +28,7 @@ class OpsAuthFilter implements FilterInterface
         $config = config(Kermesse::class);
 
         // POST only
-        if ($request->getMethod() !== 'post') {
+        if (strtolower($request->getMethod()) !== 'post') {
             return $this->denyRequest();
         }
 
