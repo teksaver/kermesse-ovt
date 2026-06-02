@@ -42,6 +42,7 @@ $RECYCLE.BIN/
 # These should never be under version control,
 # as it poses a security risk.
 .env
+.env.next
 .vagrant
 Vagrantfile
 
@@ -152,4 +153,3 @@ preload.php
 .phpunit.result.cache
 composer.phar
 *.php.bak
-

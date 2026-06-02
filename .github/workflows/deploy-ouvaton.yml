@@ -93,8 +93,8 @@ jobs:
       #   OUVATON_DEPLOY_PASSWORD  - mot de passe ou cle SSH du compte Ouvaton
       #   OUVATON_DEPLOY_REMOTE_PATH - chemin distant sur Ouvaton, par exemple /www/kermesse
       #
-      # IMPORTANT : l'etape de deploiement ne doit jamais ecraser le .env de production.
-      # Le .env de production est gere manuellement sur le serveur et doit etre preserve.
+      # IMPORTANT : l'etape de deploiement applicatif ne doit jamais ecraser le .env de production.
+      # Le .env de production est gere par .github/workflows/sync-production-env.yml.
       #
       # Futur : apres la Story 1.3 et le runner de migrations securise,
       # ajouter une etape post-deploiement vers POST /ops/migrate avec authentification HMAC.

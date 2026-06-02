@@ -106,6 +106,7 @@ done
 # Vérification des fichiers interdits à la racine du staging
 FORBIDDEN_ROOT_FILES=(
   ".env"
+  ".env.next"
   ".env.local"
   "auth.json"
 )
@@ -127,12 +128,17 @@ while IFS= read -r found; do
   FORBIDDEN_FOUND=1
 done < <(find "${STAGING_DIR}" -maxdepth 1 -type f -name "phpunit*" -print)
 
+while IFS= read -r found; do
+  echo "ERREUR : Fichier d'environnement interdit détecté dans le staging : ${found}"
+  FORBIDDEN_FOUND=1
+done < <(find "${STAGING_DIR}" -type f \( -name ".env" -o -name ".env.next" \) -print)
+
 # Recherche récursive de clés privées, secrets ou fichiers de configuration de test (hors vendor)
-# On cherche *.key, *.pem, auth.json, phpunit*, et tout vrai .env ou override local.
+# On cherche *.key, *.pem, auth.json, phpunit*, et tout vrai .env ou candidat .env.next.
 while IFS= read -r found; do
   echo "ERREUR : Fichier ou secret interdit détecté de manière récursive : ${found}"
   FORBIDDEN_FOUND=1
-done < <(find "${STAGING_DIR}" -not -path "${STAGING_DIR}/vendor/*" \( -name "*.key" -o -name "*.pem" -o -name "auth.json" -o -name "phpunit*" -o -name ".env" -o -name ".env.local" -o -name ".env.*.local" \) -print)
+done < <(find "${STAGING_DIR}" -not -path "${STAGING_DIR}/vendor/*" \( -name "*.key" -o -name "*.pem" -o -name "auth.json" -o -name "phpunit*" -o -name ".env" -o -name ".env.next" -o -name ".env.local" -o -name ".env.*.local" \) -print)
 
 if [ ${FORBIDDEN_FOUND} -eq 1 ]; then
   echo "ÉCHEC : Des fichiers interdits ont été trouvés dans le staging. Packaging interrompu."
@@ -152,6 +158,15 @@ echo "Contenu de l'archive ZIP :"
 unzip -Z -1 "${OUTPUT_ZIP}"
 
 while IFS= read -r line; do
+  clean_line="${line%/}"
+
+  if [[ "${clean_line}" == ".env" || "${clean_line}" == ".env.next" || "${clean_line}" == */.env || "${clean_line}" == */.env.next ]]; then
+    echo "ERREUR : Fichier d'environnement interdit détecté dans l'archive ZIP : ${line}"
+    ZIP_FORBIDDEN_FOUND=1
+  fi
+done < <(unzip -Z -1 "${OUTPUT_ZIP}")
+
+while IFS= read -r line; do
   # Nettoyage des slashs de fin pour les dossiers
   clean_line="${line%/}"
   
@@ -164,7 +179,7 @@ while IFS= read -r line; do
   done
 
   # Vérification par rapport aux fichiers interdits spécifiques
-  for file in ".env" ".env.local" "auth.json"; do
+  for file in ".env" ".env.next" ".env.local" "auth.json"; do
     # On autorise .env.example, donc on vérifie exactement .env et les overrides locaux.
     if [[ "${clean_line}" == "${file}" || "${clean_line}" == */"${file}" ]]; then
       echo "ERREUR : Fichier interdit détecté dans l'archive ZIP : ${line}"
