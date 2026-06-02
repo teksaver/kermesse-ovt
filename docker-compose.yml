@@ -1,0 +1,58 @@
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "127.0.0.1:${KERMESSE_HTTP_PORT:-8080}:80"
+    environment:
+      CI_ENVIRONMENT: development
+      app.baseURL: "http://localhost:${KERMESSE_HTTP_PORT:-8080}/"
+      app.appTimezone: "Europe/Paris"
+      app.forceGlobalSecureRequests: "false"
+      app.CSPEnabled: "false"
+      logger.threshold: "4"
+      database.default.hostname: db
+      database.default.database: kermesse
+      database.default.username: kermesse_user
+      database.default.password: kermesse_password
+      database.default.DBDriver: MySQLi
+      database.default.DBPrefix: ""
+      database.default.port: "3306"
+      database.default.charset: utf8mb4
+      database.default.DBCollat: utf8mb4_general_ci
+      session.savePath: /var/www/html/writable/session
+      kermesse.publicBaseURL: "http://localhost:${KERMESSE_HTTP_PORT:-8080}/"
+      kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
+      kermesse.opsMigrationHmacSecret: local_dev_ops_secret_32_bytes_minimum
+    volumes:
+      - .:/var/www/html
+      - composer-cache:/tmp/composer
+      - vendor:/var/www/html/vendor
+      - writable:/var/www/html/writable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: root_password
+      MARIADB_DATABASE: kermesse
+      MARIADB_USER: kermesse_user
+      MARIADB_PASSWORD: kermesse_password
+    ports:
+      - "127.0.0.1:${KERMESSE_DB_PORT:-3307}:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  composer-cache:
+  mariadb-data:
+  vendor:
+  writable:
