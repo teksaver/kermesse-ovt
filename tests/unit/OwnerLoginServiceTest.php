@@ -402,6 +402,38 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
     }
 
+    public function testPendingOwnerRechecksCooldownInsideSerializedResendSection(): void
+    {
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 9,
+            'status'       => 'owner_pending',
+            'email'        => 'pending@example.com',
+            'display_name' => 'Jean',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 4,
+            'name' => 'Kermesse Jean',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->expects($this->exactly(2))
+                     ->method('hasRecentActiveOwnerValidationToken')
+                     ->with(9, 300)
+                     ->willReturnOnConsecutiveCalls(false, true);
+        $tokenService->expects($this->never())->method('issueOwnerValidationToken');
+        $tokenService->expects($this->never())->method('revokeToken');
+        $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->expects($this->never())->method('sendOwnerValidationEmail');
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('pending@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
     public function testEmailNormalisedBeforeHashLookup(): void
     {
         $capturedHash = null;

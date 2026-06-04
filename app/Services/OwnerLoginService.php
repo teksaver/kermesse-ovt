@@ -96,6 +96,14 @@ class OwnerLoginService
         try {
             $db->transBegin();
 
+            $this->lockOwnerValidationResend($db, $ownerId);
+
+            if ($this->tokenService->hasRecentActiveOwnerValidationToken($ownerId, self::RESEND_COOLDOWN_SECONDS)) {
+                $db->transCommit();
+
+                return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+            }
+
             $issuedToken = $this->tokenService->issueOwnerValidationToken($ownerId, $kermesseId, $email);
             $rawToken    = $issuedToken->rawToken;
             $newTokenId  = $issuedToken->tokenId;
@@ -130,6 +138,20 @@ class OwnerLoginService
         }
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+    }
+
+    private function lockOwnerValidationResend(BaseConnection $db, int $ownerId): void
+    {
+        if ($db->DBDriver !== 'MySQLi') {
+            return;
+        }
+
+        $table = $db->protectIdentifiers($db->prefixTable('owners'));
+        $result = $db->query("SELECT id FROM {$table} WHERE id = ? FOR UPDATE", [$ownerId]);
+
+        if ($result === false) {
+            throw new \RuntimeException('Owner validation resend lock failed');
+        }
     }
 
     /**
