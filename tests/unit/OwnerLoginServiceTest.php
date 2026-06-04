@@ -80,22 +80,197 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
     }
 
-    public function testActiveOwnerReturnsNeutralCheckEmailWithoutToken(): void
+    // ------------------------------------------------------------------
+    // Active owner branch (Story 1.6)
+    // ------------------------------------------------------------------
+
+    public function testActiveOwnerWithMissingKermesseReturnsNeutralWithoutLoginToken(): void
     {
         $ownerModel = $this->buildOwnerModelMock([
-            'id'     => 3,
-            'status' => 'active',
-            'email'  => 'active@example.com',
+            'id'           => 3,
+            'status'       => 'active',
+            'email'        => 'active@example.com',
+            'display_name' => 'Active Owner',
         ]);
 
+        $kermesseModel = $this->buildMockKermesseModel(null);
+
         $tokenService = $this->createMock(TokenService::class);
+        $tokenService->expects($this->never())->method('issueOwnerLoginToken');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerLoginTokens');
         $tokenService->expects($this->never())->method('issueOwnerValidationToken');
         $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
 
-        $result = $this->buildService($ownerModel, $tokenService)->requestOwnerLink('active@example.com');
+        $result = $this->buildService($ownerModel, $tokenService, null, $kermesseModel)
+                       ->requestOwnerLink('active@example.com');
 
         $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
     }
+
+    public function testActiveOwnerIssuedLoginTokenAndReturnsNeutral(): void
+    {
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 3,
+            'status'       => 'active',
+            'email'        => 'active@example.com',
+            'display_name' => 'Active Owner',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 5,
+            'name' => 'Kermesse Active',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
+        $tokenService->expects($this->once())
+                     ->method('revokeActiveOwnerLoginTokens')
+                     ->with(3);
+        $tokenService->expects($this->once())
+                     ->method('issueOwnerLoginToken')
+                     ->with(3, 5, 'active@example.com')
+                     ->willReturn(new IssuedToken('login-token', 7));
+        $tokenService->expects($this->never())->method('issueOwnerValidationToken');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->expects($this->once())
+                     ->method('sendOwnerLoginEmail')
+                     ->willReturn(new EmailDeliveryResult(true));
+        $emailService->expects($this->never())->method('sendOwnerValidationEmail');
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('active@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    public function testActiveOwnerWithLoginCooldownSkipsEmission(): void
+    {
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 3,
+            'status'       => 'active',
+            'email'        => 'active@example.com',
+            'display_name' => 'Active Owner',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 5,
+            'name' => 'Kermesse Active',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(true);
+        $tokenService->expects($this->never())->method('issueOwnerLoginToken');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerLoginTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->expects($this->never())->method('sendOwnerLoginEmail');
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('active@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    public function testActiveOwnerFailedEmailRevokesLoginToken(): void
+    {
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 3,
+            'status'       => 'active',
+            'email'        => 'active@example.com',
+            'display_name' => 'Active Owner',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 5,
+            'name' => 'Kermesse Active',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
+        $tokenService->method('revokeActiveOwnerLoginTokens');
+        $tokenService->method('issueOwnerLoginToken')->willReturn(new IssuedToken('login-token', 7));
+        // On email failure, revokeActiveOwnerLoginTokens is called again to revoke the new token
+        $tokenService->expects($this->exactly(2))->method('revokeActiveOwnerLoginTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->method('sendOwnerLoginEmail')->willReturn(new EmailDeliveryResult(false, 'No SMTP'));
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('active@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    public function testActiveOwnerLoginResultNeverExposesRawToken(): void
+    {
+        $rawToken = 'very-secret-login-raw-token';
+
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 9,
+            'status'       => 'active',
+            'email'        => 'active@example.com',
+            'display_name' => 'Active Owner',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 2,
+            'name' => 'Kermesse Test',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
+        $tokenService->method('revokeActiveOwnerLoginTokens');
+        $tokenService->method('issueOwnerLoginToken')->willReturn(new IssuedToken($rawToken, 1));
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->method('sendOwnerLoginEmail')->willReturn(new EmailDeliveryResult(false));
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('active@example.com');
+
+        $serialized = json_encode($result);
+        $this->assertStringNotContainsString($rawToken, $serialized);
+    }
+
+    // ------------------------------------------------------------------
+    // owner_pending branch must never create owner_login tokens
+    // ------------------------------------------------------------------
+
+    public function testPendingOwnerNeverReceivesOwnerLoginToken(): void
+    {
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 7,
+            'status'       => 'owner_pending',
+            'email'        => 'pending@example.com',
+            'display_name' => 'Jean',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 3,
+            'name' => 'Kermesse Jean',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
+        $tokenService->method('revokeActiveOwnerValidationTokens');
+        $tokenService->method('issueOwnerValidationToken')->willReturn(new IssuedToken('val-token', 1));
+        $tokenService->expects($this->never())->method('issueOwnerLoginToken');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerLoginTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->method('sendOwnerValidationEmail')->willReturn(new EmailDeliveryResult(true));
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
+                       ->requestOwnerLink('pending@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    // ------------------------------------------------------------------
+    // owner_pending branch (Story 1.5 — preserved)
+    // ------------------------------------------------------------------
 
     public function testPendingOwnerRevokesTokensAndIssuesNew(): void
     {
@@ -113,7 +288,6 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
-        // All active tokens are revoked atomically before issuing the new one
         $tokenService->expects($this->once())
                      ->method('revokeActiveOwnerValidationTokens')
                      ->with(7);
@@ -206,7 +380,6 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
                        ->requestOwnerLink('test@example.com');
 
-        // The raw token must never appear in the result
         $serialized = json_encode($result);
         $this->assertStringNotContainsString($rawToken, $serialized);
     }
@@ -244,7 +417,6 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
             'id'   => 2,
             'name' => 'Kermesse Test',
         ]);
-        // Cooldown is now based on an active token in DB, not email_events
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(true);
         $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');

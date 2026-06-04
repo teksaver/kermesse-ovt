@@ -1,0 +1,288 @@
+<?php
+
+use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\FeatureTestTrait;
+
+/**
+ * Feature tests for GET /owner/login/{token} — owner login token consumption.
+ *
+ * @internal
+ */
+final class OwnerLoginConsumptionTest extends CIUnitTestCase
+{
+    use FeatureTestTrait;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $db = db_connect();
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_owners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                email_hash TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL DEFAULT \'\',
+                status TEXT NOT NULL DEFAULT \'owner_pending\',
+                email_verified_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER NOT NULL,
+                public_slug TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                event_date TEXT NOT NULL,
+                location TEXT NOT NULL,
+                short_description TEXT,
+                timezone TEXT NOT NULL DEFAULT \'Europe/Paris\',
+                status TEXT NOT NULL DEFAULT \'preparation\',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_access_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                token_type TEXT NOT NULL,
+                owner_id INTEGER,
+                kermesse_id INTEGER,
+                email TEXT,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME,
+                revoked_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+    }
+
+    protected function tearDown(): void
+    {
+        $db = db_connect();
+        $db->query('DELETE FROM db_owners');
+        $db->query('DELETE FROM db_kermesses');
+        $db->query('DELETE FROM db_access_tokens');
+        parent::tearDown();
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    private function insertActiveOwnerWithKermesse(string $email = 'active@example.com'): array
+    {
+        $db   = db_connect();
+        $hash = hash('sha256', $email);
+
+        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, email_verified_at, created_at, updated_at)
+            VALUES ('{$email}', '{$hash}', 'Active Owner', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $ownerId = (int) $db->insertID();
+
+        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, timezone, status, created_at, updated_at)
+            VALUES ({$ownerId}, 'test-kermesse-" . bin2hex(random_bytes(4)) . "', 'Ma Kermesse', '2026-09-01', 'Paris', 'Europe/Paris', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $kermesseId = (int) $db->insertID();
+
+        return compact('ownerId', 'kermesseId', 'email');
+    }
+
+    private function insertOwnerLoginToken(int $ownerId, int $kermesseId, string $email, int $ttl = 900): array
+    {
+        $db        = db_connect();
+        $rawToken  = bin2hex(random_bytes(32));
+        $tokenHash = hash('sha256', $rawToken);
+        $expiresAt = date('Y-m-d H:i:s', time() + $ttl);
+
+        $db->query("INSERT INTO db_access_tokens (token_hash, token_type, owner_id, kermesse_id, email, expires_at, created_at, updated_at)
+            VALUES ('{$tokenHash}', 'owner_login', {$ownerId}, {$kermesseId}, '{$email}', '{$expiresAt}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $tokenId = (int) $db->insertID();
+
+        return compact('rawToken', 'tokenHash', 'tokenId');
+    }
+
+    // ------------------------------------------------------------------
+    // Success path
+    // ------------------------------------------------------------------
+
+    public function testValidTokenRedirectsToAdminDashboard(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertRedirectTo(site_url('admin/kermesses/' . $kermesseId));
+    }
+
+    public function testValidTokenMarksTokenAsUsed(): void
+    {
+        $db = db_connect();
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+
+        $row = $db->query("SELECT used_at FROM db_access_tokens WHERE id = {$tokenId}")->getRow();
+        $this->assertNotNull($row->used_at, 'Token must be marked used_at after successful consumption');
+    }
+
+    public function testValidTokenSetsAdminSessionKeys(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+
+        $this->assertTrue(session()->get('owner_admin_authenticated') === true,
+            'owner_admin_authenticated must be true after successful consumption');
+        $this->assertSame($ownerId, (int) session()->get('owner_id'));
+        $this->assertSame($kermesseId, (int) session()->get('kermesse_id'));
+    }
+
+    // ------------------------------------------------------------------
+    // Token reuse prevention
+    // ------------------------------------------------------------------
+
+    public function testUsedTokenCannotBeReused(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        // Consume the token a first time
+        $this->get('owner/login/' . $rawToken);
+
+        // Try to reuse the same token
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('déjà été utilisé', $body,
+            'Second use of same token must show used microcopy');
+    }
+
+    public function testUsedTokenDoesNotCreateSecondSession(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        // Consume the token once (session created)
+        $this->get('owner/login/' . $rawToken);
+
+        // Wipe session to simulate a fresh browser, then try again
+        session()->destroy();
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        // After failed consumption the controller purges admin session keys
+        $this->assertNotTrue(session()->get('owner_admin_authenticated'),
+            'Admin session must not exist after reused token rejection');
+    }
+
+    // ------------------------------------------------------------------
+    // Invalid / expired / revoked token error pages
+    // ------------------------------------------------------------------
+
+    public function testInvalidTokenShowsInvalidMicrocopy(): void
+    {
+        $result = $this->get('owner/login/completely-unknown-token-that-does-not-exist');
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString("n'est plus valide", $body);
+        $this->assertStringContainsString('Demander un nouveau lien', $body);
+    }
+
+    public function testExpiredTokenShowsExpiredMicrocopy(): void
+    {
+        $db = db_connect();
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+
+        // Insert an already-expired token (ttl = -1 means expires_at is in the past)
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email, -1);
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('expiré', $body);
+    }
+
+    public function testRevokedTokenShowsInvalidMicrocopy(): void
+    {
+        $db = db_connect();
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        // Revoke the token manually
+        $db->query("UPDATE db_access_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = {$tokenId}");
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString("n'est plus valide", $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Session purge on failure
+    // ------------------------------------------------------------------
+
+    public function testFailedConsumptionPurgesAdminSessionKeys(): void
+    {
+        // Pre-load a stale admin session (simulates a leftover session)
+        $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => 999,
+            'kermesse_id'               => 888,
+        ]);
+
+        $result = $this->get('owner/login/completely-invalid-token');
+
+        $result->assertStatus(200);
+        $this->assertNotTrue(session()->get('owner_admin_authenticated'),
+            'owner_admin_authenticated must be purged on failed consumption');
+        $this->assertNull(session()->get('owner_id'),
+            'owner_id must be purged on failed consumption');
+        $this->assertNull(session()->get('kermesse_id'),
+            'kermesse_id must be purged on failed consumption');
+    }
+
+    // ------------------------------------------------------------------
+    // Security: no raw token in response body
+    // ------------------------------------------------------------------
+
+    public function testInvalidTokenResponseDoesNotLeakSensitiveData(): void
+    {
+        $result = $this->get('owner/login/some-token-value');
+
+        $body = $result->response()->getBody();
+        $this->assertStringNotContainsString('SELECT', $body);
+        $this->assertStringNotContainsString('stack trace', strtolower($body));
+        $this->assertStringNotContainsString('.env', $body);
+        $this->assertStringNotContainsString('token_hash', $body);
+    }
+
+    public function testLoginResultPageLinksBackToLoginForm(): void
+    {
+        $result = $this->get('owner/login/invalid-token-for-link-check');
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('owner/login', $body,
+            'Error result page must link back to the login form');
+    }
+}

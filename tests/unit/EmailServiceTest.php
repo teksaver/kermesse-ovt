@@ -89,4 +89,87 @@ final class EmailServiceTest extends CIUnitTestCase
         $this->assertSame('failed', $capturedData['status']);
         $this->assertFalse($result->sent);
     }
+
+    // ------------------------------------------------------------------
+    // sendOwnerLoginEmail
+    // ------------------------------------------------------------------
+
+    public function testSendOwnerLoginEmailRecordsOwnerLoginEvent(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new EmailService($mockModel);
+        $result  = $service->sendOwnerLoginEmail(
+            'owner@example.com',
+            'Jean',
+            'Ma Kermesse',
+            'https://example.com/owner/login/fake-token',
+        );
+
+        $this->assertInstanceOf(EmailDeliveryResult::class, $result);
+        $this->assertNotNull($capturedData);
+        $this->assertSame('owner_login', $capturedData['event_type'],
+            'event_type must be owner_login, not owner_validation');
+        $this->assertSame('owner@example.com', $capturedData['recipient_email']);
+        $this->assertContains($capturedData['status'], ['sent', 'failed']);
+    }
+
+    public function testOwnerLoginEmailFailureRecordsFailedStatus(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        // Pass a non-http URL: the email view throws InvalidArgumentException → caught → status=failed
+        $service = new EmailService($mockModel);
+        $result  = $service->sendOwnerLoginEmail(
+            'fail@example.com',
+            'Owner',
+            'Kermesse',
+            'not-a-valid-login-url',
+        );
+
+        $this->assertNotNull($capturedData);
+        $this->assertSame('owner_login', $capturedData['event_type']);
+        $this->assertSame('failed', $capturedData['status']);
+        $this->assertFalse($result->sent);
+    }
+
+    public function testOwnerLoginEmailRawTokenAbsentFromEventErrorMessage(): void
+    {
+        $capturedData = null;
+        $rawToken     = 'super-secret-login-token-12345';
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new EmailService($mockModel);
+        $service->sendOwnerLoginEmail(
+            'owner@example.com',
+            'Jean',
+            'Ma Kermesse',
+            'https://example.com/owner/login/' . $rawToken,
+        );
+
+        // The raw token URL must not appear in the error_message field of email_events
+        $errorMsg = $capturedData['error_message'] ?? '';
+        $this->assertStringNotContainsString($rawToken, (string) $errorMsg,
+            'Raw token must not appear in email_events.error_message');
+    }
 }

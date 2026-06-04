@@ -268,6 +268,52 @@ final class OwnerLoginTest extends CIUnitTestCase
         $this->assertNotNull($oldRow->revoked_at, 'Old token must be revoked after resend');
     }
 
+    // ------------------------------------------------------------------
+    // POST /owner/login — active owner branch (Story 1.6)
+    // ------------------------------------------------------------------
+
+    public function testActiveOwnerPostCreatesOwnerLoginTokenNotValidationToken(): void
+    {
+        $db    = db_connect();
+        $email = 'active-owner@example.com';
+        $hash  = hash('sha256', $email);
+
+        // Insert an active owner
+        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, email_verified_at, created_at, updated_at)
+            VALUES ('{$email}', '{$hash}', 'Active Owner', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $ownerId = (int) $db->insertID();
+
+        // Insert kermesse for this owner
+        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, timezone, status, created_at, updated_at)
+            VALUES ({$ownerId}, 'active-slug', 'Ma Kermesse Active', '2026-09-01', 'Paris', 'Europe/Paris', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $result = $this->post('owner/login', [
+            'csrf_test_name' => csrf_hash(),
+            'owner_email'    => $email,
+        ]);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        // Neutral confirmation must appear (anti-enumeration)
+        $this->assertStringContainsString('Vérifiez votre email', $body);
+
+        // An owner_login token must exist in the DB (issued then possibly revoked due to no SMTP)
+        $loginTokenRow = $db->query(
+            "SELECT id, token_hash, token_type FROM db_access_tokens WHERE owner_id = {$ownerId} AND token_type = 'owner_login' LIMIT 1"
+        )->getRow();
+        $this->assertNotNull($loginTokenRow, 'An owner_login token must be created for an active owner');
+        $this->assertSame('owner_login', $loginTokenRow->token_type);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $loginTokenRow->token_hash,
+            'Login token must be stored as SHA-256 hash, not raw');
+
+        // No owner_validation token must have been created
+        $validationTokenRow = $db->query(
+            "SELECT id FROM db_access_tokens WHERE owner_id = {$ownerId} AND token_type = 'owner_validation' LIMIT 1"
+        )->getRow();
+        $this->assertNull($validationTokenRow, 'Active owner must not receive an owner_validation token');
+    }
+
     public function testLoginPostWithoutCsrfIsRefused(): void
     {
         // CI4 CSRF protection throws a SecurityException when the token is absent.

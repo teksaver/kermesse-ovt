@@ -182,4 +182,153 @@ class TokenService
             ->set(['revoked_at' => date('Y-m-d H:i:s')])
             ->update();
     }
+
+    // ------------------------------------------------------------------
+    // owner_login token methods (Story 1.6)
+    // ------------------------------------------------------------------
+
+    /**
+     * Issue an owner_login token.
+     *
+     * The raw token is returned once for email link construction
+     * and must never be logged or persisted in plain text.
+     */
+    public function issueOwnerLoginToken(int $ownerId, int $kermesseId, string $email): IssuedToken
+    {
+        if ($this->config->ownerLoginTokenTTL <= 0) {
+            throw new \InvalidArgumentException('Invalid owner login token TTL');
+        }
+
+        $rawBytes = random_bytes(32);
+        $rawToken = rtrim(strtr(base64_encode($rawBytes), '+/', '-_'), '=');
+        $hash     = hash('sha256', $rawToken);
+
+        $ttl       = $this->config->ownerLoginTokenTTL;
+        $expiresAt = date('Y-m-d H:i:s', time() + $ttl);
+
+        try {
+            $this->tokenModel->skipValidation(true);
+            $tokenId = $this->tokenModel->insert([
+                'token_hash'  => $hash,
+                'token_type'  => 'owner_login',
+                'owner_id'    => $ownerId,
+                'kermesse_id' => $kermesseId,
+                'email'       => $email,
+                'expires_at'  => $expiresAt,
+                'used_at'     => null,
+                'revoked_at'  => null,
+            ]);
+            if ($tokenId === false) {
+                throw new \RuntimeException('Owner login token insert failed');
+            }
+        } finally {
+            $this->tokenModel->skipValidation(false);
+        }
+
+        return new IssuedToken($rawToken, (int) $tokenId);
+    }
+
+    /**
+     * Validate a raw owner_login token.
+     *
+     * Hashes the raw token and looks it up in the DB.
+     * The raw token must never be stored or logged.
+     */
+    public function validateOwnerLoginToken(string $rawToken): TokenValidationResult
+    {
+        $hash  = hash('sha256', $rawToken);
+        $token = $this->tokenModel
+            ->where('token_hash', $hash)
+            ->where('token_type', 'owner_login')
+            ->first();
+
+        if ($token === null) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN);
+        }
+
+        if ($token['revoked_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::REVOKED_TOKEN, $token);
+        }
+
+        if ($token['used_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::USED_TOKEN, $token);
+        }
+
+        if (empty($token['owner_id']) || empty($token['kermesse_id'])) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN, $token);
+        }
+
+        $expiresAt = strtotime((string) $token['expires_at']);
+        if ($expiresAt === false) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN, $token);
+        }
+
+        if ($expiresAt <= time()) {
+            return new TokenValidationResult(TokenValidationResult::EXPIRED_TOKEN, $token);
+        }
+
+        return new TokenValidationResult(TokenValidationResult::VALID, $token);
+    }
+
+    /**
+     * Mark an owner_login token as used (atomic: WHERE token_type + used_at IS NULL + not expired).
+     *
+     * Must be called inside a transaction. Returns false if the row was already claimed
+     * (concurrent request), in which case the caller must abort session creation.
+     */
+    public function markLoginTokenAsUsed(int $tokenId): bool
+    {
+        $this->tokenModel
+            ->where('id', $tokenId)
+            ->where('token_type', 'owner_login')
+            ->where('used_at', null)
+            ->where('revoked_at', null)
+            ->where('expires_at >', date('Y-m-d H:i:s'))
+            ->set(['used_at' => date('Y-m-d H:i:s')])
+            ->update();
+
+        return $this->tokenModel->affectedRows() === 1;
+    }
+
+    /**
+     * Check whether an owner already has a recent usable owner_login token (cooldown guard).
+     */
+    public function hasRecentActiveOwnerLoginToken(int $ownerId, int $cooldownSeconds): bool
+    {
+        $createdAfter = date('Y-m-d H:i:s', time() - $cooldownSeconds);
+
+        $token = $this->tokenModel
+            ->where('owner_id', $ownerId)
+            ->where('token_type', 'owner_login')
+            ->where('revoked_at', null)
+            ->where('used_at', null)
+            ->where('expires_at >', date('Y-m-d H:i:s'))
+            ->where('created_at >=', $createdAfter)
+            ->first();
+
+        return $token !== null;
+    }
+
+    /**
+     * Revoke all active owner_login tokens for the given owner.
+     *
+     * Used before re-issuing a new login link so that stale links cannot be replayed.
+     * Also used to revoke the just-issued token when email delivery fails.
+     */
+    public function revokeActiveOwnerLoginTokens(int $ownerId, ?int $exceptTokenId = null): void
+    {
+        $now = date('Y-m-d H:i:s');
+
+        $query = $this->tokenModel
+            ->where('owner_id', $ownerId)
+            ->where('token_type', 'owner_login')
+            ->where('revoked_at', null)
+            ->where('used_at', null);
+
+        if ($exceptTokenId !== null) {
+            $query = $query->where('id !=', $exceptTokenId);
+        }
+
+        $query->set(['revoked_at' => $now])->update();
+    }
 }

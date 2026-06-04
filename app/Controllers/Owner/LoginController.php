@@ -4,12 +4,14 @@ namespace App\Controllers\Owner;
 
 use App\Controllers\BaseController;
 use App\Services\OwnerLoginService;
+use App\Services\OwnerSessionService;
 
 /**
- * Handles the owner "me connecter" flow for owners whose validation link has expired.
+ * Handles the owner "me connecter" flow.
  *
- * GET  /owner/login  → show the login form
- * POST /owner/login  → validate email, call OwnerLoginService, show confirmation
+ * GET  /owner/login              → show the login form
+ * POST /owner/login              → validate email, call OwnerLoginService, show confirmation
+ * GET  /owner/login/(:segment)   → consume an owner_login token, create admin session
  */
 class LoginController extends BaseController
 {
@@ -27,13 +29,13 @@ class LoginController extends BaseController
     }
 
     /**
-     * Process the email submission and send a new validation link.
+     * Process the email submission and send a login / validation link.
      */
     public function requestLink(): mixed
     {
         helper('form');
 
-        $submittedEmail = $this->request->getPost('owner_email');
+        $submittedEmail  = $this->request->getPost('owner_email');
         $normalisedEmail = is_scalar($submittedEmail) ? trim((string) $submittedEmail) : '';
 
         $rules = [
@@ -66,6 +68,38 @@ class LoginController extends BaseController
             'errors'      => [],
             'oldEmail'    => '',
             'showConfirm' => true,
+        ]);
+    }
+
+    /**
+     * Consume an owner_login token and create an admin session.
+     *
+     * On success: regenerate session ID, set admin keys, redirect to admin dashboard.
+     * On failure: purge any pre-existing admin session, render the login_result view.
+     */
+    public function consumeLoginToken(string $rawToken): mixed
+    {
+        $service = new OwnerSessionService();
+        $outcome = $service->consumeLoginToken($rawToken);
+
+        if ($outcome->isSuccess()) {
+            $session = session();
+            $session->regenerate(true);
+            $session->set([
+                'owner_id'                  => $outcome->ownerId,
+                'kermesse_id'               => $outcome->kermesseId,
+                'owner_admin_authenticated' => true,
+            ]);
+
+            return redirect()->to(site_url('admin/kermesses/' . $outcome->kermesseId));
+        }
+
+        // Purge any pre-existing admin session before rendering an error to prevent session leftover.
+        session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+
+        return view('owner/login_result', [
+            'status'   => $outcome->status,
+            'loginUrl' => site_url('owner/login'),
         ]);
     }
 }

@@ -387,4 +387,260 @@ final class TokenServiceTest extends CIUnitTestCase
         $this->assertArrayHasKey('revoked_at', $capturedSetData);
         $this->assertNotNull($capturedSetData['revoked_at']);
     }
+
+    // ==================================================================
+    // owner_login token methods (Story 1.6)
+    // ==================================================================
+
+    public function testIssueOwnerLoginTokenReturnsIssuedToken(): void
+    {
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturn(99);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueOwnerLoginToken(1, 2, 'owner@example.com');
+
+        $this->assertInstanceOf(IssuedToken::class, $result);
+        $this->assertSame(99, $result->tokenId);
+        $this->assertNotEmpty($result->rawToken);
+    }
+
+    public function testIssueOwnerLoginTokenStoresHashNotRawToken(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueOwnerLoginToken(1, 2, 'owner@example.com');
+
+        $this->assertNotNull($capturedData);
+        $this->assertSame(64, strlen($capturedData['token_hash']));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $capturedData['token_hash']);
+        $this->assertSame(hash('sha256', $result->rawToken), $capturedData['token_hash']);
+
+        foreach ($capturedData as $value) {
+            $this->assertNotSame($result->rawToken, $value, 'Raw token must not be stored');
+        }
+    }
+
+    public function testIssueOwnerLoginTokenTypeIsOwnerLogin(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->issueOwnerLoginToken(5, 10, 'a@b.com');
+
+        $this->assertSame('owner_login', $capturedData['token_type']);
+        $this->assertSame(5, $capturedData['owner_id']);
+        $this->assertSame(10, $capturedData['kermesse_id']);
+    }
+
+    public function testIssueOwnerLoginTokenRejectsNonPositiveTtl(): void
+    {
+        $config = clone config('Kermesse');
+        $config->ownerLoginTokenTTL = 0;
+
+        $service = new TokenService($this->createMock(AccessTokenModel::class), $config);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $service->issueOwnerLoginToken(1, 1, 'test@example.com');
+    }
+
+    public function testValidateOwnerLoginTokenFiltersTokenType(): void
+    {
+        $capturedFilters = [];
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['first'])
+            ->getMock();
+        $mockModel->method('where')->willReturnCallback(
+            function (string $field, $value) use (&$capturedFilters, $mockModel) {
+                $capturedFilters[$field] = $value;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('first')->willReturn(null);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->validateOwnerLoginToken('any-raw-token');
+
+        $this->assertArrayHasKey('token_type', $capturedFilters);
+        $this->assertSame('owner_login', $capturedFilters['token_type']);
+    }
+
+    public function testValidateOwnerLoginTokenReturnsInvalidWhenNotFound(): void
+    {
+        $mockModel = $this->buildTokenModelMock(null);
+        $service   = new TokenService($mockModel, config('Kermesse'));
+        $result    = $service->validateOwnerLoginToken('non-existent');
+
+        $this->assertSame(TokenValidationResult::INVALID_TOKEN, $result->status);
+    }
+
+    public function testValidateOwnerLoginTokenReturnsRevokedForRevokedRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'          => 1,
+            'revoked_at'  => '2025-01-01 00:00:00',
+            'used_at'     => null,
+            'expires_at'  => date('Y-m-d H:i:s', time() + 3600),
+            'owner_id'    => 1,
+            'kermesse_id' => 1,
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateOwnerLoginToken('any-token');
+
+        $this->assertSame(TokenValidationResult::REVOKED_TOKEN, $result->status);
+    }
+
+    public function testValidateOwnerLoginTokenReturnsUsedForUsedRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'          => 2,
+            'revoked_at'  => null,
+            'used_at'     => '2025-01-01 00:00:00',
+            'expires_at'  => date('Y-m-d H:i:s', time() + 3600),
+            'owner_id'    => 1,
+            'kermesse_id' => 1,
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateOwnerLoginToken('any-token');
+
+        $this->assertSame(TokenValidationResult::USED_TOKEN, $result->status);
+    }
+
+    public function testValidateOwnerLoginTokenReturnsExpiredForExpiredRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'          => 3,
+            'owner_id'    => 1,
+            'kermesse_id' => 1,
+            'revoked_at'  => null,
+            'used_at'     => null,
+            'expires_at'  => '2020-01-01 00:00:00',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateOwnerLoginToken('any-token');
+
+        $this->assertSame(TokenValidationResult::EXPIRED_TOKEN, $result->status);
+    }
+
+    public function testValidateOwnerLoginTokenReturnsValidForActiveRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'          => 4,
+            'owner_id'    => 1,
+            'kermesse_id' => 1,
+            'revoked_at'  => null,
+            'used_at'     => null,
+            'expires_at'  => date('Y-m-d H:i:s', time() + 3600),
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateOwnerLoginToken('any-token');
+
+        $this->assertSame(TokenValidationResult::VALID, $result->status);
+        $this->assertTrue($result->isValid());
+    }
+
+    public function testMarkLoginTokenAsUsedSetsUsedAt(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where', 'affectedRows'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnSelf();
+        $mockModel->method('set')->willReturnCallback(
+            function (array $data) use (&$capturedData, $mockModel) {
+                $capturedData = $data;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('update')->willReturn(true);
+        $mockModel->method('affectedRows')->willReturn(1);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->markLoginTokenAsUsed(42);
+
+        $this->assertTrue($result);
+        $this->assertArrayHasKey('used_at', $capturedData);
+        $this->assertNotNull($capturedData['used_at']);
+    }
+
+    public function testMarkLoginTokenAsUsedReturnsFalseWhenZeroAffectedRows(): void
+    {
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where', 'affectedRows'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnSelf();
+        $mockModel->method('set')->willReturnSelf();
+        $mockModel->method('update')->willReturn(true);
+        $mockModel->method('affectedRows')->willReturn(0);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->markLoginTokenAsUsed(42);
+
+        $this->assertFalse($result, 'markLoginTokenAsUsed must return false when no row updated (concurrent claim)');
+    }
+
+    public function testHasRecentActiveOwnerLoginTokenDetectsRecentToken(): void
+    {
+        $mockModel = $this->buildTokenModelMock(['id' => 1]);
+        $service   = new TokenService($mockModel, config('Kermesse'));
+
+        $this->assertTrue($service->hasRecentActiveOwnerLoginToken(7, 300));
+    }
+
+    public function testHasRecentActiveOwnerLoginTokenReturnsFalseWhenNone(): void
+    {
+        $mockModel = $this->buildTokenModelMock(null);
+        $service   = new TokenService($mockModel, config('Kermesse'));
+
+        $this->assertFalse($service->hasRecentActiveOwnerLoginToken(7, 300));
+    }
+
+    public function testRevokeActiveOwnerLoginTokensSetsRevokedAt(): void
+    {
+        $capturedSetData = null;
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnSelf();
+        $mockModel->method('set')->willReturnCallback(
+            function (array $data) use (&$capturedSetData, $mockModel) {
+                $capturedSetData = $data;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('update')->willReturn(true);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->revokeActiveOwnerLoginTokens(7);
+
+        $this->assertArrayHasKey('revoked_at', $capturedSetData);
+        $this->assertNotNull($capturedSetData['revoked_at']);
+    }
 }

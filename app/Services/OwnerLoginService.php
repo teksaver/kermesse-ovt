@@ -7,14 +7,19 @@ use App\Models\OwnerModel;
 use CodeIgniter\Database\BaseConnection;
 
 /**
- * Orchestrates the "me connecter" flow for owners whose validation link has expired.
+ * Orchestrates the "me connecter" flow.
  *
- * This covers AC 3 and 4 of Story 1.5.
- * The login flow for already-validated owners (Story 1.6) is intentionally out of scope.
+ * - owner_pending: re-send the owner_validation link (Story 1.5).
+ * - owner active:  issue an owner_login link (Story 1.6).
+ * - unknown email: neutral response, no action.
  */
 class OwnerLoginService
 {
+    /** Cooldown for re-sending the owner_validation link (pending owners). */
     private const RESEND_COOLDOWN_SECONDS = 300;
+
+    /** Cooldown for re-sending the owner_login link (active owners). */
+    private const LOGIN_RESEND_COOLDOWN_SECONDS = 300;
 
     private OwnerModel    $ownerModel;
     private KermesseModel $kermesseModel;
@@ -34,14 +39,12 @@ class OwnerLoginService
     }
 
     /**
-     * Handle a resend-link request.
+     * Handle a login/resend-link request.
      *
      * Security invariants:
      * - The response is always the same neutral message regardless of whether the
-     *   email is unknown, the owner is already active, or the email was successfully
-     *   sent. This prevents user enumeration.
-     * - A new token is issued ONLY for owner_pending owners; active owners are
-     *   handled by Story 1.6 (not this story).
+     *   email is unknown, the owner is pending or active, the email was sent, or any
+     *   error occurred. This prevents user enumeration.
      */
     public function requestOwnerLink(string $rawEmail): LoginRequestResult
     {
@@ -52,17 +55,19 @@ class OwnerLoginService
             ->where('email_hash', $emailHash)
             ->first();
 
-        // Unknown email or already-active owner: return neutral result without action
-        if ($owner === null || $owner['status'] === 'active') {
-            // NOTE: active owners will get a real passwordless login link in Story 1.6.
+        if ($owner === null) {
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        }
+
+        if ($owner['status'] === 'active') {
+            return $this->handleActiveOwner($owner, $email);
         }
 
         if ($owner['status'] !== 'owner_pending') {
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
-        $ownerId  = (int) $owner['id'];
+        $ownerId = (int) $owner['id'];
 
         $kermesse = $this->kermesseModel->where('owner_id', $ownerId)->first();
         if ($kermesse === null) {
@@ -71,8 +76,6 @@ class OwnerLoginService
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
-        // Cooldown based on an active token in the DB, not on email_events.
-        // This prevents issuing a new token when a recent, usable one already exists.
         if ($this->tokenService->hasRecentActiveOwnerValidationToken($ownerId, self::RESEND_COOLDOWN_SECONDS)) {
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
@@ -80,9 +83,6 @@ class OwnerLoginService
         $kermesseId   = (int) $kermesse['id'];
         $kermesseName = (string) $kermesse['name'];
 
-        // Atomically revoke all active tokens then issue a new one in a single transaction.
-        // This ensures: (a) a delivered email always carries a valid token, and (b) at
-        // most one exploitable token exists at any moment for this owner.
         /** @var BaseConnection $db */
         $db = \Config\Database::connect();
         $db->transException(true);
@@ -109,7 +109,7 @@ class OwnerLoginService
 
         $baseUrl       = rtrim(config('Kermesse')->publicBaseURL, '/');
         $validationUrl = $baseUrl . '/owner/validate/' . $rawToken;
-        $rawToken      = null; // used only for URL construction
+        $rawToken      = null;
 
         $emailResult = $this->emailService->sendOwnerValidationEmail(
             $email,
@@ -120,6 +120,75 @@ class OwnerLoginService
 
         if (! $emailResult->sent) {
             $this->tokenService->revokeToken($newTokenId);
+
+            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        }
+
+        return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+    }
+
+    /**
+     * Handle the login request for an already-validated (active) owner.
+     *
+     * Issues an owner_login token and sends a magic link by email.
+     * Always returns CHECK_EMAIL regardless of outcome (anti-enumeration).
+     */
+    private function handleActiveOwner(array $owner, string $email): LoginRequestResult
+    {
+        $ownerId  = (int) $owner['id'];
+
+        $kermesse = $this->kermesseModel->where('owner_id', $ownerId)->first();
+        if ($kermesse === null) {
+            log_message('error', 'OwnerLoginService: active owner has no kermesse row: ' . $ownerId);
+
+            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        }
+
+        if ($this->tokenService->hasRecentActiveOwnerLoginToken($ownerId, self::LOGIN_RESEND_COOLDOWN_SECONDS)) {
+            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        }
+
+        $kermesseId   = (int) $kermesse['id'];
+        $kermesseName = (string) $kermesse['name'];
+
+        /** @var BaseConnection $db */
+        $db = \Config\Database::connect();
+        $db->transException(true);
+
+        $rawToken   = null;
+        $newTokenId = null;
+
+        try {
+            $db->transBegin();
+
+            // Revoke all stale login tokens, then issue a fresh one atomically.
+            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId);
+            $issuedToken = $this->tokenService->issueOwnerLoginToken($ownerId, $kermesseId, $email);
+            $rawToken    = $issuedToken->rawToken;
+            $newTokenId  = $issuedToken->tokenId;
+            unset($issuedToken);
+
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'OwnerLoginService: failed to issue login token: ' . $e->getMessage());
+
+            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        }
+
+        $baseUrl  = rtrim(config('Kermesse')->publicBaseURL, '/');
+        $loginUrl = $baseUrl . '/owner/login/' . $rawToken;
+        $rawToken = null;
+
+        $emailResult = $this->emailService->sendOwnerLoginEmail(
+            $email,
+            $owner['display_name'],
+            $kermesseName,
+            $loginUrl,
+        );
+
+        if (! $emailResult->sent) {
+            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId);
 
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
