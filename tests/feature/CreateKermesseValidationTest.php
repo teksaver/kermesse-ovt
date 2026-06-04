@@ -89,6 +89,32 @@ final class CreateKermesseValidationTest extends CIUnitTestCase
         $this->assertStringContainsString('Paris', $body);
     }
 
+    public function testErrorSummaryLinksPointToExistingFormFields(): void
+    {
+        // Error links in the summary must point to form fields that actually exist in the DOM.
+        $result = $this->post('kermesses', ['csrf_test_name' => csrf_hash()]);
+
+        $body = $result->response()->getBody();
+
+        // Each error link target (href="#field-X") must have a matching id="field-X" in the form.
+        if (str_contains($body, 'href="#field-owner_name"')) {
+            $this->assertStringContainsString('id="field-owner_name"', $body,
+                'Error link target #field-owner_name must exist in the form');
+        }
+        if (str_contains($body, 'href="#field-owner_email"')) {
+            $this->assertStringContainsString('id="field-owner_email"', $body,
+                'Error link target #field-owner_email must exist in the form');
+        }
+        if (str_contains($body, 'href="#field-kermesse_name"')) {
+            $this->assertStringContainsString('id="field-kermesse_name"', $body,
+                'Error link target #field-kermesse_name must exist in the form');
+        }
+
+        // No link should point to a non-rendered field (e.g., 'general' errors must not have href)
+        $this->assertStringNotContainsString('href="#field-general"', $body,
+            'General errors must not have a broken field anchor link');
+    }
+
     public function testErrorPagesDoNotContainSensitiveData(): void
     {
         $result = $this->post('kermesses', [

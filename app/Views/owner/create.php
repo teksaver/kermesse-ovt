@@ -15,16 +15,17 @@
         <p>Remplissez les informations ci-dessous pour démarrer l'organisation de votre kermesse.</p>
 
         <?php if (! empty($errors)): ?>
+        <?php $renderedFields = ['owner_name', 'owner_email', 'kermesse_name', 'event_date', 'location', 'short_description']; ?>
         <div class="form-error-summary" role="alert" aria-label="Erreurs du formulaire">
             <p><strong>Veuillez corriger les erreurs suivantes :</strong></p>
             <ul>
-	                <?php foreach ($errors as $field => $message): ?>
-	                <?php if ($field === 'general'): ?>
-	                <li><?= esc($message) ?></li>
-	                <?php else: ?>
-	                <li><a href="#field-<?= esc($field) ?>"><?= esc($message) ?></a></li>
-	                <?php endif; ?>
-	                <?php endforeach; ?>
+                <?php foreach ($errors as $field => $message): ?>
+                <?php if ($field === 'general' || ! in_array($field, $renderedFields, true)): ?>
+                <li><?= esc($message) ?></li>
+                <?php else: ?>
+                <li><a href="#field-<?= esc($field) ?>"><?= esc($message) ?></a></li>
+                <?php endif; ?>
+                <?php endforeach; ?>
             </ul>
         </div>
         <?php endif; ?>

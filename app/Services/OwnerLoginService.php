@@ -83,6 +83,9 @@ class OwnerLoginService
         $kermesseId   = (int) $kermesse['id'];
         $kermesseName = (string) $kermesse['name'];
 
+        // Issue new token first — revoke old links only after email is confirmed delivered.
+        // This ensures the user always has a usable link: if email fails, old links remain
+        // valid and the new (undelivered) token is revoked so it doesn't block future resends.
         /** @var BaseConnection $db */
         $db = \Config\Database::connect();
         $db->transException(true);
@@ -93,7 +96,6 @@ class OwnerLoginService
         try {
             $db->transBegin();
 
-            $this->tokenService->revokeActiveOwnerValidationTokens($ownerId);
             $issuedToken = $this->tokenService->issueOwnerValidationToken($ownerId, $kermesseId, $email);
             $rawToken    = $issuedToken->rawToken;
             $newTokenId  = $issuedToken->tokenId;
@@ -118,10 +120,13 @@ class OwnerLoginService
             $validationUrl,
         );
 
-        if (! $emailResult->sent) {
+        if ($emailResult->sent) {
+            // Email delivered — safe to revoke older links now that user has a working one.
+            $this->tokenService->revokeOlderActiveOwnerValidationTokens($ownerId, $newTokenId);
+        } else {
+            // Email failed — revoke the undelivered token so it doesn't block future resends.
+            // Old links, if still active, remain usable.
             $this->tokenService->revokeToken($newTokenId);
-
-            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);

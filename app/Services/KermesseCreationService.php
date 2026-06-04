@@ -149,6 +149,12 @@ class KermesseCreationService
             $validationUrl,
         );
 
+        if (! $emailResult->sent) {
+            // Revoke the undelivered token so a future resend via /owner/login is not
+            // blocked by the cooldown (which only counts non-revoked active tokens).
+            $this->tokenService->revokeToken((int) $issuedToken->tokenId);
+        }
+
         // Note: validationUrl intentionally NOT propagated in the result object
         // to prevent the raw token from leaking beyond the service boundary.
         return new CreationResult(

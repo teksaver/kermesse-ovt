@@ -272,8 +272,9 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
     // owner_pending branch (Story 1.5 — preserved)
     // ------------------------------------------------------------------
 
-    public function testPendingOwnerRevokesTokensAndIssuesNew(): void
+    public function testPendingOwnerIssuesTokenThenRevokesOlderOnEmailSuccess(): void
     {
+        // New flow: issue first, revoke older links only AFTER email is delivered.
         $ownerModel = $this->buildOwnerModelMock([
             'id'           => 7,
             'status'       => 'owner_pending',
@@ -288,15 +289,15 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
-        $tokenService->expects($this->once())
-                     ->method('revokeActiveOwnerValidationTokens')
-                     ->with(7);
+        $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
         $tokenService->expects($this->once())
                      ->method('issueOwnerValidationToken')
                      ->with(7, 3, 'pending@example.com')
                      ->willReturn(new IssuedToken('new-token', 42));
         $tokenService->expects($this->never())->method('revokeToken');
-        $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
+        $tokenService->expects($this->once())
+                     ->method('revokeOlderActiveOwnerValidationTokens')
+                     ->with(7, 42);
 
         $emailService = $this->buildMockEmailService(sent: true);
 
@@ -306,8 +307,9 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
     }
 
-    public function testFailedEmailRevokesOnlyNewToken(): void
+    public function testFailedEmailRevokesOnlyNewTokenAndPreservesOldLinks(): void
     {
+        // When email fails: revoke the undelivered new token, leave old links intact.
         $ownerModel = $this->buildOwnerModelMock([
             'id'           => 7,
             'status'       => 'owner_pending',
@@ -322,12 +324,79 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
-        $tokenService->method('revokeActiveOwnerValidationTokens');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
         $tokenService->method('issueOwnerValidationToken')->willReturn(new IssuedToken('new-token', 42));
         $tokenService->expects($this->once())->method('revokeToken')->with(42);
         $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
 
         $result = $this->buildService($ownerModel, $tokenService, $this->buildMockEmailService(), $kermesseModel)
+                       ->requestOwnerLink('pending@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    public function testResendWithOldValidLinkEmailFailurePreservesOldToken(): void
+    {
+        // Scenario: owner has an old usable link (outside cooldown). Resend is attempted,
+        // but email delivery fails. The old link must remain untouched so the user can still use it.
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 9,
+            'status'       => 'owner_pending',
+            'email'        => 'pending@example.com',
+            'display_name' => 'Jean',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 4,
+            'name' => 'Kermesse Jean',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
+        $tokenService->method('issueOwnerValidationToken')->willReturn(new IssuedToken('new-token', 77));
+
+        // Old token (outside cooldown window) must NOT be revoked when email fails
+        $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
+        $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
+        // Only the new (undelivered) token is revoked
+        $tokenService->expects($this->once())->method('revokeToken')->with(77);
+
+        $result = $this->buildService($ownerModel, $tokenService, $this->buildMockEmailService(sent: false), $kermesseModel)
+                       ->requestOwnerLink('pending@example.com');
+
+        $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);
+    }
+
+    public function testConcurrentResendBlockedByCooldownPreventsInvalidatingLinks(): void
+    {
+        // If a token was recently issued (within cooldown window), a second request must be
+        // blocked — preventing two concurrent requests from each revoking the other's token.
+        $ownerModel = $this->buildOwnerModelMock([
+            'id'           => 9,
+            'status'       => 'owner_pending',
+            'email'        => 'pending@example.com',
+            'display_name' => 'Jean',
+        ]);
+
+        $kermesseModel = $this->buildMockKermesseModel([
+            'id'   => 4,
+            'name' => 'Kermesse Jean',
+        ]);
+
+        $tokenService = $this->createMock(TokenService::class);
+        // Cooldown: a recent active token already exists (e.g., issued by concurrent request)
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(true);
+
+        // No token should be issued or revoked
+        $tokenService->expects($this->never())->method('issueOwnerValidationToken');
+        $tokenService->expects($this->never())->method('revokeToken');
+        $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
+        $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->expects($this->never())->method('sendOwnerValidationEmail');
+
+        $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)
                        ->requestOwnerLink('pending@example.com');
 
         $this->assertSame(LoginRequestResult::CHECK_EMAIL, $result->status);

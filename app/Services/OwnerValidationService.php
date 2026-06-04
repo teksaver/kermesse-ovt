@@ -111,7 +111,10 @@ class OwnerValidationService
             $db->transBegin();
 
             if (! $this->tokenService->markTokenAsUsed($tokenId)) {
-                throw new \RuntimeException('Validation token was already consumed');
+                // Token was claimed by a concurrent request — it is now used.
+                $db->transRollback();
+
+                return new ValidationOutcome(ValidationOutcome::USED_TOKEN);
             }
 
             try {

@@ -166,6 +166,27 @@ final class KermesseCreationServiceTest extends CIUnitTestCase
             'public_slug must not exceed VARCHAR(255)');
     }
 
+    public function testEmailFailureRevokesTokenSoResendIsNotBlocked(): void
+    {
+        // When the initial validation email fails during creation, the token must be revoked
+        // so that the user can immediately resend via /owner/login without hitting the cooldown
+        // (which only counts non-revoked active tokens).
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('issueOwnerValidationToken')
+                     ->willReturn(new IssuedToken('raw-fake-token', 99));
+        $tokenService->expects($this->once())->method('revokeToken')->with(99);
+
+        $emailService = $this->createMock(EmailService::class);
+        $emailService->method('sendOwnerValidationEmail')
+                     ->willReturn(new EmailDeliveryResult(false, 'SMTP failure'));
+
+        $service = $this->buildService(tokenService: $tokenService, emailService: $emailService);
+        $result  = $service->createWithPendingOwner($this->validInput());
+
+        $this->assertTrue($result->success, 'Creation still succeeds even when email fails');
+        $this->assertFalse($result->emailResult->sent);
+    }
+
     public function testTokenServiceIsCalledWithCorrectOwnerAndKermesseIds(): void
     {
         $capturedArgs = [];

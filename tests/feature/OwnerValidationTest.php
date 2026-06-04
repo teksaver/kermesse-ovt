@@ -164,10 +164,12 @@ final class OwnerValidationTest extends CIUnitTestCase
             "Expected redirect to admin/kermesses/{$ids['kermesseId']}, got {$statusCode} {$location}"
         );
 
+        $db = db_connect();
+
         // Owner must now be active in the DB
-        $db       = db_connect();
-        $ownerRow = $db->query("SELECT status FROM db_owners WHERE id = {$ids['ownerId']}")->getRow();
+        $ownerRow = $db->query("SELECT status, email_verified_at FROM db_owners WHERE id = {$ids['ownerId']}")->getRow();
         $this->assertSame('active', $ownerRow->status, 'Owner must be activated after valid token use');
+        $this->assertNotNull($ownerRow->email_verified_at, 'email_verified_at must be set on activation');
 
         // Token must be marked as used
         $tokenRow = $db->query(
@@ -184,14 +186,29 @@ final class OwnerValidationTest extends CIUnitTestCase
         // First use — activates the owner
         $this->get('owner/validate/' . $rawToken);
 
-        // Second use — must show "Lien déjà utilisé", no admin session
+        // Second use — must show "Lien déjà utilisé"
         $result = $this->get('owner/validate/' . $rawToken);
 
         $result->assertOK();
         $body = $result->response()->getBody();
         $this->assertStringContainsString('déjà été utilisé', $body,
             'Reused token must show a "already used" message');
-        $result->assertSessionMissing('owner_admin_authenticated');
+    }
+
+    public function testExistingAdminSessionIsPreservedOnValidationFailure(): void
+    {
+        // An already-authenticated owner must not lose their session if a (different or stale)
+        // validation link fails. Only stale/partial session keys with no auth flag should be removed.
+        $result = $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => 99,
+            'kermesse_id'               => 88,
+        ])->get('owner/validate/invalid-token-that-does-not-exist-in-db');
+
+        $result->assertOK();
+
+        // Existing admin session keys must still be present
+        $result->assertSessionHas('owner_admin_authenticated', true);
     }
 
     // ------------------------------------------------------------------
@@ -238,5 +255,17 @@ final class OwnerValidationTest extends CIUnitTestCase
         $this->assertStringContainsString('owner/login', $body,
             'Expired token page must offer the login/resend link');
         $result->assertSessionMissing('owner_admin_authenticated');
+    }
+
+    public function testExpiredTokenPageShowsMeConnecterLabel(): void
+    {
+        $rawToken = '';
+        $this->insertPendingOwnerWithToken($rawToken, expired: true);
+
+        $result = $this->get('owner/validate/' . $rawToken);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Me connecter', $body,
+            'Expired link page must explicitly show the "Me connecter" label (AC3)');
     }
 }

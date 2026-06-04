@@ -108,6 +108,16 @@ p {
     font-size: 24px;
     font-weight: 700;
     line-height: 1.2;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Prevent long user-supplied values (emails, names) from overflowing their containers */
+.form-panel,
+.result-panel,
+.confirmation-panel {
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 /* ----- Form fields ----- */

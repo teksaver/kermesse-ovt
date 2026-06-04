@@ -136,23 +136,33 @@ final class AdminDashboardTest extends CIUnitTestCase
 
     public function testAdminWithPendingOwnerShowsValidationRequired(): void
     {
-        // owner_pending means the owner hasn't validated their email yet
-        // We set up a session as if the owner authenticated but is still pending
+        // Real pending owner with a matching kermesse — strict 403 + validation email microcopy.
+        $db    = db_connect();
+        $email = 'pending-admin@example.com';
+        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Pending Admin', 'owner_pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $pendingOwnerId = (int) $db->insertID();
+
+        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, timezone, status, created_at, updated_at)
+            VALUES ({$pendingOwnerId}, 'pending-admin-slug', 'Kermesse Pending Admin', '2026-09-01', 'Lyon', 'Europe/Paris', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $pendingKermesseId = (int) $db->insertID();
+
         $result = $this->withSession([
             'owner_admin_authenticated' => true,
-            'owner_id'                  => 999999, // non-existent → null from DB → ACCESS_DENIED
-            'kermesse_id'               => 1,
-        ])->get('admin/kermesses/1');
+            'owner_id'                  => $pendingOwnerId,
+            'kermesse_id'               => $pendingKermesseId,
+        ])->get('admin/kermesses/' . $pendingKermesseId);
 
-        // AdminAuthorizationService will fail because the owner doesn't exist in DB
-        $statusCode = $result->response()->getStatusCode();
-        $body       = $result->response()->getBody();
+        // Must return 403 — not a redirect
+        $this->assertSame(403, $result->response()->getStatusCode(),
+            'Pending owner must receive a 403 Forbidden, not a redirect');
 
-        $isRedirect = in_array($statusCode, [301, 302, 303, 307, 308], true);
-        $isDenial   = str_contains($body, 'refusé') || str_contains($body, 'Validation');
-
-        $this->assertTrue($isRedirect || $isDenial,
-            'Expected denial or redirect for non-existent owner in session');
+        // Must display validation email microcopy
+        $body = $result->response()->getBody();
+        $this->assertTrue(
+            str_contains(strtolower($body), 'validez') || str_contains(strtolower($body), 'validation'),
+            'Denial page must mention email validation'
+        );
     }
 
     // ------------------------------------------------------------------

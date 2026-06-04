@@ -388,6 +388,31 @@ final class TokenServiceTest extends CIUnitTestCase
         $this->assertNotNull($capturedSetData['revoked_at']);
     }
 
+    public function testRevokeActiveOwnerValidationTokensFiltersExpiredTokens(): void
+    {
+        $capturedFilters = [];
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnCallback(
+            function (string $field, $value = null) use (&$capturedFilters, $mockModel) {
+                $capturedFilters[$field] = $value;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('set')->willReturnSelf();
+        $mockModel->method('update')->willReturn(true);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->revokeActiveOwnerValidationTokens(7);
+
+        $this->assertArrayHasKey('expires_at >', $capturedFilters,
+            'revokeActiveOwnerValidationTokens must filter out already-expired tokens');
+    }
+
     // ==================================================================
     // owner_login token methods (Story 1.6)
     // ==================================================================

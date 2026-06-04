@@ -254,8 +254,10 @@ final class OwnerValidationServiceTest extends CIUnitTestCase
         $this->assertSame(ValidationOutcome::INVALID_TOKEN, $outcome->status);
     }
 
-    public function testConcurrentTokenUseReturnsErrorWhenMarkUsedFails(): void
+    public function testConcurrentTokenUseReturnsUsedTokenWhenMarkUsedFails(): void
     {
+        // When markTokenAsUsed() returns false, a concurrent request already claimed the token.
+        // The real state is USED_TOKEN — not a generic ERROR — so the view can show the right message.
         $tokenRow = $this->validTokenRow(ownerId: 2, kermesseId: 7, tokenId: 55);
 
         $tokenService = $this->createMock(TokenService::class);
@@ -270,7 +272,8 @@ final class OwnerValidationServiceTest extends CIUnitTestCase
 
         $outcome = $this->buildService($tokenService, $ownerModel)->processValidation('valid-token');
 
-        $this->assertSame(ValidationOutcome::ERROR, $outcome->status);
+        $this->assertSame(ValidationOutcome::USED_TOKEN, $outcome->status,
+            'Concurrent token claim must map to USED_TOKEN, not a generic ERROR');
     }
 
     public function testOwnerUpdateNotCalledWhenMarkTokenUsedFails(): void
@@ -289,7 +292,7 @@ final class OwnerValidationServiceTest extends CIUnitTestCase
 
         $outcome = $this->buildService($tokenService, $ownerModel)->processValidation('valid-token');
 
-        $this->assertSame(ValidationOutcome::ERROR, $outcome->status);
+        $this->assertSame(ValidationOutcome::USED_TOKEN, $outcome->status);
     }
 
     // ------------------------------------------------------------------
