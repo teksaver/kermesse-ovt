@@ -116,12 +116,15 @@ class OwnerValidationService
 
             try {
                 $this->ownerModel->skipValidation(true);
+                // WHERE status = 'owner_pending' prevents double-activation if two
+                // concurrent requests somehow both pass the pre-transaction check.
+                $this->ownerModel->where('status', 'owner_pending');
                 $updated = $this->ownerModel->update($ownerId, [
                     'status'            => 'active',
                     'email_verified_at' => date('Y-m-d H:i:s'),
                 ]);
-                if ($updated === false) {
-                    throw new \RuntimeException('Owner activation failed');
+                if ($updated === false || $this->ownerModel->affectedRows() !== 1) {
+                    throw new \RuntimeException('Owner activation failed: concurrent activation or status mismatch');
                 }
             } finally {
                 $this->ownerModel->skipValidation(false);

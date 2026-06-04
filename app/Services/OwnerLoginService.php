@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\KermesseModel;
 use App\Models\OwnerModel;
+use CodeIgniter\Database\BaseConnection;
 
 /**
  * Orchestrates the "me connecter" flow for owners whose validation link has expired.
@@ -61,39 +62,54 @@ class OwnerLoginService
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
-        // owner_pending: revoke stale tokens, issue a new one, send email
         $ownerId  = (int) $owner['id'];
 
-        // Resolve kermesse via injected model (testable without live DB)
-        $kermesse   = $this->kermesseModel->where('owner_id', $ownerId)->first();
+        $kermesse = $this->kermesseModel->where('owner_id', $ownerId)->first();
         if ($kermesse === null) {
             log_message('error', 'OwnerLoginService: pending owner has no kermesse row: ' . $ownerId);
 
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
-        if ($this->emailService->hasRecentSuccessfulOwnerValidationEmail($email, self::RESEND_COOLDOWN_SECONDS)) {
+        // Cooldown based on an active token in the DB, not on email_events.
+        // This prevents issuing a new token when a recent, usable one already exists.
+        if ($this->tokenService->hasRecentActiveOwnerValidationToken($ownerId, self::RESEND_COOLDOWN_SECONDS)) {
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
         $kermesseId   = (int) $kermesse['id'];
         $kermesseName = (string) $kermesse['name'];
 
+        // Atomically revoke all active tokens then issue a new one in a single transaction.
+        // This ensures: (a) a delivered email always carries a valid token, and (b) at
+        // most one exploitable token exists at any moment for this owner.
+        /** @var BaseConnection $db */
+        $db = \Config\Database::connect();
+        $db->transException(true);
+
+        $rawToken   = null;
+        $newTokenId = null;
+
         try {
-            // Issue and send a fresh validation token
+            $db->transBegin();
+
+            $this->tokenService->revokeActiveOwnerValidationTokens($ownerId);
             $issuedToken = $this->tokenService->issueOwnerValidationToken($ownerId, $kermesseId, $email);
+            $rawToken    = $issuedToken->rawToken;
+            $newTokenId  = $issuedToken->tokenId;
+            unset($issuedToken);
+
+            $db->transCommit();
         } catch (\Throwable $e) {
+            $db->transRollback();
             log_message('error', 'OwnerLoginService: failed to issue validation token: ' . $e->getMessage());
 
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
         $baseUrl       = rtrim(config('Kermesse')->publicBaseURL, '/');
-        $validationUrl = $baseUrl . '/owner/validate/' . $issuedToken->rawToken;
-        $newTokenId    = $issuedToken->tokenId;
-
-        // rawToken is used only here to build the URL; it is not persisted or returned
-        unset($issuedToken);
+        $validationUrl = $baseUrl . '/owner/validate/' . $rawToken;
+        $rawToken      = null; // used only for URL construction
 
         $emailResult = $this->emailService->sendOwnerValidationEmail(
             $email,
@@ -107,8 +123,6 @@ class OwnerLoginService
 
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
-
-        $this->tokenService->revokeOlderActiveOwnerValidationTokens($ownerId, $newTokenId);
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
     }

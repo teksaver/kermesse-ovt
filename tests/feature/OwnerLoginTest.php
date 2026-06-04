@@ -232,12 +232,15 @@ final class OwnerLoginTest extends CIUnitTestCase
         $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, timezone, status, created_at, updated_at)
             VALUES ({$ownerId}, 'resend-test-slug', 'Kermesse Resend', '2026-09-01', 'Lyon', 'Europe/Paris', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
-        // Insert an old active token to confirm it gets revoked
-        $oldRawToken = 'old-token-raw-' . bin2hex(random_bytes(4));
-        $oldHash     = hash('sha256', $oldRawToken);
-        $expiresAt   = date('Y-m-d H:i:s', time() + 3600);
+        // Insert an "old" active token outside the cooldown window to confirm it gets revoked.
+        // created_at is set to 10 minutes ago so hasRecentActiveOwnerValidationToken() won't
+        // block the resend flow (cooldown is 5 minutes).
+        $oldRawToken  = 'old-token-raw-' . bin2hex(random_bytes(4));
+        $oldHash      = hash('sha256', $oldRawToken);
+        $expiresAt    = date('Y-m-d H:i:s', time() + 3600);
+        $oldCreatedAt = date('Y-m-d H:i:s', time() - 600);
         $db->query("INSERT INTO db_access_tokens (token_hash, token_type, owner_id, email, expires_at, created_at, updated_at)
-            VALUES ('{$oldHash}', 'owner_validation', {$ownerId}, '{$email}', '{$expiresAt}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+            VALUES ('{$oldHash}', 'owner_validation', {$ownerId}, '{$email}', '{$expiresAt}', '{$oldCreatedAt}', '{$oldCreatedAt}')");
 
         $result = $this->post('owner/login', [
             'csrf_test_name' => csrf_hash(),

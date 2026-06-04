@@ -181,13 +181,19 @@ final class OwnerValidationServiceTest extends CIUnitTestCase
                      ->willReturn(new TokenValidationResult(TokenValidationResult::VALID, $tokenRow));
         $tokenService->expects($this->once())->method('markTokenAsUsed')->with(55)->willReturn(true);
 
-        $ownerModel = $this->createMock(OwnerModel::class);
+        $ownerModel = $this->getMockBuilder(OwnerModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where', 'affectedRows'])
+            ->onlyMethods(['find', 'skipValidation', 'update'])
+            ->getMock();
         $ownerModel->method('find')->willReturn($this->pendingOwnerRow(2));
         $ownerModel->method('skipValidation')->willReturnSelf();
+        $ownerModel->method('where')->willReturnSelf();
         $ownerModel->expects($this->once())->method('update')->with(
             2,
             $this->arrayHasKey('status'),
         )->willReturn(true);
+        $ownerModel->method('affectedRows')->willReturn(1);
 
         $outcome = $this->buildService($tokenService, $ownerModel)->processValidation('valid-token');
 

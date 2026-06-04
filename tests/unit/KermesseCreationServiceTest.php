@@ -98,14 +98,14 @@ final class KermesseCreationServiceTest extends CIUnitTestCase
         $this->assertNull($result->errorCode);
     }
 
-    public function testValidationUrlIsNotExposedInCreationResult(): void
+    public function testRawTokenIsNotExposedInCreationResult(): void
     {
         $service = $this->buildService();
         $result  = $service->createWithPendingOwner($this->validInput());
 
-        // The raw token must never appear in the result object
-        $this->assertSame('', $result->validationUrl,
-            'validationUrl must remain empty to prevent raw token exposure');
+        // The raw token must never appear anywhere in the result object
+        $this->assertStringNotContainsString('raw-fake-token', json_encode($result),
+            'Raw token must not be exposed in the creation result');
     }
 
     public function testDuplicateEmailReturnsDuplicateErrorCode(): void

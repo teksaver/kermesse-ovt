@@ -45,6 +45,7 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
              ->willReturn(new IssuedToken($rawToken, 1));
         $mock->method('revokeActiveOwnerValidationTokens');
         $mock->method('revokeOlderActiveOwnerValidationTokens');
+        $mock->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
         return $mock;
     }
 
@@ -53,7 +54,6 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         $mock = $this->createMock(EmailService::class);
         $mock->method('sendOwnerValidationEmail')
              ->willReturn(new EmailDeliveryResult($sent, $sent ? null : 'No SMTP'));
-        $mock->method('hasRecentSuccessfulOwnerValidationEmail')->willReturn(false);
         return $mock;
     }
 
@@ -112,14 +112,17 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         ]);
 
         $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
+        // All active tokens are revoked atomically before issuing the new one
         $tokenService->expects($this->once())
-                     ->method('revokeOlderActiveOwnerValidationTokens')
-                     ->with(7, 42);
+                     ->method('revokeActiveOwnerValidationTokens')
+                     ->with(7);
         $tokenService->expects($this->once())
                      ->method('issueOwnerValidationToken')
                      ->with(7, 3, 'pending@example.com')
                      ->willReturn(new IssuedToken('new-token', 42));
         $tokenService->expects($this->never())->method('revokeToken');
+        $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
 
         $emailService = $this->buildMockEmailService(sent: true);
 
@@ -144,6 +147,8 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
         ]);
 
         $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(false);
+        $tokenService->method('revokeActiveOwnerValidationTokens');
         $tokenService->method('issueOwnerValidationToken')->willReturn(new IssuedToken('new-token', 42));
         $tokenService->expects($this->once())->method('revokeToken')->with(42);
         $tokenService->expects($this->never())->method('revokeOlderActiveOwnerValidationTokens');
@@ -239,11 +244,13 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
             'id'   => 2,
             'name' => 'Kermesse Test',
         ]);
-        $tokenService  = $this->createMock(TokenService::class);
+        // Cooldown is now based on an active token in DB, not email_events
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('hasRecentActiveOwnerValidationToken')->willReturn(true);
         $tokenService->expects($this->never())->method('revokeActiveOwnerValidationTokens');
         $tokenService->expects($this->never())->method('issueOwnerValidationToken');
+
         $emailService = $this->createMock(EmailService::class);
-        $emailService->method('hasRecentSuccessfulOwnerValidationEmail')->willReturn(true);
         $emailService->expects($this->never())->method('sendOwnerValidationEmail');
 
         $result = $this->buildService($ownerModel, $tokenService, $emailService, $kermesseModel)

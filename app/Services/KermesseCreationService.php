@@ -87,26 +87,37 @@ class KermesseCreationService
                 $this->ownerModel->skipValidation(false);
             }
 
-            // 2. Create kermesse
-            $publicSlug = $this->generatePublicSlug($input['kermesse_name']);
+            // 2. Create kermesse — retry on public_slug collision (probability ~1/4 billion per attempt)
+            $maxSlugAttempts = 3;
+            $kermesseId      = false;
 
-            try {
-                $this->kermesseModel->skipValidation(true);
-                $kermesseId = $this->kermesseModel->insert([
-                    'owner_id'          => $ownerId,
-                    'public_slug'       => $publicSlug,
-                    'name'              => trim($input['kermesse_name']),
-                    'event_date'        => $input['event_date'],
-                    'location'          => trim($input['location']),
-                    'short_description' => trim($input['short_description'] ?? ''),
-                    'timezone'          => 'Europe/Paris',
-                    'status'            => 'preparation',
-                ]);
-                if ($kermesseId === false) {
-                    throw new \RuntimeException('Kermesse insert failed');
+            for ($attempt = 1; $attempt <= $maxSlugAttempts; $attempt++) {
+                $publicSlug = $this->generatePublicSlug($input['kermesse_name']);
+
+                try {
+                    $this->kermesseModel->skipValidation(true);
+                    $kermesseId = $this->kermesseModel->insert([
+                        'owner_id'          => $ownerId,
+                        'public_slug'       => $publicSlug,
+                        'name'              => trim($input['kermesse_name']),
+                        'event_date'        => $input['event_date'],
+                        'location'          => trim($input['location']),
+                        'short_description' => trim($input['short_description'] ?? ''),
+                        'timezone'          => 'Europe/Paris',
+                        'status'            => 'preparation',
+                    ]);
+                    if ($kermesseId === false) {
+                        throw new \RuntimeException('Kermesse insert failed');
+                    }
+                    break;
+                } catch (DatabaseException $e) {
+                    if ($this->isSlugCollisionError($e) && $attempt < $maxSlugAttempts) {
+                        continue; // retry with a freshly generated slug
+                    }
+                    throw $e;
+                } finally {
+                    $this->kermesseModel->skipValidation(false);
                 }
-            } finally {
-                $this->kermesseModel->skipValidation(false);
             }
 
             // 3. Issue validation token
@@ -172,11 +183,14 @@ class KermesseCreationService
     {
         $source = $text;
 
-        // Transliterate accented chars
-        $text = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
-        if (! is_string($text)) {
+        // Transliterate accented chars — guarded against missing intl extension
+        if (function_exists('transliterator_transliterate')) {
+            $result = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $text);
+            $text   = is_string($result) ? $result : strtolower($source);
+        } else {
             $text = strtolower($source);
         }
+
         $text = preg_replace('/[^a-z0-9]+/', '-', $text);
         $text = trim($text, '-');
 
@@ -190,5 +204,13 @@ class KermesseCreationService
         return str_contains($message, 'uq_owners_email_hash')
             || str_contains($message, 'duplicate')
             || str_contains($message, 'unique constraint');
+    }
+
+    private function isSlugCollisionError(DatabaseException $e): bool
+    {
+        $message = strtolower($e->getMessage());
+
+        return str_contains($message, 'uq_kermesses_slug')
+            || (str_contains($message, 'public_slug') && str_contains($message, 'duplicate'));
     }
 }

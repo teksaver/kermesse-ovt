@@ -38,6 +38,9 @@ class ValidationController extends BaseController
             return redirect()->to(site_url('admin/kermesses/' . $outcome->kermesseId));
         }
 
+        // Clear any stale admin session keys before showing a failure page
+        session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+
         // Map outcome to view context
         $viewStatus = match ($outcome->status) {
             ValidationOutcome::EXPIRED_PENDING => 'expired',

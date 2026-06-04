@@ -11,7 +11,6 @@ class CreationResult
         public readonly bool $success,
         public readonly int $ownerId = 0,
         public readonly int $kermesseId = 0,
-        public readonly string $validationUrl = '',
         public readonly ?EmailDeliveryResult $emailResult = null,
         public readonly ?string $errorCode = null,
     ) {}
