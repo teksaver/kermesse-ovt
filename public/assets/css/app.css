@@ -3,10 +3,13 @@
     --color-surface: #FFFFFF;
     --color-muted-surface: #EEF2F7;
     --color-primary: #166534;
-    --color-warning: #B45309;
-    --color-danger: #B91C1C;
-    --color-focus: #2563EB;
-    --color-text: #111827;
+	    --color-warning: #B45309;
+	    --color-danger: #B91C1C;
+	    --color-danger-surface: #FEF2F2;
+	    --color-focus: #2563EB;
+	    --color-success-surface: #F0FDF4;
+	    --color-success-border: #BBF7D0;
+	    --color-text: #111827;
     --color-muted-text: #475569;
     --color-border: #CBD5E1;
     --radius-default: 8px;
@@ -56,9 +59,9 @@ body {
 }
 
 h1 {
-    margin: 0 0 16px;
-    font-size: clamp(2rem, 8vw, 3rem);
-    line-height: 1.1;
+	    margin: 0 0 16px;
+	    font-size: 2rem;
+	    line-height: 1.1;
 }
 
 p {
@@ -90,12 +93,188 @@ p {
     color: var(--color-muted-text);
 }
 
+/* ----- Form panel ----- */
+
+.form-panel,
+.confirmation-panel {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-surface);
+    padding: 24px;
+}
+
+.page-title {
+    margin: 0 0 8px;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* ----- Form fields ----- */
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.form-group input,
+.form-group textarea {
+	    display: block;
+	    width: 100%;
+	    box-sizing: border-box;
+    padding: 10px 12px;
+    font-size: 16px;
+    line-height: 1.5;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+    border-color: var(--color-focus);
+}
+
+.form-group--error input,
+.form-group--error textarea {
+    border-color: var(--color-danger);
+}
+
+.field-error {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: var(--color-danger);
+}
+
+/* ----- Error summary ----- */
+
+.form-error-summary {
+    margin-bottom: 20px;
+    padding: 16px;
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-default);
+	    background: var(--color-danger-surface);
+}
+
+.form-error-summary p {
+    margin: 0 0 8px;
+    color: var(--color-danger);
+}
+
+.form-error-summary ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.form-error-summary a {
+    color: var(--color-danger);
+}
+
+/* ----- Buttons ----- */
+
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    text-decoration: none;
+    border: none;
+    border-radius: var(--radius-default);
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: #FFFFFF;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-primary:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* ----- Info box (confirmation pages) ----- */
+
+.info-box {
+    margin-top: 20px;
+    padding: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-muted-surface);
+}
+
+.info-box--spaced {
+	    margin-top: 24px;
+}
+
+.info-box p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-muted-text);
+}
+
+/* ----- Result panel (validation outcome pages) ----- */
+
+.result-panel {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-surface);
+    padding: 24px;
+}
+
+/* ----- Status badge ----- */
+
+.status-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: var(--radius-default);
+    border: 1px solid var(--color-border);
+    background: var(--color-muted-surface);
+    color: var(--color-muted-text);
+}
+
+.status-badge--preparation {
+	    background: var(--color-success-surface);
+	    border-color: var(--color-success-border);
+	    color: var(--color-primary);
+}
+
 @media (min-width: 720px) {
     .app-shell {
         padding-top: 64px;
     }
 
-    .status-list {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+	    .status-list {
+	        grid-template-columns: repeat(2, minmax(0, 1fr));
+	    }
+
+	    h1 {
+	        font-size: 3rem;
+	    }
 }
