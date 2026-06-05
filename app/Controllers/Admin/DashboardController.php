@@ -66,7 +66,9 @@ class DashboardController extends BaseController
         $deletionService = new StandDeletionService();
 
         foreach ($stands as &$stand) {
-            $stand['activeSignupCount'] = $deletionService->countActiveSignups((int) $stand['id']);
+            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
+            $stand['activeSignupCount']      = $activeSignupCount;
+            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
         }
         unset($stand);
 

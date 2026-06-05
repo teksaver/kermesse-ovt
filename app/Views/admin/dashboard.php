@@ -21,16 +21,16 @@
         </div>
 
         <div class="admin-actions" aria-label="Actions de la kermesse">
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Prévisualiser
-            </a>
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            </button>
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Copier le lien
-            </a>
+            </button>
             <?php if ($isOpen): ?>
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Fermer les inscriptions
-            </a>
+            </button>
             <?php else: ?>
             <button type="button" class="btn btn-secondary disabled-action" disabled title="<?= esc($disabledReason) ?>">
                 Ouvrir les inscriptions
@@ -100,9 +100,10 @@
 
                 <!-- Delete confirmation zone -->
                 <?php
-                    $isDeleteError   = isset($deleteStandId) && (int) $deleteStandId === (int) $stand['id'];
-                    $hasSignups      = (int) ($stand['activeSignupCount'] ?? 0) > 0;
-                    $deleteFormClass = $hasSignups ? 'stand-delete-form stand-delete-form--strong' : 'stand-delete-form';
+                    $isDeleteError         = isset($deleteStandId) && (int) $deleteStandId === (int) $stand['id'];
+                    $deleteConfirmationMode = (string) ($stand['deleteConfirmationMode'] ?? '');
+                    $hasSignups            = $deleteConfirmationMode === 'strong';
+                    $deleteFormClass       = $hasSignups ? 'stand-delete-form stand-delete-form--strong' : 'stand-delete-form';
                 ?>
                 <div class="stand-delete-zone">
                     <?php if ($isDeleteError && ! empty($deleteError)): ?>
@@ -144,7 +145,6 @@
                             type="submit"
                             id="stand-delete-btn-<?= esc($stand['id']) ?>"
                             class="btn btn-danger"
-                            disabled
                         >Supprimer le stand</button>
                     </form>
                     <?php else: ?>

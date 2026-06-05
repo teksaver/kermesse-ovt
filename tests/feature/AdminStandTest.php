@@ -76,6 +76,7 @@ final class AdminStandTest extends CIUnitTestCase
                 slot_id INTEGER NOT NULL,
                 volunteer_name TEXT NOT NULL DEFAULT \'\',
                 status TEXT NOT NULL DEFAULT \'active\',
+                deleted_at DATETIME,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -128,11 +129,12 @@ final class AdminStandTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, string $status = 'active'): int
+    private function insertSignup(int $slotId, string $status = 'active', ?string $deletedAt = null): int
     {
         $db = db_connect();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, created_at, updated_at)
-            VALUES ({$slotId}, 'Bénévole Test', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, 'Bénévole Test', '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         return (int) $db->insertID();
     }
 
@@ -691,7 +693,7 @@ final class AdminStandTest extends CIUnitTestCase
         $ids     = $this->insertActiveOwnerAndKermesse('stand-del-strong-reject');
         $standId = $this->insertStand($ids['kermesseId'], 'Stand bloqué');
         $slotId  = $this->insertSlot($standId);
-        $this->insertSignup($slotId);
+        $signupId = $this->insertSignup($slotId);
 
         $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
             ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/delete", [
@@ -709,7 +711,27 @@ final class AdminStandTest extends CIUnitTestCase
 
         $db    = db_connect();
         $stand = $db->query("SELECT status FROM db_stands WHERE id = {$standId}")->getRowArray();
+        $signup = $db->query("SELECT status FROM db_signups WHERE id = {$signupId}")->getRowArray();
         $this->assertSame('active', $stand['status'], 'Stand must remain active when strong confirm fails');
+        $this->assertSame('active', $signup['status'], 'Signup must remain active when strong confirm fails');
+    }
+
+    public function testDeletionServiceRejectsSimpleModeWhenActiveSignupExists(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('stand-del-race-guard');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand race guard');
+        $slotId  = $this->insertSlot($standId);
+        $signupId = $this->insertSignup($slotId);
+
+        $service = new \App\Services\StandDeletionService();
+        $result  = $service->deactivate($standId, $ids['kermesseId'], \App\Services\StandDeletionService::CONFIRM_SIMPLE);
+
+        $db     = db_connect();
+        $stand  = $db->query("SELECT status FROM db_stands WHERE id = {$standId}")->getRowArray();
+        $signup = $db->query("SELECT status FROM db_signups WHERE id = {$signupId}")->getRowArray();
+        $this->assertSame(\App\Services\StandDeletionService::RESULT_CONFIRMATION_CHANGED, $result);
+        $this->assertSame('active', $stand['status'], 'Simple mode must not deactivate a stand that now has signups');
+        $this->assertSame('active', $signup['status'], 'Simple mode must not deactivate active signups');
     }
 
     public function testDeleteWithSignupsDoesNotAffectOtherStandsSignups(): void
@@ -754,6 +776,29 @@ final class AdminStandTest extends CIUnitTestCase
         );
     }
 
+    public function testDeleteSoftDeletedSignupsAreIgnoredInCountAndMutation(): void
+    {
+        $ids      = $this->insertActiveOwnerAndKermesse('stand-del-soft-deleted');
+        $standId  = $this->insertStand($ids['kermesseId'], 'Stand supprimé logiquement');
+        $slotId   = $this->insertSlot($standId);
+        $signupId = $this->insertSignup($slotId, 'active', '2026-06-05 10:00:00');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/delete", [
+                csrf_token()     => csrf_hash(),
+                'confirm_delete' => '1',
+            ]);
+
+        $this->assertTrue(
+            in_array($result->response()->getStatusCode(), [301, 302, 303, 307, 308], true),
+            'Soft-deleted signups should not require strong confirmation'
+        );
+
+        $db     = db_connect();
+        $signup = $db->query("SELECT status FROM db_signups WHERE id = {$signupId}")->getRowArray();
+        $this->assertSame('active', $signup['status'], 'Soft-deleted signups must not be mutated again');
+    }
+
     // ------------------------------------------------------------------
     // DELETE — dashboard shows delete form
     // ------------------------------------------------------------------
@@ -773,7 +818,7 @@ final class AdminStandTest extends CIUnitTestCase
             'Dashboard must contain a delete button label');
     }
 
-    public function testDashboardDeleteButtonIsDisabledByDefaultForStrongConfirm(): void
+    public function testDashboardStrongDeleteWorksWithoutHtmlDisabledButton(): void
     {
         $ids     = $this->insertActiveOwnerAndKermesse('stand-del-btn-disabled');
         $standId = $this->insertStand($ids['kermesseId'], 'Stand inscrit');
@@ -784,10 +829,10 @@ final class AdminStandTest extends CIUnitTestCase
             ->get("admin/kermesses/{$ids['kermesseId']}");
 
         $body = $result->response()->getBody();
-        // Button must have disabled attribute in the HTML for strong confirm
-        $this->assertMatchesRegularExpression('/type="submit"[^>]*disabled/', $body,
-            'Destructive button must be disabled by default for strong confirmation');
-        // Must have data-confirm-word attribute to allow JS activation
+        $this->assertStringContainsString('stand-delete-form--strong', $body,
+            'Dashboard must render the strong confirmation mode from the view model');
+        $this->assertDoesNotMatchRegularExpression('/id="stand-delete-btn-' . $standId . '"[^>]*disabled/s', $body,
+            'Strong confirmation submit must remain available without JavaScript');
         $this->assertStringContainsString('data-confirm-word', $body,
             'Strong confirm input must have JS contract attribute');
     }

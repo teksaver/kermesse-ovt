@@ -9,8 +9,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (! btn || ! expected) return;
 
-        input.addEventListener('input', function () {
+        var syncButtonState = function () {
             btn.disabled = (input.value !== expected);
-        });
+        };
+
+        syncButtonState();
+        input.addEventListener('input', syncButtonState);
     });
 });

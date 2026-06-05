@@ -127,6 +127,7 @@ class StandController extends BaseController
 
         $deletionService = new StandDeletionService();
         $activeSignups   = $deletionService->countActiveSignups($sid);
+        $confirmedMode   = StandDeletionService::CONFIRM_SIMPLE;
 
         if ($activeSignups > 0) {
             $confirmWord = $this->request->getPost('confirm_word');
@@ -137,6 +138,8 @@ class StandController extends BaseController
                     $sid
                 );
             }
+
+            $confirmedMode = StandDeletionService::CONFIRM_STRONG;
         } else {
             $confirmDelete = $this->request->getPost('confirm_delete');
             if ($confirmDelete !== '1') {
@@ -148,7 +151,22 @@ class StandController extends BaseController
             }
         }
 
-        $deletionService->deactivate($sid, $id);
+        $deleteResult = $deletionService->deactivate($sid, $id, $confirmedMode);
+        if ($deleteResult === StandDeletionService::RESULT_CONFIRMATION_CHANGED) {
+            return $this->renderWithDeleteError(
+                $kermesse,
+                'Ce stand contient maintenant des inscriptions. Tapez SUPPRIMER pour confirmer la suppression.',
+                $sid
+            );
+        }
+
+        if ($deleteResult !== StandDeletionService::RESULT_SUCCESS) {
+            return $this->renderWithDeleteError(
+                $kermesse,
+                'Suppression impossible. Rechargez la page puis réessayez.',
+                $sid
+            );
+        }
 
         return redirect()
             ->to(site_url("admin/kermesses/{$id}"))
@@ -252,7 +270,9 @@ class StandController extends BaseController
         $deletionService = new StandDeletionService();
 
         foreach ($stands as &$stand) {
-            $stand['activeSignupCount'] = $deletionService->countActiveSignups((int) $stand['id']);
+            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
+            $stand['activeSignupCount']      = $activeSignupCount;
+            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
         }
         unset($stand);
 
