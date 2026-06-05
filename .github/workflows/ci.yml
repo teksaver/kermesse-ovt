@@ -57,7 +57,7 @@ jobs:
 
     services:
       mariadb:
-        image: mariadb:11.4
+        image: mariadb:10.11
         env:
           MARIADB_ROOT_PASSWORD: ci_root_password
           MARIADB_DATABASE: kermesse_test
