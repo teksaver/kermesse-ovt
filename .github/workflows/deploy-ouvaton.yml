@@ -124,7 +124,7 @@ jobs:
           mkdir -p deploy-staging
           unzip kermesse-deploy.zip -d deploy-staging
 
-      - name: Transfer files to Ouvaton via FTPS
+      - name: Transfer files to Ouvaton via SFTP
         run: |
           set -euo pipefail
 
@@ -135,7 +135,8 @@ jobs:
             printf '"%s"' "${value}"
           }
 
-          # Mirror local artifact to Ouvaton over FTPS.
+          # Mirror local artifact to Ouvaton over SFTP (SSH File Transfer Protocol,
+          # port 115 per Ouvaton hosting requirements).
           # --delete removes remote files not present locally (clean deploys).
           # .env* excluded from deletion to preserve the production .env managed
           # by sync-production-env.yml. writable/ excluded to preserve runtime
@@ -144,10 +145,8 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set ssl:verify-certificate yes\n'
-            printf 'set ftp:ssl-force yes\n'
-            printf 'set ftp:ssl-protect-data yes\n'
-            printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
+            printf 'set sftp:auto-confirm yes\n'
+            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'lcd deploy-staging\n'
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
@@ -195,10 +194,8 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set ssl:verify-certificate yes\n'
-            printf 'set ftp:ssl-force yes\n'
-            printf 'set ftp:ssl-protect-data yes\n'
-            printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
+            printf 'set sftp:auto-confirm yes\n'
+            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
             printf 'put /tmp/httpdocs-index.php -o index.php\n'
