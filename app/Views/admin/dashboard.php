@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/png" href="<?= base_url('favicon.ico') ?>">
     <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
+    <script src="<?= base_url('assets/js/app.js') ?>" defer></script>
 </head>
 <body>
 <main class="app-shell">
@@ -20,16 +21,16 @@
         </div>
 
         <div class="admin-actions" aria-label="Actions de la kermesse">
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Prévisualiser
-            </a>
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            </button>
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Copier le lien
-            </a>
+            </button>
             <?php if ($isOpen): ?>
-            <a href="#" class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+            <button type="button" class="btn btn-secondary disabled-action" disabled>
                 Fermer les inscriptions
-            </a>
+            </button>
             <?php else: ?>
             <button type="button" class="btn btn-secondary disabled-action" disabled title="<?= esc($disabledReason) ?>">
                 Ouvrir les inscriptions
@@ -95,6 +96,83 @@
                     <button type="button" class="btn btn-secondary disabled-action" disabled>
                         Ajouter un créneau
                     </button>
+                </div>
+
+                <!-- Delete confirmation zone -->
+                <?php
+                    $isDeleteError         = isset($deleteStandId) && (int) $deleteStandId === (int) $stand['id'];
+                    $deleteConfirmationMode = (string) ($stand['deleteConfirmationMode'] ?? '');
+                    $hasSignups            = $deleteConfirmationMode === 'strong';
+                    $deleteFormClass       = $hasSignups ? 'stand-delete-form stand-delete-form--strong' : 'stand-delete-form';
+                ?>
+                <div class="stand-delete-zone">
+                    <?php if ($isDeleteError && ! empty($deleteError)): ?>
+                    <div class="stand-delete-zone__error" role="alert">
+                        <?= esc($deleteError) ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ($hasSignups): ?>
+                    <form method="post"
+                          action="<?= site_url("admin/kermesses/{$kermesse['id']}/stands/{$stand['id']}/delete") ?>"
+                          class="<?= $deleteFormClass ?>"
+                          aria-label="Supprimer <?= esc($stand['name']) ?>">
+                        <?= csrf_field() ?>
+                        <p class="stand-delete-zone__warning">
+                            Ce stand contient des inscriptions. Tapez <strong>SUPPRIMER</strong> pour confirmer.
+                        </p>
+                        <div class="form-group <?= $isDeleteError ? 'form-group--error' : '' ?>">
+                            <label for="stand-delete-confirm-<?= esc($stand['id']) ?>">
+                                Tapez SUPPRIMER pour confirmer
+                            </label>
+                            <input
+                                type="text"
+                                id="stand-delete-confirm-<?= esc($stand['id']) ?>"
+                                name="confirm_word"
+                                value=""
+                                autocomplete="off"
+                                data-confirm-word="SUPPRIMER"
+                                data-target-btn="stand-delete-btn-<?= esc($stand['id']) ?>"
+                                aria-describedby="<?= $isDeleteError ? "stand-delete-error-{$stand['id']}" : '' ?>"
+                            >
+                            <?php if ($isDeleteError): ?>
+                            <p id="stand-delete-error-<?= esc($stand['id']) ?>" class="field-error" role="alert">
+                                <?= esc($deleteError) ?>
+                            </p>
+                            <?php endif; ?>
+                        </div>
+                        <button
+                            type="submit"
+                            id="stand-delete-btn-<?= esc($stand['id']) ?>"
+                            class="btn btn-danger"
+                        >Supprimer le stand</button>
+                    </form>
+                    <?php else: ?>
+                    <form method="post"
+                          action="<?= site_url("admin/kermesses/{$kermesse['id']}/stands/{$stand['id']}/delete") ?>"
+                          class="<?= $deleteFormClass ?>"
+                          aria-label="Supprimer <?= esc($stand['name']) ?>">
+                        <?= csrf_field() ?>
+                        <p class="stand-delete-zone__info">
+                            Ce stand disparaîtra de votre configuration active.
+                        </p>
+                        <div class="form-group <?= $isDeleteError ? 'form-group--error' : '' ?>">
+                            <label class="stand-delete-zone__checkbox-label">
+                                <input
+                                    type="checkbox"
+                                    name="confirm_delete"
+                                    value="1"
+                                    <?= $isDeleteError ? '' : '' ?>
+                                >
+                                Je confirme la suppression de ce stand.
+                            </label>
+                            <?php if ($isDeleteError): ?>
+                            <p class="field-error" role="alert"><?= esc($deleteError) ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <button type="submit" class="btn btn-danger">Supprimer le stand</button>
+                    </form>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endforeach; ?>

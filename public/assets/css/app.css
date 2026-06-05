@@ -458,6 +458,94 @@ p {
     margin-top: 8px;
 }
 
+/* ----- Danger button ----- */
+
+.btn-danger {
+    background: var(--color-danger);
+    color: #FFFFFF;
+    border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.btn-danger:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.btn-danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ----- Stand delete zone ----- */
+
+.stand-delete-zone {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-default);
+    background: var(--color-danger-surface);
+}
+
+.stand-delete-zone__warning {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--color-danger);
+    max-width: none;
+}
+
+.stand-delete-zone__info {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--color-muted-text);
+    max-width: none;
+}
+
+.stand-delete-zone__error {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--color-danger);
+    font-weight: 600;
+}
+
+.stand-delete-zone__checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+    min-height: 44px;
+    padding: 8px 0;
+}
+
+.stand-delete-zone__checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--color-danger);
+}
+
+.stand-delete-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.stand-delete-form .form-group {
+    margin-bottom: 12px;
+}
+
+.stand-delete-form .btn-danger {
+    width: 100%;
+    min-height: 44px;
+}
+
 @media (min-width: 720px) {
     .app-shell {
         padding-top: 64px;

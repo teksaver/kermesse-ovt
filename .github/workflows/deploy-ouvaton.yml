@@ -197,7 +197,9 @@ jobs:
             printf '// in the sibling %s/ directory.\n' "${KERMESSE_DIRNAME}"
             printf "define('FCPATH', __DIR__ . DIRECTORY_SEPARATOR);\n"
             printf 'if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) { chdir(FCPATH); }\n'
-            printf "require realpath(__DIR__ . '/../%s') . '/app/Config/Paths.php';\n" "${KERMESSE_DIRNAME}"
+            printf "\$appRoot = realpath(__DIR__ . '/../%s');\n" "${KERMESSE_DIRNAME}"
+            printf "if (\$appRoot === false) { http_response_code(500); exit('Application path is not available.'); }\n"
+            printf "require \$appRoot . '/app/Config/Paths.php';\n"
             printf '$paths = new Paths();\n'
             printf "require \$paths->systemDirectory . '/Boot.php';\n"
             printf 'exit(Boot::bootWeb($paths));\n'

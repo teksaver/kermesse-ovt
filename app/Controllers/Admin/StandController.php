@@ -7,6 +7,7 @@ use App\Models\KermesseModel;
 use App\Models\StandModel;
 use App\Services\AdminAuthorizationService;
 use App\Services\AuthorizationResult;
+use App\Services\StandDeletionService;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 class StandController extends BaseController
@@ -105,6 +106,73 @@ class StandController extends BaseController
             ->with('flash_success', 'Stand enregistré.');
     }
 
+    public function delete(string $kermesseId, string $standId): mixed
+    {
+        $id  = (int) $kermesseId;
+        $sid = (int) $standId;
+
+        $service = new AdminAuthorizationService();
+        $result  = $service->checkAccess($id);
+        if (! $result->isAuthorized()) {
+            return $this->denyAccess($result);
+        }
+
+        $kermesse   = $this->loadOwnedKermesse($id);
+        $standModel = model(StandModel::class);
+        $stand      = $standModel->where('id', $sid)->where('kermesse_id', $id)->where('status', 'active')->first();
+
+        if ($kermesse === null || $stand === null) {
+            return $this->denyAccess(new AuthorizationResult(AuthorizationResult::ACCESS_DENIED));
+        }
+
+        $deletionService = new StandDeletionService();
+        $activeSignups   = $deletionService->countActiveSignups($sid);
+        $confirmedMode   = StandDeletionService::CONFIRM_SIMPLE;
+
+        if ($activeSignups > 0) {
+            $confirmWord = $this->request->getPost('confirm_word');
+            if (! is_string($confirmWord) || $confirmWord !== 'SUPPRIMER') {
+                return $this->renderWithDeleteError(
+                    $kermesse,
+                    'Tapez SUPPRIMER pour confirmer la suppression.',
+                    $sid
+                );
+            }
+
+            $confirmedMode = StandDeletionService::CONFIRM_STRONG;
+        } else {
+            $confirmDelete = $this->request->getPost('confirm_delete');
+            if ($confirmDelete !== '1') {
+                return $this->renderWithDeleteError(
+                    $kermesse,
+                    'Confirmez la suppression du stand.',
+                    $sid
+                );
+            }
+        }
+
+        $deleteResult = $deletionService->deactivate($sid, $id, $confirmedMode);
+        if ($deleteResult === StandDeletionService::RESULT_CONFIRMATION_CHANGED) {
+            return $this->renderWithDeleteError(
+                $kermesse,
+                'Ce stand contient maintenant des inscriptions. Tapez SUPPRIMER pour confirmer la suppression.',
+                $sid
+            );
+        }
+
+        if ($deleteResult !== StandDeletionService::RESULT_SUCCESS) {
+            return $this->renderWithDeleteError(
+                $kermesse,
+                'Suppression impossible. Rechargez la page puis réessayez.',
+                $sid
+            );
+        }
+
+        return redirect()
+            ->to(site_url("admin/kermesses/{$id}"))
+            ->with('flash_success', 'Stand supprimé.');
+    }
+
     // ------------------------------------------------------------------
     // Private helpers
     // ------------------------------------------------------------------
@@ -171,6 +239,23 @@ class StandController extends BaseController
      */
     private function renderWithErrors(array $kermesse, array $errors, string $inputName, ?int $editStandId): mixed
     {
+        return view('admin/dashboard', $this->buildDashboardViewModel($kermesse, [
+            'standErrors'    => $errors,
+            'standInputName' => $inputName,
+            'standEditId'    => $editStandId,
+        ]));
+    }
+
+    private function renderWithDeleteError(array $kermesse, string $error, int $standId): mixed
+    {
+        return view('admin/dashboard', $this->buildDashboardViewModel($kermesse, [
+            'deleteError'   => $error,
+            'deleteStandId' => $standId,
+        ]));
+    }
+
+    private function buildDashboardViewModel(array $kermesse, array $overrides = []): array
+    {
         $statusMap = [
             'preparation' => ['label' => 'Inscriptions en préparation', 'class' => 'status-badge--preparation'],
             'open'        => ['label' => 'Inscriptions ouvertes',        'class' => 'status-badge--open'],
@@ -180,10 +265,18 @@ class StandController extends BaseController
         $status     = $kermesse['status'] ?? 'preparation';
         $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
 
-        $standModel = model(StandModel::class);
-        $stands     = $standModel->getActiveForKermesse((int) $kermesse['id']);
+        $standModel      = model(StandModel::class);
+        $stands          = $standModel->getActiveForKermesse((int) $kermesse['id']);
+        $deletionService = new StandDeletionService();
 
-        return view('admin/dashboard', [
+        foreach ($stands as &$stand) {
+            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
+            $stand['activeSignupCount']      = $activeSignupCount;
+            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
+        }
+        unset($stand);
+
+        $defaults = [
             'kermesse'       => $kermesse,
             'statusLabel'    => $statusInfo['label'],
             'statusClass'    => $statusInfo['class'],
@@ -191,11 +284,15 @@ class StandController extends BaseController
             'hasStands'      => count($stands) > 0,
             'isOpen'         => $status === 'open',
             'disabledReason' => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
-            'standErrors'    => $errors,
-            'standInputName' => $inputName,
-            'standEditId'    => $editStandId,
+            'standErrors'    => [],
+            'standInputName' => '',
+            'standEditId'    => null,
             'flashSuccess'   => null,
-        ]);
+            'deleteError'    => null,
+            'deleteStandId'  => null,
+        ];
+
+        return array_merge($defaults, $overrides);
     }
 
     private function denyAccess(AuthorizationResult $result): mixed

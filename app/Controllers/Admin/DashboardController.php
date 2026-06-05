@@ -7,6 +7,7 @@ use App\Models\KermesseModel;
 use App\Models\StandModel;
 use App\Services\AdminAuthorizationService;
 use App\Services\AuthorizationResult;
+use App\Services\StandDeletionService;
 
 /**
  * Minimal admin dashboard: GET /admin/kermesses/{kermesseId}
@@ -60,8 +61,16 @@ class DashboardController extends BaseController
         $status     = $kermesse['status'] ?? 'preparation';
         $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
 
-        $standModel = model(StandModel::class);
-        $stands     = $standModel->getActiveForKermesse((int) $kermesse['id']);
+        $standModel      = model(StandModel::class);
+        $stands          = $standModel->getActiveForKermesse((int) $kermesse['id']);
+        $deletionService = new StandDeletionService();
+
+        foreach ($stands as &$stand) {
+            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
+            $stand['activeSignupCount']      = $activeSignupCount;
+            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
+        }
+        unset($stand);
 
         // Flash data from stand form submissions
         $standErrors    = session()->getFlashdata('stand_errors') ?? [];
@@ -81,6 +90,8 @@ class DashboardController extends BaseController
             'standInputName' => $standInputName,
             'standEditId'    => $standEditId,
             'flashSuccess'   => is_string($flashSuccess) ? $flashSuccess : null,
+            'deleteError'    => null,
+            'deleteStandId'  => null,
         ];
     }
 
