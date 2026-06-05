@@ -295,9 +295,9 @@ p {
 /* ----- Status badge variants ----- */
 
 .status-badge--open {
-    background: #EFF6FF;
-    border-color: #BFDBFE;
-    color: #1D4ED8;
+    background: var(--color-success-surface);
+    border-color: var(--color-success-border);
+    color: var(--color-primary);
 }
 
 .status-badge--closed {
@@ -320,7 +320,7 @@ p {
 
 .admin-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 12px;
     margin-bottom: 24px;
     width: 100%;
@@ -330,6 +330,7 @@ p {
 .admin-actions .btn {
     min-height: 44px;
     min-width: 44px;
+    width: 100%;
 }
 
 /* ----- Disabled action ----- */
@@ -469,4 +470,13 @@ p {
 	    h1 {
 	        font-size: 3rem;
 	    }
+
+    .admin-actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .admin-actions .btn {
+        width: auto;
+    }
 }
