@@ -30,6 +30,50 @@ Le port HTTP hote est configurable si `8080` est deja occupe :
 KERMESSE_HTTP_PORT=8081 docker compose up --build
 ```
 
+## Appliquer les migrations
+
+Au premier demarrage, la base MariaDB `kermesse` est vide. L'application demarre mais les tables n'existent pas encore, ce qui provoque des erreurs de type `Table 'kermesse.owners' doesn't exist` a la premiere requete.
+
+Il faut appliquer les migrations une fois les conteneurs demarres.
+
+### Via l'endpoint ops/migrate (methode recommandee)
+
+Le secret HMAC et la desactivation de la protection production-only sont pre-configures dans `docker-compose.yml` :
+
+```bash
+HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
+BASE_URL="http://localhost:8080"
+
+TIMESTAMP=$(date +%s)
+NONCE=$(uuidgen)
+BODY='{}'
+BODY_HASH=$(echo -n "$BODY" | sha256sum | cut -d' ' -f1)
+PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/migrate\n${BODY_HASH}"
+SIGNATURE=$(echo -ne "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+
+curl -s -X POST "${BASE_URL}/ops/migrate" \
+  -H "Content-Type: application/json" \
+  -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
+  -H "X-Kermesse-Nonce: ${NONCE}" \
+  -H "X-Kermesse-Signature: ${SIGNATURE}" \
+  -d "$BODY"
+```
+
+Reponse attendue : `{"ok":true,"applied":1,"skipped":0,"failed":0}`.
+Relancer la commande apres ajout d'une migration : le runner applique uniquement les migrations absentes ou precedemment echouees.
+
+Si le port HTTP est different de 8080, adapter `BASE_URL` en consequence.
+
+### Via SQL direct (alternative rapide)
+
+```bash
+for f in database/migrations_sql/*.sql; do
+  docker compose exec -T db mysql -u kermesse_user -pkermesse_password kermesse < "$f"
+done
+```
+
+Cette methode s'utilise aussi si l'application n'est pas encore accessible (service `app` pas encore pret).
+
 ## Services
 
 | Service | Role | Acces local |

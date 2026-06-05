@@ -115,6 +115,67 @@ Configurer ces secrets dans l'environnement GitHub `production` :
 | `KERMESSE_TOKEN_SECRET` | Secret applicatif de 32 octets minimum |
 | `OPS_MIGRATION_HMAC_SECRET` | Secret HMAC du runner de migrations ops |
 
+## Configurer les secrets GitHub — guide pas-à-pas
+
+Tous les secrets listés ci-dessus sont à saisir dans l'**environnement GitHub `production`** (et non dans les secrets de dépôt ou d'organisation). Procédure :
+
+1. Ouvrir le dépôt sur GitHub → **Settings** → **Environments**
+2. Créer l'environnement `production` s'il n'existe pas encore
+3. Dans l'environnement `production`, cliquer **Add secret** pour chaque ligne de la table ci-dessus
+
+Ordre recommandé pour une première installation :
+
+**Secrets Ouvaton (déploiement et accès serveur)**
+
+| Priorité | Secret | Exemple / format |
+|----------|--------|-----------------|
+| 1 | `OUVATON_DEPLOY_PROTOCOL` | `ftps` ou `sftp` |
+| 2 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
+| 3 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
+| 4 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTP/SFTP Ouvaton |
+| 5 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
+| 6 | `OUVATON_SFTP_KNOWN_HOSTS` | Uniquement si `sftp` — ligne `known_hosts` au format `host ssh-rsa AAAA…` |
+
+Pour obtenir la ligne `OUVATON_SFTP_KNOWN_HOSTS`, exécuter depuis un poste local :
+```bash
+ssh-keyscan -H <nom-hote-ouvaton>
+```
+Copier la ligne complète dans le secret.
+
+**Secrets applicatifs (configuration `.env` production)**
+
+| Priorité | Secret | Exemple / format |
+|----------|--------|-----------------|
+| 7 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
+| 8 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
+| 9 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
+| 10 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
+| 11 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
+| 12 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
+| 13 | `KERMESSE_DATABASE_PORT` | `3306` |
+| 14 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP de votre fournisseur d'email |
+| 15 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
+| 16 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
+| 17 | `KERMESSE_EMAIL_SMTP_PORT` | `587` (TLS) ou `465` (SSL) |
+| 18 | `KERMESSE_EMAIL_SMTP_CRYPTO` | `tls` ou `ssl` |
+| 19 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
+| 20 | `KERMESSE_EMAIL_FROM_NAME` | `Kermesse` |
+| 21 | `KERMESSE_TOKEN_SECRET` | chaîne aléatoire de 32 octets minimum — générer avec `openssl rand -hex 32` |
+| 22 | `OPS_MIGRATION_HMAC_SECRET` | chaîne aléatoire de 32 octets minimum — générer avec `openssl rand -hex 32` |
+| 23 | `KERMESSE_APP_TIMEZONE` | `Europe/Paris` (optionnel, c'est le défaut) |
+
+Générer les deux secrets aléatoires en une commande :
+```bash
+echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
+echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
+```
+
+**Vérification**
+
+Après saisie de tous les secrets, ouvrir **Settings → Environments → production** et vérifier que les 22 secrets (ou 23 avec `KERMESSE_APP_TIMEZONE`) sont listés. Aucun secret ne doit afficher une valeur vide.
+
+Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
+
 ## Variables `.env` de production
 
 Le fichier `.env` de production est généré par `.github/workflows/sync-production-env.yml` depuis les secrets GitHub `production`.

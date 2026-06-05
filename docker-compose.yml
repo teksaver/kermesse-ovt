@@ -24,6 +24,7 @@ services:
       kermesse.publicBaseURL: "http://localhost:${KERMESSE_HTTP_PORT:-8080}/"
       kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
       kermesse.opsMigrationHmacSecret: local_dev_ops_secret_32_bytes_minimum
+      kermesse.opsMigrationProductionOnly: "false"
     volumes:
       - .:/var/www/html
       - composer-cache:/tmp/composer
