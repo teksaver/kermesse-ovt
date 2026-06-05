@@ -40,6 +40,7 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         // Ensure we start clean — drop tables if they exist
         $db->query('DROP TABLE IF EXISTS `quoted_table`');
         $db->query('DROP TABLE IF EXISTS `second_table`');
+        $db->query('DROP TABLE IF EXISTS `stands`');
         $db->query('DROP TABLE IF EXISTS `email_events`');
         $db->query('DROP TABLE IF EXISTS `access_tokens`');
         $db->query('DROP TABLE IF EXISTS `kermesses`');
@@ -288,6 +289,35 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
             $found = $db->query('SHOW TABLES LIKE ?', [$table])->getResultArray();
             $this->assertNotEmpty($found, "Table '{$table}' should exist after initial migration");
         }
+    }
+
+    public function testStandsMigrationRunsAfterInitialSchema(): void
+    {
+        $initialSchemaFile = ROOTPATH . 'database/migrations_sql/20260602161500_initial_schema.sql';
+        $standsSchemaFile  = ROOTPATH . 'database/migrations_sql/20260605180000_create_stands.sql';
+        $this->assertTrue(file_exists($initialSchemaFile), 'Initial schema file must exist');
+        $this->assertTrue(file_exists($standsSchemaFile), 'Stands schema file must exist');
+
+        copy($initialSchemaFile, $this->tempMigrationsDir . '/20260602161500_initial_schema.sql');
+        copy($standsSchemaFile, $this->tempMigrationsDir . '/20260605180000_create_stands.sql');
+
+        $runner = $this->createRunner();
+        $result = $runner->run();
+
+        $this->assertTrue($result['ok']);
+        $this->assertContains('20260605180000_create_stands', $result['applied']);
+
+        $db = db_connect('tests');
+        $this->assertNotEmpty($db->query('SHOW TABLES LIKE "stands"')->getResultArray());
+
+        $index = $db->query('SHOW INDEX FROM `stands` WHERE `Key_name` = "uq_stands_active_name"')->getResultArray();
+        $this->assertNotEmpty($index, 'Stands migration should add the active-name unique index');
+
+        $row = $db->query(
+            'SELECT `status` FROM `schema_versions` WHERE `version` = ?',
+            ['20260605180000_create_stands']
+        )->getRowArray();
+        $this->assertSame('success', $row['status'] ?? null);
     }
 
     public function testRunnerReleasesLockAfterFailure(): void

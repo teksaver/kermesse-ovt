@@ -236,6 +236,11 @@ p {
     background: var(--color-muted-surface);
 }
 
+.info-box--success {
+    background: var(--color-success-surface);
+    border-color: var(--color-success-border);
+}
+
 .info-box--spaced {
 	    margin-top: 24px;
 }
@@ -364,6 +369,93 @@ p {
     max-width: 52ch;
     margin-left: auto;
     margin-right: auto;
+}
+
+/* ----- Stand list ----- */
+
+.stand-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stand-group {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-surface);
+    padding: 16px;
+}
+
+.stand-group__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.stand-group__name {
+    font-weight: 700;
+    font-size: 15px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* ----- Stand form ----- */
+
+.stand-form {
+    margin-top: 8px;
+}
+
+.stand-form--add {
+    margin-top: 16px;
+}
+
+.form-group__hint {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--color-muted-text);
+}
+
+/* ----- Stand actions ----- */
+
+.stand-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.stand-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* ----- Slot empty state (per stand) ----- */
+
+.slot-empty-state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-muted-surface);
+}
+
+.slot-empty-state__text {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-muted-text);
+    max-width: none;
+}
+
+/* ----- Add stand section ----- */
+
+.stand-add-section {
+    margin-top: 8px;
 }
 
 @media (min-width: 720px) {

@@ -4,6 +4,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\StandModel;
 use App\Services\AdminAuthorizationService;
 use App\Services\AuthorizationResult;
 
@@ -59,17 +60,27 @@ class DashboardController extends BaseController
         $status     = $kermesse['status'] ?? 'preparation';
         $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
 
-        // Story 2.1: stands table does not exist yet — kermesse is always "empty".
-        // Stories 2.2+ will replace this with a real stand count query.
-        $hasStands = false;
+        $standModel = model(StandModel::class);
+        $stands     = $standModel->getActiveForKermesse((int) $kermesse['id']);
+
+        // Flash data from stand form submissions
+        $standErrors    = session()->getFlashdata('stand_errors') ?? [];
+        $standInputName = session()->getFlashdata('stand_input_name') ?? '';
+        $standEditId    = session()->getFlashdata('stand_edit_id');
+        $flashSuccess   = session()->getFlashdata('flash_success');
 
         return [
-            'kermesse'      => $kermesse,
-            'statusLabel'   => $statusInfo['label'],
-            'statusClass'   => $statusInfo['class'],
-            'hasStands'     => $hasStands,
-            'isOpen'        => $status === 'open',
+            'kermesse'       => $kermesse,
+            'statusLabel'    => $statusInfo['label'],
+            'statusClass'    => $statusInfo['class'],
+            'stands'         => $stands,
+            'hasStands'      => count($stands) > 0,
+            'isOpen'         => $status === 'open',
             'disabledReason' => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
+            'standErrors'    => $standErrors,
+            'standInputName' => $standInputName,
+            'standEditId'    => $standEditId,
+            'flashSuccess'   => is_string($flashSuccess) ? $flashSuccess : null,
         ];
     }
 

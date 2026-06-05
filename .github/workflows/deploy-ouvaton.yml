@@ -109,10 +109,20 @@ jobs:
       OUVATON_HTTPDOCS_FOLDER: ${{ vars.OUVATON_HTTPDOCS_FOLDER }}
       # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
+      # OUVATON_SFTP_KNOWN_HOST: full known_hosts line for the Ouvaton SFTP host.
+      # Obtain with: ssh-keyscan -p 115 -H <OUVATON_DEPLOY_HOST>
+      OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
 
     steps:
       - name: Install transfer client
         run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Configure SFTP known hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${OUVATON_SFTP_KNOWN_HOST}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Download deploy artifact
         uses: actions/download-artifact@v4
@@ -145,7 +155,7 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set sftp:auto-confirm yes\n'
+            printf 'set sftp:known-hosts %s\n' "${HOME}/.ssh/known_hosts"
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'lcd deploy-staging\n'
@@ -164,6 +174,13 @@ jobs:
           fi
 
           KERMESSE_DIRNAME="${OUVATON_DEPLOY_REMOTE_FOLDER}"
+
+          # Reject directory names that would allow path traversal or PHP injection
+          # in the generated shim. Only alphanumeric, hyphens, and underscores allowed.
+          if [[ ! "${KERMESSE_DIRNAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "::error::OUVATON_DEPLOY_REMOTE_FOLDER contains invalid characters. Only alphanumeric characters, hyphens, and underscores are allowed."
+            exit 1
+          fi
 
           # Generate the httpdocs/index.php shim that bootstraps CodeIgniter from
           # the sibling app directory. FCPATH = httpdocs/, app/vendor/ are in
@@ -199,7 +216,7 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set sftp:auto-confirm yes\n'
+            printf 'set sftp:known-hosts %s\n' "${HOME}/.ssh/known_hosts"
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
