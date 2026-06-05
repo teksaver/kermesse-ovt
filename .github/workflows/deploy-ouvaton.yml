@@ -102,10 +102,12 @@ jobs:
     environment: production
 
     env:
-      OUVATON_DEPLOY_HOST: ${{ secrets.OUVATON_DEPLOY_HOST }}
-      OUVATON_DEPLOY_USERNAME: ${{ secrets.OUVATON_DEPLOY_USERNAME }}
+      # Variables (non-sensitive)
+      OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
+      OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
+      OUVATON_DEPLOY_REMOTE_PATH: ${{ vars.OUVATON_DEPLOY_REMOTE_PATH }}
+      # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
-      OUVATON_DEPLOY_REMOTE_PATH: ${{ secrets.OUVATON_DEPLOY_REMOTE_PATH }}
 
     steps:
       - name: Install transfer client
@@ -154,7 +156,7 @@ jobs:
 
       - name: Run post-deploy migrations
         env:
-          BASE_URL: ${{ secrets.KERMESSE_PUBLIC_BASE_URL }}
+          BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
           OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail

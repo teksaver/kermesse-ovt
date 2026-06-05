@@ -85,85 +85,86 @@ La racine de l'artefact contient aussi `app/`, `vendor/`, `writable/`, `database
 
 Le script de packaging vérifie automatiquement l'absence de fichiers interdits et échoue si l'un est détecté.
 
-## Secrets GitHub Actions
+## Variables et secrets GitHub Actions
 
-Configurer ces secrets dans l'environnement GitHub `production` :
+Les entrées de configuration sont réparties en deux catégories dans l'environnement GitHub `production` :
 
-| Secret | Description |
-|--------|-------------|
+- **Variables** (`vars.X`) : configuration non-sensible, visible dans les logs et l'UI GitHub
+- **Secrets** (`secrets.X`) : credentials actionnables seuls, masqués partout
+
+### Variables à configurer (`Settings → Environments → production → Variables`)
+
+| Variable | Description |
+|----------|-------------|
 | `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (FTPS) |
 | `OUVATON_DEPLOY_USERNAME` | Nom d'utilisateur du compte Ouvaton |
-| `OUVATON_DEPLOY_PASSWORD` | Mot de passe du compte Ouvaton |
-| `OUVATON_DEPLOY_REMOTE_PATH` | Chemin distant contenant le `.env` CodeIgniter (ex. `/www/kermesse`) |
+| `OUVATON_DEPLOY_REMOTE_PATH` | Chemin distant de déploiement (ex. `/www/kermesse`) |
 | `KERMESSE_PUBLIC_BASE_URL` | URL publique canonique de l'application |
-| `KERMESSE_APP_TIMEZONE` | Optionnel ; timezone applicative. Défaut : `Europe/Paris` |
 | `KERMESSE_SESSION_SAVE_PATH` | Chemin absolu du dossier de sessions sur Ouvaton |
 | `KERMESSE_DATABASE_HOSTNAME` | Hôte MariaDB Ouvaton |
 | `KERMESSE_DATABASE_DATABASE` | Nom de la base MariaDB |
 | `KERMESSE_DATABASE_USERNAME` | Utilisateur MariaDB |
-| `KERMESSE_DATABASE_PASSWORD` | Mot de passe MariaDB |
 | `KERMESSE_EMAIL_SMTP_HOST` | Hôte SMTP |
-| `KERMESSE_EMAIL_SMTP_USER` | Utilisateur SMTP |
-| `KERMESSE_EMAIL_SMTP_PASS` | Mot de passe SMTP |
+| `KERMESSE_EMAIL_SMTP_USER` | Identifiant SMTP (souvent l'adresse email) |
+| `KERMESSE_EMAIL_FROM_EMAIL` | Adresse expéditrice |
+| `KERMESSE_APP_TIMEZONE` | Optionnel ; timezone. Défaut : `Europe/Paris` |
 | `KERMESSE_EMAIL_SMTP_PORT` | Optionnel ; port SMTP. Défaut : `587` |
 | `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
-| `KERMESSE_EMAIL_FROM_EMAIL` | Adresse expéditrice |
-| `KERMESSE_TOKEN_SECRET` | Secret applicatif de 32 octets minimum |
-| `OPS_MIGRATION_HMAC_SECRET` | Secret HMAC du runner de migrations ops |
 
-Valeurs fixées par le workflow (pas de secret à configurer) : protocole FTPS, port MariaDB 3306, nom expéditeur `Kermesse`.
+### Secrets à configurer (`Settings → Environments → production → Secrets`)
+
+| Secret | Description |
+|--------|-------------|
+| `OUVATON_DEPLOY_PASSWORD` | Mot de passe du compte Ouvaton |
+| `KERMESSE_DATABASE_PASSWORD` | Mot de passe MariaDB |
+| `KERMESSE_EMAIL_SMTP_PASS` | Mot de passe SMTP |
+| `KERMESSE_TOKEN_SECRET` | Clé applicative — générer avec `openssl rand -hex 32` |
+| `OPS_MIGRATION_HMAC_SECRET` | Clé HMAC ops — générer avec `openssl rand -hex 32` |
+
+Valeurs fixées par le workflow (rien à configurer) : protocole FTPS, port MariaDB `3306`, nom expéditeur `Kermesse`.
 
 ## Configurer les secrets GitHub — guide pas-à-pas
 
-Tous les secrets listés ci-dessus sont à saisir dans l'**environnement GitHub `production`** (et non dans les secrets de dépôt ou d'organisation). Procédure :
+Toutes les entrées sont à configurer dans l'**environnement GitHub `production`** (pas dans les secrets/variables de dépôt ou d'organisation). Procédure :
 
 1. Ouvrir le dépôt sur GitHub → **Settings** → **Environments**
 2. Créer l'environnement `production` s'il n'existe pas encore
-3. Dans l'environnement `production`, cliquer **Add secret** pour chaque ligne de la table ci-dessus
 
-Ordre recommandé pour une première installation :
+**Étape A — Variables** (`Add variable` dans l'environnement `production`)
 
-**Secrets Ouvaton (déploiement et accès serveur)**
-
-| Priorité | Secret | Exemple / format |
-|----------|--------|-----------------|
+| # | Variable | Exemple |
+|---|----------|---------|
 | 1 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
 | 2 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
-| 3 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTPS Ouvaton |
-| 4 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
+| 3 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
+| 4 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
+| 5 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
+| 6 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
+| 7 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
+| 8 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
+| 9 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP du fournisseur d'email |
+| 10 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
+| 11 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
 
-Le protocole FTPS est fixé en dur dans le workflow — aucun secret `OUVATON_DEPLOY_PROTOCOL` à configurer.
+Variables optionnelles (défauts appliqués si absentes) : `KERMESSE_APP_TIMEZONE` (`Europe/Paris`), `KERMESSE_EMAIL_SMTP_PORT` (`587`), `KERMESSE_EMAIL_SMTP_CRYPTO` (`tls`).
 
-**Secrets applicatifs (configuration `.env` production)**
+**Étape B — Secrets** (`Add secret` dans l'environnement `production`)
 
-| Priorité | Secret | Exemple / format |
-|----------|--------|-----------------|
-| 5 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
-| 6 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
-| 7 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
-| 8 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
-| 9 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
-| 10 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
-| 11 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP de votre fournisseur d'email |
-| 12 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
-| 13 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
-| 14 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
-| 15 | `KERMESSE_TOKEN_SECRET` | générer avec `openssl rand -hex 32` |
-| 16 | `OPS_MIGRATION_HMAC_SECRET` | générer avec `openssl rand -hex 32` |
+| # | Secret | Comment |
+|---|--------|---------|
+| 1 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTPS Ouvaton |
+| 2 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
+| 3 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
+| 4 | `KERMESSE_TOKEN_SECRET` | `openssl rand -hex 32` |
+| 5 | `OPS_MIGRATION_HMAC_SECRET` | `openssl rand -hex 32` |
 
-Valeurs fixes (pas de secret à créer) : port MariaDB `3306`, port SMTP `587`, crypto SMTP `tls`, nom expéditeur `Kermesse`.
-
-Overrides optionnels : `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`, `KERMESSE_APP_TIMEZONE` — uniquement si votre fournisseur SMTP ou timezone diffère des défauts.
-
-Générer les deux secrets aléatoires en une commande :
 ```bash
+# Générer les deux clés cryptographiques
 echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification**
-
-Après saisie de tous les secrets, ouvrir **Settings → Environments → production** et vérifier que les 16 secrets requis sont listés. Aucun ne doit afficher une valeur vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que 11 variables et 5 secrets sont listés (+ les optionnels si nécessaire). Aucun ne doit être vide.
 
 Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 
