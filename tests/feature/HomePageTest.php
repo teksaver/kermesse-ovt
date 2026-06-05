@@ -15,7 +15,7 @@ final class HomePageTest extends CIUnitTestCase
         $result = $this->get('/');
 
         $result->assertOK();
-        $result->assertSee('Kermesse');
-        $result->assertSee('CodeIgniter 4');
+        $result->assertSee('Créer votre kermesse');
+        $result->assertSee('Votre adresse email');
     }
 }
