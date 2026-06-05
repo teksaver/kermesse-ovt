@@ -128,13 +128,17 @@ class OwnerLoginService
             $validationUrl,
         );
 
-        if ($emailResult->sent) {
-            // Email delivered — safe to revoke older links now that user has a working one.
-            $this->tokenService->revokeOlderActiveOwnerValidationTokens($ownerId, $newTokenId);
-        } else {
-            // Email failed — revoke the undelivered token so it doesn't block future resends.
-            // Old links, if still active, remain usable.
-            $this->tokenService->revokeToken($newTokenId);
+        try {
+            if ($emailResult->sent) {
+                // Email delivered — safe to revoke older links now that user has a working one.
+                $this->tokenService->revokeOlderActiveOwnerValidationTokens($ownerId, $newTokenId);
+            } else {
+                // Email failed — revoke the undelivered token so it doesn't block future resends.
+                // Old links, if still active, remain usable.
+                $this->tokenService->revokeToken($newTokenId);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'OwnerLoginService: post-email cleanup (pending) failed: ' . $e->getMessage());
         }
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);

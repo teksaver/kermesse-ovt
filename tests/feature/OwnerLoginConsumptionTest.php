@@ -112,9 +112,13 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     // GET — confirmation page (prefetch protection)
     // ------------------------------------------------------------------
 
-    public function testGetTokenShowsConfirmationPage(): void
+    public function testGetValidTokenShowsConfirmationPage(): void
     {
-        $result = $this->get('owner/login/some-valid-looking-token');
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $result = $this->get('owner/login/' . $rawToken);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
@@ -123,7 +127,11 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
 
     public function testGetConfirmationPageHasCsrfField(): void
     {
-        $result = $this->get('owner/login/some-valid-looking-token');
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $result = $this->get('owner/login/' . $rawToken);
 
         $body = $result->response()->getBody();
         $this->assertStringContainsString('csrf_test_name', $body,
@@ -132,11 +140,40 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
 
     public function testGetConfirmationPageHasLinkBackToLoginForm(): void
     {
-        $result = $this->get('owner/login/some-valid-looking-token');
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $result = $this->get('owner/login/' . $rawToken);
 
         $body = $result->response()->getBody();
         $this->assertStringContainsString('owner/login', $body,
             'Confirmation page must link back to the login form');
+    }
+
+    public function testGetInvalidTokenShowsLoginResultPage(): void
+    {
+        $result = $this->get('owner/login/completely-unknown-token');
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringNotContainsString('Se connecter', $body,
+            'Invalid token at GET must not show the confirmation button');
+        $this->assertStringContainsString('owner/login', $body,
+            'Error page must link back to the login form');
+    }
+
+    public function testGetConfirmationPageDoesNotContainRawTokenInHtml(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $body = $result->response()->getBody();
+        $this->assertStringNotContainsString($rawToken, $body,
+            'Raw token must not appear in the HTML source of the confirmation page');
     }
 
     public function testGetRequestDoesNotConsumeToken(): void
@@ -380,5 +417,50 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         $body = $result->response()->getBody();
         $this->assertStringContainsString('owner/login', $body,
             'Error result page must link back to the login form');
+    }
+
+    // ------------------------------------------------------------------
+    // POST /owner/login/confirm — session-based confirmation flow
+    // ------------------------------------------------------------------
+
+    public function testConfirmLoginViaSessionSucceeds(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->withSession(['pending_login_token' => $rawToken]);
+        $result = $this->post('owner/login/confirm', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
+
+        $result->assertRedirectTo(site_url('admin/kermesses/' . $kermesseId));
+        $this->assertTrue(session()->get('owner_admin_authenticated') === true);
+    }
+
+    public function testConfirmLoginWithoutPendingSessionTokenShowsInvalidPage(): void
+    {
+        $result = $this->post('owner/login/confirm', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString("n'est plus valide", $body,
+            'Missing session token must show the invalid-token error page');
+        $this->assertNotTrue(session()->get('owner_admin_authenticated'));
+    }
+
+    public function testConfirmLoginClearsPendingSessionTokenAfterUse(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->withSession(['pending_login_token' => $rawToken]);
+        $this->post('owner/login/confirm', ['csrf_test_name' => csrf_hash()]);
+
+        $this->assertNull(session()->get('pending_login_token'),
+            'pending_login_token must be cleared from session after consumption');
     }
 }

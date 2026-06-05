@@ -13,7 +13,7 @@
     <section class="form-panel" aria-labelledby="page-title">
         <h1 id="page-title" class="page-title">Accéder à votre espace admin</h1>
         <p>Cliquez sur le bouton ci-dessous pour vous connecter à votre kermesse.</p>
-        <form method="post" action="<?= site_url('owner/login/' . esc($rawToken, 'url')) ?>">
+        <form method="post" action="<?= site_url('owner/login/confirm') ?>">
             <?= csrf_field() ?>
             <button type="submit" class="btn btn-primary">Se connecter</button>
         </form>

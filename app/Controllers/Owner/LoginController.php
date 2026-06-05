@@ -5,6 +5,7 @@ namespace App\Controllers\Owner;
 use App\Controllers\BaseController;
 use App\Services\OwnerLoginService;
 use App\Services\OwnerSessionService;
+use App\Services\SessionOutcome;
 
 /**
  * Handles the owner "me connecter" flow.
@@ -74,16 +75,74 @@ class LoginController extends BaseController
     /**
      * Display the token confirmation page (prefetch-safe GET handler).
      *
-     * Email clients and link-preview proxies may GET magic links speculatively.
-     * This handler returns a confirmation page with a POST form so the token is
-     * only consumed when the user explicitly clicks the button.
+     * Validates the token before rendering so invalid/expired links are surfaced
+     * immediately. If valid, stores the raw token in the server-side session so
+     * the confirmation form can POST to a fixed URL without embedding the token
+     * in the HTML source.
      */
-    public function showLoginConfirm(string $rawToken): string
+    public function showLoginConfirm(string $rawToken): mixed
     {
         helper('form');
 
+        $service = new OwnerSessionService();
+        $peek    = $service->prevalidateLoginToken($rawToken);
+
+        if (! $peek->isSuccess()) {
+            session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+
+            return view('owner/login_result', [
+                'status'   => $peek->status,
+                'loginUrl' => site_url('owner/login'),
+            ]);
+        }
+
+        // Store the raw token server-side; the confirmation view must not embed it in HTML.
+        session()->set('pending_login_token', $rawToken);
+
         return view('owner/login_confirm', [
-            'rawToken' => $rawToken,
+            'loginUrl' => site_url('owner/login'),
+        ]);
+    }
+
+    /**
+     * Confirm the login via a session-backed token (POST /owner/login/confirm).
+     *
+     * The raw token was stored in the session by showLoginConfirm.
+     * Clears the session token regardless of outcome.
+     */
+    public function confirmLogin(): mixed
+    {
+        $rawToken = session()->get('pending_login_token');
+        session()->remove('pending_login_token');
+
+        if ($rawToken === null || ! is_string($rawToken)) {
+            session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+
+            return view('owner/login_result', [
+                'status'   => SessionOutcome::INVALID_TOKEN,
+                'loginUrl' => site_url('owner/login'),
+            ]);
+        }
+
+        $service = new OwnerSessionService();
+        $outcome = $service->consumeLoginToken($rawToken);
+
+        if ($outcome->isSuccess()) {
+            $session = session();
+            $session->regenerate(true);
+            $session->set([
+                'owner_id'                  => $outcome->ownerId,
+                'kermesse_id'               => $outcome->kermesseId,
+                'owner_admin_authenticated' => true,
+            ]);
+
+            return redirect()->to(site_url('admin/kermesses/' . $outcome->kermesseId));
+        }
+
+        session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+
+        return view('owner/login_result', [
+            'status'   => $outcome->status,
             'loginUrl' => site_url('owner/login'),
         ]);
     }

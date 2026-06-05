@@ -28,6 +28,40 @@ class OwnerSessionService
     }
 
     /**
+     * Validate an owner_login token without consuming it (prefetch/GET confirmation check).
+     *
+     * Performs all owner and kermesse checks but does NOT mark the token as used.
+     * Returns SUCCESS if the token is ready to be consumed, or an appropriate error status.
+     */
+    public function prevalidateLoginToken(string $rawToken): SessionOutcome
+    {
+        $result = $this->tokenService->validateOwnerLoginToken($rawToken);
+
+        if (! $result->isValid()) {
+            return new SessionOutcome($result->status);
+        }
+
+        $tokenRow   = $result->tokenRow;
+        $ownerId    = (int) $tokenRow['owner_id'];
+        $kermesseId = (int) $tokenRow['kermesse_id'];
+
+        $owner = $this->ownerModel->find($ownerId);
+        if ($owner === null || $owner['status'] !== 'active') {
+            return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
+        }
+
+        $kermesse = $this->kermesseModel
+            ->where('id', $kermesseId)
+            ->where('owner_id', $ownerId)
+            ->first();
+        if ($kermesse === null) {
+            return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
+        }
+
+        return new SessionOutcome(SessionOutcome::SUCCESS);
+    }
+
+    /**
      * Validate an owner_login token and prepare the session outcome.
      *
      * Does NOT touch the session — the controller is responsible for
@@ -72,10 +106,11 @@ class OwnerSessionService
 
             $marked = $this->tokenService->markLoginTokenAsUsed($tokenId);
             if (! $marked) {
-                // Concurrent claim — another request already consumed this token.
+                // Concurrent claim — re-validate to return precise status (used/expired/revoked).
                 $db->transRollback();
+                $recheck = $this->tokenService->validateOwnerLoginToken($rawToken);
 
-                return new SessionOutcome(SessionOutcome::ERROR);
+                return new SessionOutcome($recheck->isValid() ? SessionOutcome::ERROR : $recheck->status);
             }
 
             $db->transCommit();
