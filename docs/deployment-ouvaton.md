@@ -40,9 +40,9 @@ Déroulé :
 
 Pour une première installation sans `.env` existant, l'opérateur doit cocher l'input `confirm_first_install_env` au déclenchement manuel du workflow. Sans cette confirmation, l'impossibilité de lire le `.env` distant est traitée comme une erreur de backup et le workflow échoue avant activation.
 
-### Étape 3 : Packaging et déploiement applicatif (manuel)
+### Étape 3 : Packaging et déploiement applicatif (automatique)
 
-Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche via `workflow_dispatch` :
+Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
 
 1. Checkout, setup PHP, validation Composer, tests
 2. Exécution de `scripts/package-deploy-artifact.sh`
@@ -237,13 +237,11 @@ Sur le serveur, les sous-dossiers `writable/` doivent être **accessibles en éc
 
 Le workflow utilise **FTPS** (FTP over TLS) via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
 
-Le workflow de déploiement applicatif est structuré avec un job `deploy` désactivé (`if: false`). Pour l'activer :
+Le transfert utilise `lftp` avec `mirror --reverse --delete` : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Deux exclusions garantissent la sécurité :
+- `^\.env` — le `.env` de production et ses backups ne sont jamais touchés
+- `^writable/` — logs, sessions, cache et uploads écrits par l'app sont préservés
 
-1. Configurer les secrets GitHub Actions `OUVATON_DEPLOY_*` dans l'environnement `production`
-2. Remplacer le placeholder `Deploy to Ouvaton` par une vraie étape de transfert FTPS qui échoue en cas d'erreur
-3. Retirer la condition `if: false` du job `deploy`
-
-Le workflow refuse les refs autres que `main` et vérifie qu'un run CI réussi existe pour le SHA à déployer. Cela évite de packager ou migrer la production depuis une branche de travail.
+Le workflow vérifie qu'un run CI réussi existe pour le SHA déployé, et refuse les refs autres que `main`. Pour un déclenchement manuel (`workflow_dispatch`), ce contrôle est actif. Pour le déclenchement automatique, la conclusion du CI garantit déjà la validité.
 
 ## Version PHP
 

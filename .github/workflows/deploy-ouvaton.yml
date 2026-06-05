@@ -1,6 +1,10 @@
 name: Deploy to Ouvaton
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +20,10 @@ env:
 
 jobs:
   build-and-package:
-    if: github.ref == 'refs/heads/main'
+    # Auto-deploy only when CI succeeds on main; manual dispatch is always allowed.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: production
 
@@ -26,8 +33,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Require successful CI for this commit
+        # Skipped when auto-triggered by workflow_run — CI conclusion is already guaranteed above.
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -75,7 +86,6 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit --exclude-group mariadb
 
-      # --- Packaging ---
       - name: Run packaging script
         run: bash scripts/package-deploy-artifact.sh
 
@@ -90,11 +100,17 @@ jobs:
     needs: build-and-package
     runs-on: ubuntu-latest
     environment: production
-    # Le deploiement reste desactive tant que le protocole et les identifiants Ouvaton ne sont pas confirmes.
-    # Retirer la condition 'if: false' une fois les secrets OUVATON_DEPLOY_* configures.
-    if: false
+
+    env:
+      OUVATON_DEPLOY_HOST: ${{ secrets.OUVATON_DEPLOY_HOST }}
+      OUVATON_DEPLOY_USERNAME: ${{ secrets.OUVATON_DEPLOY_USERNAME }}
+      OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
+      OUVATON_DEPLOY_REMOTE_PATH: ${{ secrets.OUVATON_DEPLOY_REMOTE_PATH }}
 
     steps:
+      - name: Install transfer client
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
       - name: Download deploy artifact
         uses: actions/download-artifact@v4
         with:
@@ -105,35 +121,36 @@ jobs:
           mkdir -p deploy-staging
           unzip kermesse-deploy.zip -d deploy-staging
 
-      # Emplacement reserve pour l'etape d'envoi distant.
-      # La methode de transfert exacte depend des capacites du compte Ouvaton :
-      #   - FTPS : utiliser lftp ou une action de transfert fichier compatible
-      #   - SFTP : utiliser un transfert fichier SFTP, sans shell distant ni rsync
-      #
-      # Secrets GitHub requis, a configurer dans l'environnement 'production' :
-      #   OUVATON_DEPLOY_PROTOCOL  - ftp, ftps ou sftp
-      #   OUVATON_DEPLOY_HOST      - nom d'hote du serveur Ouvaton
-      #   OUVATON_DEPLOY_USERNAME  - identifiant du compte Ouvaton
-      #   OUVATON_DEPLOY_PASSWORD  - mot de passe ou cle SSH du compte Ouvaton
-      #   OUVATON_DEPLOY_REMOTE_PATH - chemin distant sur Ouvaton, par exemple /www/kermesse
-      #
-      # IMPORTANT : l'etape de deploiement applicatif ne doit jamais ecraser le .env de production.
-      # Le .env de production est gere par .github/workflows/sync-production-env.yml.
-      # L'application deployee se connecte a la MariaDB managée Ouvaton via database.default.*
-      # dans ce .env ; ce workflow ne cree pas et n'administre pas la base de production.
-      #
-      # Post-deploiement : appeler POST /ops/migrate avec authentification HMAC
-      # une fois l'etape de deploiement applicatif activee. Cet appel vise l'application
-      # Ouvaton deployee, qui utilise la connexion MariaDB managée configuree dans .env.
-      # Voir docs/migration-runner.md pour le payload signe et les en-tetes requis.
-      - name: Deploy to Ouvaton (placeholder)
+      - name: Transfer files to Ouvaton via FTPS
         run: |
-          echo "================================================================="
-          echo "DEPLOY STEP: Not yet activated."
-          echo "Ouvaton protocol, host, and credentials must be confirmed first."
-          echo "See docs/deployment-ouvaton.md for setup instructions."
-          echo "================================================================="
-          exit 1
+          set -euo pipefail
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          # Mirror local artifact to Ouvaton over FTPS.
+          # --delete removes remote files not present locally (clean deploys).
+          # .env* excluded from deletion to preserve the production .env managed
+          # by sync-production-env.yml. writable/ excluded to preserve runtime
+          # files written by the app (logs, sessions, cache, uploads).
+          {
+            printf 'set cmd:fail-exit yes\n'
+            printf 'set net:max-retries 3\n'
+            printf 'set net:timeout 60\n'
+            printf 'set ssl:verify-certificate yes\n'
+            printf 'set ftp:ssl-force yes\n'
+            printf 'set ftp:ssl-protect-data yes\n'
+            printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
+            printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
+            printf 'lcd deploy-staging\n'
+            printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_PATH}")"
+            printf 'mirror --reverse --delete --no-empty-dirs --exclude "^\\.env" --exclude "^writable/"\n'
+            printf 'bye\n'
+          } | lftp
 
       - name: Run post-deploy migrations
         env:
