@@ -118,6 +118,7 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | `KERMESSE_EMAIL_SMTP_USER` | Identifiant SMTP (souvent l'adresse email) |
 | `KERMESSE_EMAIL_FROM_EMAIL` | Adresse expéditrice |
 | `KERMESSE_APP_TIMEZONE` | Optionnel ; timezone. Défaut : `Europe/Paris` |
+| `KERMESSE_EMAIL_FROM_NAME` | Optionnel ; nom d'expéditeur. Défaut : `Kermesse` |
 | `KERMESSE_EMAIL_SMTP_PORT` | Optionnel ; port SMTP. Défaut : `587` |
 | `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
 
@@ -175,7 +176,7 @@ echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 3 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
 
 Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 

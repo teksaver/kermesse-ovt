@@ -40,6 +40,7 @@ jobs:
       KERMESSE_EMAIL_SMTP_PORT: ${{ vars.KERMESSE_EMAIL_SMTP_PORT }}
       KERMESSE_EMAIL_SMTP_CRYPTO: ${{ vars.KERMESSE_EMAIL_SMTP_CRYPTO }}
       KERMESSE_EMAIL_FROM_EMAIL: ${{ vars.KERMESSE_EMAIL_FROM_EMAIL }}
+      KERMESSE_EMAIL_FROM_NAME: ${{ vars.KERMESSE_EMAIL_FROM_NAME }}
       # --- Secrets (sensitive credentials) ---
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
       KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}
@@ -205,7 +206,7 @@ jobs:
             write_raw email.SMTPPort "${KERMESSE_EMAIL_SMTP_PORT:-587}"
             write_quoted email.SMTPCrypto "${KERMESSE_EMAIL_SMTP_CRYPTO:-tls}"
             write_quoted email.fromEmail "${KERMESSE_EMAIL_FROM_EMAIL}"
-            write_quoted email.fromName Kermesse
+            write_quoted email.fromName "${KERMESSE_EMAIL_FROM_NAME:-Kermesse}"
 
             printf '\n'
             write_quoted kermesse.tokenSecret "${KERMESSE_TOKEN_SECRET}"
