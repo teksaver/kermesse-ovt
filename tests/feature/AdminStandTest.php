@@ -206,6 +206,43 @@ final class AdminStandTest extends CIUnitTestCase
             'Empty name must show French error message');
     }
 
+    public function testCreateWithArrayNameShowsErrorAndDoesNotPersist(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse('stand-array-name');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands", [
+                csrf_token() => csrf_hash(),
+                'name'       => ['Buvette'],
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Indiquez le nom du stand', $body);
+        $this->assertStringNotContainsString('value="Array"', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_stands WHERE kermesse_id = {$ids['kermesseId']}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
+    public function testCreateWithUnicodeBlankNameShowsErrorAndDoesNotPersist(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse('stand-unicode-blank');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands", [
+                csrf_token() => csrf_hash(),
+                'name'       => "\u{00A0}\u{200B}\u{202F}",
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Indiquez le nom du stand', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_stands WHERE kermesse_id = {$ids['kermesseId']}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
     public function testCreateWithTooLongNameShowsError(): void
     {
         $ids    = $this->insertActiveOwnerAndKermesse('stand-toolong');
@@ -312,6 +349,28 @@ final class AdminStandTest extends CIUnitTestCase
             'Stand name must not be changed when update is denied');
     }
 
+    public function testCreateWithPendingOwnerShowsValidationRequired(): void
+    {
+        $db    = db_connect();
+        $email = 'stand-pending@example.com';
+        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Pending Stand Owner', 'owner_pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $ownerId = (int) $db->insertID();
+
+        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
+            VALUES ({$ownerId}, 'stand-pending', 'Kermesse Pending Stand', '2026-09-01', 'Paris', 'Test', 'Europe/Paris', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $kermesseId = (int) $db->insertID();
+
+        $result = $this->withSession($this->authorizedSession($ownerId, $kermesseId))
+            ->post("admin/kermesses/{$kermesseId}/stands", [
+                csrf_token() => csrf_hash(),
+                'name'       => 'Buvette',
+            ]);
+
+        $this->assertSame(403, $result->response()->getStatusCode());
+        $this->assertStringContainsString('validation', strtolower($result->response()->getBody()));
+    }
+
     // ------------------------------------------------------------------
     // EMPTY SLOT STATE — stand without slot
     // ------------------------------------------------------------------
@@ -392,6 +451,21 @@ final class AdminStandTest extends CIUnitTestCase
         $this->assertStringContainsString('Nom du stand', $body,
             'Add stand form must be visible even when no stands exist');
         $this->assertStringContainsString('Ajouter le stand', $body);
+    }
+
+    public function testDashboardShowsStandFlashSuccess(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse('stand-flash-success');
+
+        $result = $this->withSession([
+            ...$this->authorizedSession($ids['ownerId'], $ids['kermesseId']),
+            'flash_success' => 'Stand ajouté.',
+            '__ci_vars'     => ['flash_success' => 'old'],
+        ])->get("admin/kermesses/{$ids['kermesseId']}");
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Stand ajouté.', $body);
+        $this->assertStringContainsString('role="status"', $body);
     }
 
     // ------------------------------------------------------------------

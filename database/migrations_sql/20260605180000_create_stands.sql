@@ -13,9 +13,13 @@ CREATE TABLE IF NOT EXISTS `stands` (
     `name`          VARCHAR(255)    NOT NULL,
     `display_order` INT UNSIGNED    NOT NULL DEFAULT 0,
     `status`        ENUM('active','deactivated') NOT NULL DEFAULT 'active',
+    `active_name_key` VARCHAR(255) GENERATED ALWAYS AS (
+        CASE WHEN `status` = 'active' THEN LOWER(TRIM(`name`)) ELSE NULL END
+    ) STORED,
     `created_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_stands_active_name` (`kermesse_id`, `active_name_key`),
     KEY `idx_stands_kermesse` (`kermesse_id`),
     KEY `idx_stands_kermesse_order` (`kermesse_id`, `display_order`),
     CONSTRAINT `fk_stands_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE

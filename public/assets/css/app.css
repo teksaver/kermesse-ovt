@@ -236,6 +236,11 @@ p {
     background: var(--color-muted-surface);
 }
 
+.info-box--success {
+    background: var(--color-success-surface);
+    border-color: var(--color-success-border);
+}
+
 .info-box--spaced {
 	    margin-top: 24px;
 }

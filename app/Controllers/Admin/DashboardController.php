@@ -67,6 +67,7 @@ class DashboardController extends BaseController
         $standErrors    = session()->getFlashdata('stand_errors') ?? [];
         $standInputName = session()->getFlashdata('stand_input_name') ?? '';
         $standEditId    = session()->getFlashdata('stand_edit_id');
+        $flashSuccess   = session()->getFlashdata('flash_success');
 
         return [
             'kermesse'       => $kermesse,
@@ -79,6 +80,7 @@ class DashboardController extends BaseController
             'standErrors'    => $standErrors,
             'standInputName' => $standInputName,
             'standEditId'    => $standEditId,
+            'flashSuccess'   => is_string($flashSuccess) ? $flashSuccess : null,
         ];
     }
 

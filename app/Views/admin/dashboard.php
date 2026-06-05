@@ -31,11 +31,17 @@
                 Fermer les inscriptions
             </a>
             <?php else: ?>
-            <span class="btn btn-secondary disabled-action" aria-disabled="true" title="<?= esc($disabledReason) ?>">
+            <button type="button" class="btn btn-secondary disabled-action" disabled title="<?= esc($disabledReason) ?>">
                 Ouvrir les inscriptions
-            </span>
+            </button>
             <?php endif; ?>
         </div>
+
+        <?php if (! empty($flashSuccess)): ?>
+        <div class="info-box info-box--success info-box--spaced" role="status">
+            <p><?= esc($flashSuccess) ?></p>
+        </div>
+        <?php endif; ?>
 
         <?php if (! $hasStands && ! $isOpen): ?>
         <div class="info-box info-box--spaced" role="note">
@@ -86,9 +92,9 @@
                 <!-- Empty slot state -->
                 <div class="slot-empty-state" aria-label="Créneaux de <?= esc($stand['name']) ?>">
                     <p class="slot-empty-state__text">Aucun créneau pour le moment</p>
-                    <span class="btn btn-secondary disabled-action" aria-disabled="true" tabindex="-1">
+                    <button type="button" class="btn btn-secondary disabled-action" disabled>
                         Ajouter un créneau
-                    </span>
+                    </button>
                 </div>
             </div>
             <?php endforeach; ?>

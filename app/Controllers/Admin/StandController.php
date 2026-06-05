@@ -7,6 +7,7 @@ use App\Models\KermesseModel;
 use App\Models\StandModel;
 use App\Services\AdminAuthorizationService;
 use App\Services\AuthorizationResult;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 
 class StandController extends BaseController
 {
@@ -25,7 +26,12 @@ class StandController extends BaseController
             return $this->denyAccess(new AuthorizationResult(AuthorizationResult::ACCESS_DENIED));
         }
 
-        $name   = trim((string) $this->request->getPost('name'));
+        $nameResult = $this->standNameFromPost();
+        $name       = $nameResult['name'];
+        if (! $nameResult['isValidInput']) {
+            return $this->renderWithErrors($kermesse, ['name' => 'Indiquez le nom du stand.'], '', null);
+        }
+
         $errors = $this->validateStandName($name, $id);
 
         if (! empty($errors)) {
@@ -33,12 +39,20 @@ class StandController extends BaseController
         }
 
         $standModel = model(StandModel::class);
-        $standModel->insert([
-            'kermesse_id'   => $id,
-            'name'          => $name,
-            'display_order' => $standModel->nextDisplayOrder($id),
-            'status'        => 'active',
-        ]);
+        try {
+            $standModel->insert([
+                'kermesse_id'   => $id,
+                'name'          => $name,
+                'display_order' => $standModel->nextDisplayOrder($id),
+                'status'        => 'active',
+            ]);
+        } catch (DatabaseException $e) {
+            if (! $this->isDuplicateStandNameError($e)) {
+                throw $e;
+            }
+
+            return $this->renderWithErrors($kermesse, ['name' => 'Un stand porte déjà ce nom.'], $name, null);
+        }
 
         return redirect()
             ->to(site_url("admin/kermesses/{$id}"))
@@ -64,14 +78,27 @@ class StandController extends BaseController
             return $this->denyAccess(new AuthorizationResult(AuthorizationResult::ACCESS_DENIED));
         }
 
-        $name   = trim((string) $this->request->getPost('name'));
+        $nameResult = $this->standNameFromPost();
+        $name       = $nameResult['name'];
+        if (! $nameResult['isValidInput']) {
+            return $this->renderWithErrors($kermesse, ['name' => 'Indiquez le nom du stand.'], '', $sid);
+        }
+
         $errors = $this->validateStandName($name, $id, $sid);
 
         if (! empty($errors)) {
             return $this->renderWithErrors($kermesse, $errors, $name, $sid);
         }
 
-        $standModel->update($sid, ['name' => $name]);
+        try {
+            $standModel->update($sid, ['name' => $name]);
+        } catch (DatabaseException $e) {
+            if (! $this->isDuplicateStandNameError($e)) {
+                throw $e;
+            }
+
+            return $this->renderWithErrors($kermesse, ['name' => 'Un stand porte déjà ce nom.'], $name, $sid);
+        }
 
         return redirect()
             ->to(site_url("admin/kermesses/{$id}"))
@@ -88,6 +115,30 @@ class StandController extends BaseController
             ->where('id', $id)
             ->where('owner_id', (int) session('owner_id'))
             ->first();
+    }
+
+    /**
+     * @return array{name: string, isValidInput: bool}
+     */
+    private function standNameFromPost(): array
+    {
+        $rawName = $this->request->getPost('name');
+
+        if (! is_string($rawName)) {
+            return ['name' => '', 'isValidInput' => false];
+        }
+
+        $name = preg_replace('/\p{Cf}+/u', '', $rawName);
+        if ($name === null) {
+            $name = $rawName;
+        }
+
+        $name = preg_replace('/[\p{Z}\s]+/u', ' ', $name);
+        if ($name === null) {
+            $name = $rawName;
+        }
+
+        return ['name' => trim($name), 'isValidInput' => true];
     }
 
     /**
@@ -143,6 +194,7 @@ class StandController extends BaseController
             'standErrors'    => $errors,
             'standInputName' => $inputName,
             'standEditId'    => $editStandId,
+            'flashSuccess'   => null,
         ]);
     }
 
@@ -152,11 +204,27 @@ class StandController extends BaseController
             return redirect()->to(site_url('owner/login'));
         }
 
+        if ($result->status === AuthorizationResult::PENDING_VALIDATION) {
+            return service('response')
+                ->setStatusCode(403)
+                ->setBody(view('owner/validation_result', [
+                    'status'   => 'validation_required',
+                    'loginUrl' => site_url('owner/login'),
+                ]));
+        }
+
         return service('response')
             ->setStatusCode(403)
             ->setBody(view('owner/validation_result', [
                 'status'   => 'access_denied',
                 'loginUrl' => site_url('owner/login'),
             ]));
+    }
+
+    private function isDuplicateStandNameError(DatabaseException $e): bool
+    {
+        return $e->getCode() === 1062
+            || str_contains($e->getMessage(), 'uq_stands_active_name')
+            || str_contains($e->getMessage(), 'Duplicate entry');
     }
 }
