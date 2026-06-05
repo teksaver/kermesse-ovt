@@ -15,22 +15,22 @@
         <?php if ($status === 'expired_token'): ?>
         <h1 id="page-title" class="page-title">Ce lien de connexion a expiré</h1>
         <p>Votre lien de connexion a expiré. Demandez un nouveau lien pour continuer.</p>
-        <a href="<?= esc($loginUrl) ?>" class="btn btn-primary">Demander un nouveau lien</a>
+        <a href="<?= esc($loginUrl, 'attr') ?>" class="btn btn-primary">Demander un nouveau lien</a>
 
         <?php elseif ($status === 'used_token'): ?>
         <h1 id="page-title" class="page-title">Ce lien de connexion a déjà été utilisé</h1>
         <p>Ce lien ne peut plus être utilisé. Demandez un nouveau lien pour vous connecter.</p>
-        <a href="<?= esc($loginUrl) ?>" class="btn btn-primary">Demander un nouveau lien</a>
+        <a href="<?= esc($loginUrl, 'attr') ?>" class="btn btn-primary">Demander un nouveau lien</a>
 
         <?php elseif ($status === 'revoked_token'): ?>
         <h1 id="page-title" class="page-title">Ce lien de connexion n'est plus valide</h1>
         <p>Ce lien n'est plus valide. Demandez un nouveau lien pour vous connecter.</p>
-        <a href="<?= esc($loginUrl) ?>" class="btn btn-primary">Demander un nouveau lien</a>
+        <a href="<?= esc($loginUrl, 'attr') ?>" class="btn btn-primary">Demander un nouveau lien</a>
 
         <?php else: ?>
         <h1 id="page-title" class="page-title">Ce lien de connexion n'est plus valide</h1>
         <p>Ce lien n'est pas reconnu. Demandez un nouveau lien pour vous connecter.</p>
-        <a href="<?= esc($loginUrl) ?>" class="btn btn-primary">Demander un nouveau lien</a>
+        <a href="<?= esc($loginUrl, 'attr') ?>" class="btn btn-primary">Demander un nouveau lien</a>
         <?php endif; ?>
 
     </section>

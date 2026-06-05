@@ -123,9 +123,10 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
+        // On email success: revoke older tokens, preserving the newly issued one (exceptTokenId = 7).
         $tokenService->expects($this->once())
                      ->method('revokeActiveOwnerLoginTokens')
-                     ->with(3);
+                     ->with(3, 7);
         $tokenService->expects($this->once())
                      ->method('issueOwnerLoginToken')
                      ->with(3, 5, 'active@example.com')
@@ -189,10 +190,10 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
-        $tokenService->method('revokeActiveOwnerLoginTokens');
         $tokenService->method('issueOwnerLoginToken')->willReturn(new IssuedToken('login-token', 7));
-        // On email failure, revokeActiveOwnerLoginTokens is called again to revoke the new token
-        $tokenService->expects($this->exactly(2))->method('revokeActiveOwnerLoginTokens');
+        // On email failure: revoke only the new (undelivered) token; old links stay usable.
+        $tokenService->expects($this->never())->method('revokeActiveOwnerLoginTokens');
+        $tokenService->expects($this->once())->method('revokeLoginToken')->with(7);
 
         $emailService = $this->createMock(EmailService::class);
         $emailService->method('sendOwnerLoginEmail')->willReturn(new EmailDeliveryResult(false, 'No SMTP'));
@@ -221,8 +222,8 @@ final class OwnerLoginServiceTest extends CIUnitTestCase
 
         $tokenService = $this->createMock(TokenService::class);
         $tokenService->method('hasRecentActiveOwnerLoginToken')->willReturn(false);
-        $tokenService->method('revokeActiveOwnerLoginTokens');
         $tokenService->method('issueOwnerLoginToken')->willReturn(new IssuedToken($rawToken, 1));
+        $tokenService->method('revokeLoginToken');
 
         $emailService = $this->createMock(EmailService::class);
         $emailService->method('sendOwnerLoginEmail')->willReturn(new EmailDeliveryResult(false));

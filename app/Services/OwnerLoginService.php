@@ -96,7 +96,7 @@ class OwnerLoginService
         try {
             $db->transBegin();
 
-            $this->lockOwnerValidationResend($db, $ownerId);
+            $this->lockOwnerRowForUpdate($db, $ownerId);
 
             if ($this->tokenService->hasRecentActiveOwnerValidationToken($ownerId, self::RESEND_COOLDOWN_SECONDS)) {
                 $db->transCommit();
@@ -140,17 +140,17 @@ class OwnerLoginService
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
     }
 
-    private function lockOwnerValidationResend(BaseConnection $db, int $ownerId): void
+    private function lockOwnerRowForUpdate(BaseConnection $db, int $ownerId): void
     {
         if ($db->DBDriver !== 'MySQLi') {
             return;
         }
 
-        $table = $db->protectIdentifiers($db->prefixTable('owners'));
+        $table  = $db->protectIdentifiers($db->prefixTable('owners'));
         $result = $db->query("SELECT id FROM {$table} WHERE id = ? FOR UPDATE", [$ownerId]);
 
         if ($result === false) {
-            throw new \RuntimeException('Owner validation resend lock failed');
+            throw new \RuntimeException('Owner row lock failed');
         }
     }
 
@@ -162,7 +162,7 @@ class OwnerLoginService
      */
     private function handleActiveOwner(array $owner, string $email): LoginRequestResult
     {
-        $ownerId  = (int) $owner['id'];
+        $ownerId = (int) $owner['id'];
 
         $kermesse = $this->kermesseModel->where('owner_id', $ownerId)->first();
         if ($kermesse === null) {
@@ -171,6 +171,7 @@ class OwnerLoginService
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
 
+        // Fast-path cooldown check before acquiring any lock.
         if ($this->tokenService->hasRecentActiveOwnerLoginToken($ownerId, self::LOGIN_RESEND_COOLDOWN_SECONDS)) {
             return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
         }
@@ -188,8 +189,17 @@ class OwnerLoginService
         try {
             $db->transBegin();
 
-            // Revoke all stale login tokens, then issue a fresh one atomically.
-            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId);
+            // Lock the owner row and re-check cooldown to prevent concurrent token issuance.
+            $this->lockOwnerRowForUpdate($db, $ownerId);
+
+            if ($this->tokenService->hasRecentActiveOwnerLoginToken($ownerId, self::LOGIN_RESEND_COOLDOWN_SECONDS)) {
+                $db->transCommit();
+
+                return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+            }
+
+            // Issue new token first — do NOT revoke old links yet.
+            // Old links remain usable until we confirm email delivery.
             $issuedToken = $this->tokenService->issueOwnerLoginToken($ownerId, $kermesseId, $email);
             $rawToken    = $issuedToken->rawToken;
             $newTokenId  = $issuedToken->tokenId;
@@ -214,10 +224,12 @@ class OwnerLoginService
             $loginUrl,
         );
 
-        if (! $emailResult->sent) {
-            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId);
-
-            return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);
+        if ($emailResult->sent) {
+            // Email delivered — safe to revoke older links now that the user has a working one.
+            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId, $newTokenId);
+        } else {
+            // Email failed — revoke only the undelivered token; old links stay usable.
+            $this->tokenService->revokeLoginToken($newTokenId);
         }
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);

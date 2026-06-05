@@ -38,10 +38,8 @@ class ValidationController extends BaseController
             return redirect()->to(site_url('admin/kermesses/' . $outcome->kermesseId));
         }
 
-        // Only clear stale partial session keys — never nuke a valid existing admin session
-        if (! session()->get('owner_admin_authenticated')) {
-            session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
-        }
+        // Always purge admin session keys on validation failure — no stale elevation must survive.
+        session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
 
         // Map outcome to view context
         $viewStatus = match ($outcome->status) {

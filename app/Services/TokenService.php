@@ -311,10 +311,26 @@ class TokenService
     }
 
     /**
+     * Revoke a single owner_login token by ID.
+     *
+     * Used when email delivery fails: revokes only the undelivered token
+     * so that previously-issued (older) links remain usable.
+     */
+    public function revokeLoginToken(int $tokenId): void
+    {
+        $this->tokenModel
+            ->where('id', $tokenId)
+            ->where('token_type', 'owner_login')
+            ->where('used_at', null)
+            ->where('revoked_at', null)
+            ->set(['revoked_at' => date('Y-m-d H:i:s')])
+            ->update();
+    }
+
+    /**
      * Revoke all active owner_login tokens for the given owner.
      *
-     * Used before re-issuing a new login link so that stale links cannot be replayed.
-     * Also used to revoke the just-issued token when email delivery fails.
+     * Pass $exceptTokenId to preserve a specific token (e.g. the newly issued one).
      */
     public function revokeActiveOwnerLoginTokens(int $ownerId, ?int $exceptTokenId = null): void
     {

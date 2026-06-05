@@ -147,6 +147,20 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         $this->assertSame($kermesseId, (int) session()->get('kermesse_id'));
     }
 
+    public function testSessionRegeneratesOnSuccessfulLogin(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+
+        /** @var \CodeIgniter\Test\Mock\MockSession $session */
+        $session = session();
+        $this->assertTrue($session->didRegenerate,
+            'Session must be regenerated on successful login (anti session-fixation)');
+    }
+
     // ------------------------------------------------------------------
     // Token reuse prevention
     // ------------------------------------------------------------------

@@ -195,10 +195,10 @@ final class OwnerValidationTest extends CIUnitTestCase
             'Reused token must show a "already used" message');
     }
 
-    public function testExistingAdminSessionIsPreservedOnValidationFailure(): void
+    public function testAdminSessionIsPurgedOnValidationFailure(): void
     {
-        // An already-authenticated owner must not lose their session if a (different or stale)
-        // validation link fails. Only stale/partial session keys with no auth flag should be removed.
+        // On any validation failure, ALL admin session keys must be removed — even if the user
+        // was previously authenticated. This prevents stale session elevation.
         $result = $this->withSession([
             'owner_admin_authenticated' => true,
             'owner_id'                  => 99,
@@ -207,8 +207,11 @@ final class OwnerValidationTest extends CIUnitTestCase
 
         $result->assertOK();
 
-        // Existing admin session keys must still be present
-        $result->assertSessionHas('owner_admin_authenticated', true);
+        // Admin session keys must be purged after a failed validation attempt.
+        $this->assertNotTrue(session()->get('owner_admin_authenticated'),
+            'owner_admin_authenticated must be purged on failed validation');
+        $this->assertNull(session()->get('owner_id'), 'owner_id must be purged on failed validation');
+        $this->assertNull(session()->get('kermesse_id'), 'kermesse_id must be purged on failed validation');
     }
 
     // ------------------------------------------------------------------
