@@ -56,9 +56,14 @@ Ce workflow ne déclare pas de service MariaDB Docker : la production Ouvaton ut
 
 ## Document root Ouvaton
 
-Le document root public doit pointer vers le dossier `public/` de l'artefact, et non vers la racine de l'artefact.
+Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement gère automatiquement la séparation en deux emplacements distincts :
 
-La racine de l'artefact contient aussi `app/`, `vendor/`, `writable/`, `database/` et `docs/`. Ces dossiers sont nécessaires au runtime CodeIgniter, mais ils ne doivent pas être exposés directement par le serveur web. Si le compte Ouvaton impose un chemin web unique, le transfert réel devra préserver cette séparation en plaçant le contenu public dans le webroot et les autres dossiers hors exposition directe, ou en configurant le webroot vers `public/` avant activation du déploiement.
+| Emplacement | Contenu | Variable |
+|-------------|---------|----------|
+| `OUVATON_DEPLOY_REMOTE_PATH` (ex. `kermesse/`) | `app/`, `vendor/`, `writable/`, `database/`, `public/`, `.env` | `OUVATON_DEPLOY_REMOTE_PATH` |
+| `OUVATON_HTTPDOCS_PATH` (ex. `httpdocs/`) | `index.php` (shim), `.htaccess`, `robots.txt`, `assets/` | `OUVATON_HTTPDOCS_PATH` |
+
+Le `index.php` déposé dans `httpdocs/` est un shim généré par le workflow qui définit `ROOTPATH` vers le répertoire applicatif et `FCPATH` vers `httpdocs/`, puis charge le bootstrap CodeIgniter. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
 
 ### Inclus
 
@@ -98,7 +103,8 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 |----------|-------------|
 | `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (FTPS) |
 | `OUVATON_DEPLOY_USERNAME` | Nom d'utilisateur du compte Ouvaton |
-| `OUVATON_DEPLOY_REMOTE_PATH` | Chemin distant de déploiement (ex. `/www/kermesse`) |
+| `OUVATON_DEPLOY_REMOTE_PATH` | Répertoire applicatif hors web root (ex. `/home/moncompte/kermesse`) |
+| `OUVATON_HTTPDOCS_PATH` | Web root fixé par Ouvaton (ex. `/home/moncompte/httpdocs`) |
 | `KERMESSE_PUBLIC_BASE_URL` | URL publique canonique de l'application |
 | `KERMESSE_SESSION_SAVE_PATH` | Chemin absolu du dossier de sessions sur Ouvaton |
 | `KERMESSE_DATABASE_HOSTNAME` | Hôte MariaDB Ouvaton |
@@ -136,7 +142,8 @@ Toutes les entrées sont à configurer dans l'**environnement GitHub `production
 |---|----------|---------|
 | 1 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
 | 2 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
-| 3 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
+| 3 | `OUVATON_DEPLOY_REMOTE_PATH` | `/home/moncompte/kermesse` |
+| 4 | `OUVATON_HTTPDOCS_PATH` | `/home/moncompte/httpdocs` |
 | 4 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
 | 5 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
 | 6 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
@@ -164,7 +171,7 @@ echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification** : dans **Settings → Environments → production**, s'assurer que 11 variables et 5 secrets sont listés (+ les optionnels si nécessaire). Aucun ne doit être vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 3 optionnels si nécessaire). Aucun ne doit être vide.
 
 Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 
