@@ -41,14 +41,37 @@ class DashboardController extends BaseController
             return $this->handleDenial(new AuthorizationResult(AuthorizationResult::ACCESS_DENIED));
         }
 
-        return view('admin/dashboard', [
-            'kermesse' => $kermesse,
-        ]);
+        return view('admin/dashboard', $this->buildViewModel($kermesse));
     }
 
     // ------------------------------------------------------------------
     // Private helpers
     // ------------------------------------------------------------------
+
+    private function buildViewModel(array $kermesse): array
+    {
+        $statusMap = [
+            'preparation' => ['label' => 'Inscriptions en préparation', 'class' => 'status-badge--preparation'],
+            'open'        => ['label' => 'Inscriptions ouvertes',        'class' => 'status-badge--open'],
+            'closed'      => ['label' => 'Inscriptions fermées',         'class' => 'status-badge--closed'],
+        ];
+
+        $status     = $kermesse['status'] ?? 'preparation';
+        $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
+
+        // Story 2.1: stands table does not exist yet — kermesse is always "empty".
+        // Stories 2.2+ will replace this with a real stand count query.
+        $hasStands = false;
+
+        return [
+            'kermesse'      => $kermesse,
+            'statusLabel'   => $statusInfo['label'],
+            'statusClass'   => $statusInfo['class'],
+            'hasStands'     => $hasStands,
+            'isOpen'        => $status === 'open',
+            'disabledReason' => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
+        ];
+    }
 
     private function handleDenial(AuthorizationResult $result): mixed
     {

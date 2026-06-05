@@ -242,4 +242,74 @@ final class AdminDashboardTest extends CIUnitTestCase
 
         $this->assertSame(403, $result->response()->getStatusCode());
     }
+
+    // ------------------------------------------------------------------
+    // Story 2.1 — Configuration interface
+    // ------------------------------------------------------------------
+
+    public function testActiveOwnerDashboardShowsConfigurationActions(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse();
+
+        $result = $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => $ids['ownerId'],
+            'kermesse_id'               => $ids['kermesseId'],
+        ])->get('admin/kermesses/' . $ids['kermesseId']);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Kermesse de Test Admin', $body);
+        $this->assertStringContainsString('Inscriptions en préparation', $body);
+        $this->assertStringContainsString('Prévisualiser', $body);
+        $this->assertStringContainsString('Copier le lien', $body);
+        $this->assertStringContainsString('Ouvrir les inscriptions', $body);
+    }
+
+    public function testEmptyKermesseDashboardShowsAddStandEmptyState(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse();
+
+        $result = $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => $ids['ownerId'],
+            'kermesse_id'               => $ids['kermesseId'],
+        ])->get('admin/kermesses/' . $ids['kermesseId']);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Aucun stand pour le moment', $body);
+        $this->assertStringContainsString('Ajouter un stand', $body);
+    }
+
+    public function testOpeningBlockedMessageVisibleWithoutStandOrSlot(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse();
+
+        $result = $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => $ids['ownerId'],
+            'kermesse_id'               => $ids['kermesseId'],
+        ])->get('admin/kermesses/' . $ids['kermesseId']);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Ajoutez au moins un stand', $body);
+    }
+
+    public function testAdminDashboardDoesNotExposeFutureMutationRoutesForDisabledActions(): void
+    {
+        $ids = $this->insertActiveOwnerAndKermesse();
+
+        $result = $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => $ids['ownerId'],
+            'kermesse_id'               => $ids['kermesseId'],
+        ])->get('admin/kermesses/' . $ids['kermesseId']);
+
+        $body = $result->response()->getBody();
+        $this->assertStringNotContainsString('action="/admin/stands"', $body);
+        $this->assertStringNotContainsString('action="/admin/slots"', $body);
+        $this->assertStringNotContainsString('SELECT', $body);
+        $this->assertStringNotContainsString('.env', $body);
+        $this->assertStringNotContainsString('stack trace', strtolower($body));
+    }
 }
