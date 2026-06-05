@@ -25,23 +25,26 @@ jobs:
     environment: production
 
     env:
-      OUVATON_DEPLOY_HOST: ${{ secrets.OUVATON_DEPLOY_HOST }}
-      OUVATON_DEPLOY_USERNAME: ${{ secrets.OUVATON_DEPLOY_USERNAME }}
+      # --- Variables (non-sensitive configuration) ---
+      OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
+      OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
+      OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
+      KERMESSE_OUVATON_ROOT: ${{ vars.KERMESSE_OUVATON_ROOT }}
+      KERMESSE_PUBLIC_BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
+      KERMESSE_APP_TIMEZONE: ${{ vars.KERMESSE_APP_TIMEZONE }}
+      KERMESSE_DATABASE_HOSTNAME: ${{ vars.KERMESSE_DATABASE_HOSTNAME }}
+      KERMESSE_DATABASE_DATABASE: ${{ vars.KERMESSE_DATABASE_DATABASE }}
+      KERMESSE_DATABASE_USERNAME: ${{ vars.KERMESSE_DATABASE_USERNAME }}
+      KERMESSE_EMAIL_SMTP_HOST: ${{ vars.KERMESSE_EMAIL_SMTP_HOST }}
+      KERMESSE_EMAIL_SMTP_USER: ${{ vars.KERMESSE_EMAIL_SMTP_USER }}
+      KERMESSE_EMAIL_SMTP_PORT: ${{ vars.KERMESSE_EMAIL_SMTP_PORT }}
+      KERMESSE_EMAIL_SMTP_CRYPTO: ${{ vars.KERMESSE_EMAIL_SMTP_CRYPTO }}
+      KERMESSE_EMAIL_FROM_EMAIL: ${{ vars.KERMESSE_EMAIL_FROM_EMAIL }}
+      KERMESSE_EMAIL_FROM_NAME: ${{ vars.KERMESSE_EMAIL_FROM_NAME }}
+      # --- Secrets (sensitive credentials) ---
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
-      OUVATON_DEPLOY_REMOTE_PATH: ${{ secrets.OUVATON_DEPLOY_REMOTE_PATH }}
-      KERMESSE_PUBLIC_BASE_URL: ${{ secrets.KERMESSE_PUBLIC_BASE_URL }}
-      KERMESSE_APP_TIMEZONE: ${{ secrets.KERMESSE_APP_TIMEZONE }}
-      KERMESSE_SESSION_SAVE_PATH: ${{ secrets.KERMESSE_SESSION_SAVE_PATH }}
-      KERMESSE_DATABASE_HOSTNAME: ${{ secrets.KERMESSE_DATABASE_HOSTNAME }}
-      KERMESSE_DATABASE_DATABASE: ${{ secrets.KERMESSE_DATABASE_DATABASE }}
-      KERMESSE_DATABASE_USERNAME: ${{ secrets.KERMESSE_DATABASE_USERNAME }}
       KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}
-      KERMESSE_EMAIL_SMTP_HOST: ${{ secrets.KERMESSE_EMAIL_SMTP_HOST }}
-      KERMESSE_EMAIL_SMTP_USER: ${{ secrets.KERMESSE_EMAIL_SMTP_USER }}
       KERMESSE_EMAIL_SMTP_PASS: ${{ secrets.KERMESSE_EMAIL_SMTP_PASS }}
-      KERMESSE_EMAIL_SMTP_PORT: ${{ secrets.KERMESSE_EMAIL_SMTP_PORT }}
-      KERMESSE_EMAIL_SMTP_CRYPTO: ${{ secrets.KERMESSE_EMAIL_SMTP_CRYPTO }}
-      KERMESSE_EMAIL_FROM_EMAIL: ${{ secrets.KERMESSE_EMAIL_FROM_EMAIL }}
       KERMESSE_TOKEN_SECRET: ${{ secrets.KERMESSE_TOKEN_SECRET }}
       OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
       CONFIRM_FIRST_INSTALL_ENV: ${{ inputs.confirm_first_install_env }}
@@ -55,37 +58,47 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes lftp
 
-      - name: Generate .env.next from production secrets
+      - name: Generate .env.next from production variables and secrets
         shell: bash
         run: |
           set -euo pipefail
 
-          required_secrets=(
+          # Non-sensitive configuration — set as GitHub Actions Variables.
+          required_vars=(
             OUVATON_DEPLOY_HOST
             OUVATON_DEPLOY_USERNAME
-            OUVATON_DEPLOY_PASSWORD
-            OUVATON_DEPLOY_REMOTE_PATH
+            OUVATON_DEPLOY_REMOTE_FOLDER
+            KERMESSE_OUVATON_ROOT
             KERMESSE_PUBLIC_BASE_URL
-            KERMESSE_SESSION_SAVE_PATH
             KERMESSE_DATABASE_HOSTNAME
             KERMESSE_DATABASE_DATABASE
             KERMESSE_DATABASE_USERNAME
-            KERMESSE_DATABASE_PASSWORD
             KERMESSE_EMAIL_SMTP_HOST
             KERMESSE_EMAIL_SMTP_USER
-            KERMESSE_EMAIL_SMTP_PASS
             KERMESSE_EMAIL_FROM_EMAIL
+          )
+
+          # Sensitive credentials — set as GitHub Actions Secrets.
+          required_secrets=(
+            OUVATON_DEPLOY_PASSWORD
+            KERMESSE_DATABASE_PASSWORD
+            KERMESSE_EMAIL_SMTP_PASS
             KERMESSE_TOKEN_SECRET
             OPS_MIGRATION_HMAC_SECRET
           )
 
           missing=0
-          for secret_name in "${required_secrets[@]}"; do
-            secret_value="${!secret_name:-}"
-            secret_value_without_space="${secret_value//[[:space:]]/}"
-
-            if [ -z "${secret_value_without_space}" ]; then
-              echo "::error::Missing required production secret: ${secret_name}"
+          for name in "${required_vars[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              echo "::error::Missing required production variable: ${name}"
+              missing=1
+            fi
+          done
+          for name in "${required_secrets[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              echo "::error::Missing required production secret: ${name}"
               missing=1
             fi
           done
@@ -94,32 +107,28 @@ jobs:
             exit 1
           fi
 
-          reject_multiline_secret() {
+          reject_multiline_value() {
             local name="$1"
             local value="${!name:-}"
-
             if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
-              echo "::error::Production secret must be single-line: ${name}"
+              echo "::error::Production value must be single-line: ${name}"
               exit 1
             fi
           }
-
-          for secret_name in "${required_secrets[@]}" KERMESSE_APP_TIMEZONE; do
-            reject_multiline_secret "${secret_name}"
-          done
 
           reject_dotenv_nested_reference() {
             local name="$1"
             local value="${!name:-}"
-
             if [[ "${value}" =~ \$\{[A-Za-z0-9_.]+\} ]]; then
-              echo "::error::Production secret must not contain dotenv nested-variable syntax: ${name}"
+              echo "::error::Production value must not contain dotenv nested-variable syntax: ${name}"
               exit 1
             fi
           }
 
-          for secret_name in "${required_secrets[@]}" KERMESSE_APP_TIMEZONE; do
-            reject_dotenv_nested_reference "${secret_name}"
+          all_inputs=("${required_vars[@]}" "${required_secrets[@]}" KERMESSE_APP_TIMEZONE)
+          for name in "${all_inputs[@]}"; do
+            reject_multiline_value "${name}"
+            reject_dotenv_nested_reference "${name}"
           done
 
           if [ "${#KERMESSE_TOKEN_SECRET}" -lt 32 ]; then
@@ -151,7 +160,7 @@ jobs:
           umask 077
 
           {
-            printf '# Generated by GitHub Actions from the production environment secrets.\n'
+            printf '# Generated by GitHub Actions from the production environment variables and secrets.\n'
             printf '# Do not commit this file, upload it as an artifact, or print its contents.\n\n'
 
             write_raw CI_ENVIRONMENT production
@@ -175,7 +184,7 @@ jobs:
 
             printf '\n'
             write_quoted session.driver 'CodeIgniter\Session\Handlers\FileHandler'
-            write_quoted session.savePath "${KERMESSE_SESSION_SAVE_PATH}"
+            write_quoted session.savePath "${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/writable/session"
             write_quoted session.cookieName kermesse_session
             write_raw session.expiration 7200
             write_raw session.matchIP false
@@ -197,7 +206,7 @@ jobs:
             write_raw email.SMTPPort "${KERMESSE_EMAIL_SMTP_PORT:-587}"
             write_quoted email.SMTPCrypto "${KERMESSE_EMAIL_SMTP_CRYPTO:-tls}"
             write_quoted email.fromEmail "${KERMESSE_EMAIL_FROM_EMAIL}"
-            write_quoted email.fromName Kermesse
+            write_quoted email.fromName "${KERMESSE_EMAIL_FROM_NAME:-Kermesse}"
 
             printf '\n'
             write_quoted kermesse.tokenSecret "${KERMESSE_TOKEN_SECRET}"
@@ -216,7 +225,7 @@ jobs:
             write_quoted kermesse.deployTarget ouvaton
             write_quoted kermesse.deployProtocol ftps
             write_quoted kermesse.deployHost "${OUVATON_DEPLOY_HOST}"
-            write_quoted kermesse.deployRemotePath "${OUVATON_DEPLOY_REMOTE_PATH}"
+            write_quoted kermesse.deployRemotePath "${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}"
             write_raw kermesse.deployPreserveEnv true
           } > "${env_next}"
 
@@ -269,7 +278,7 @@ jobs:
               lftp_settings
               printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
               printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-              printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_PATH}")"
+              printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
               printf '%s\n' "${commands}"
               printf 'bye\n'
             } | lftp
