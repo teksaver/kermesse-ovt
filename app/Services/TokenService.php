@@ -340,7 +340,8 @@ class TokenService
             ->where('owner_id', $ownerId)
             ->where('token_type', 'owner_login')
             ->where('revoked_at', null)
-            ->where('used_at', null);
+            ->where('used_at', null)
+            ->where('expires_at >', $now);
 
         if ($exceptTokenId !== null) {
             $query = $query->where('id !=', $exceptTokenId);

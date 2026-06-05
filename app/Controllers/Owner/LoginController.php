@@ -72,7 +72,24 @@ class LoginController extends BaseController
     }
 
     /**
-     * Consume an owner_login token and create an admin session.
+     * Display the token confirmation page (prefetch-safe GET handler).
+     *
+     * Email clients and link-preview proxies may GET magic links speculatively.
+     * This handler returns a confirmation page with a POST form so the token is
+     * only consumed when the user explicitly clicks the button.
+     */
+    public function showLoginConfirm(string $rawToken): string
+    {
+        helper('form');
+
+        return view('owner/login_confirm', [
+            'rawToken' => $rawToken,
+            'loginUrl' => site_url('owner/login'),
+        ]);
+    }
+
+    /**
+     * Consume an owner_login token and create an admin session (POST handler).
      *
      * On success: regenerate session ID, set admin keys, redirect to admin dashboard.
      * On failure: purge any pre-existing admin session, render the login_result view.

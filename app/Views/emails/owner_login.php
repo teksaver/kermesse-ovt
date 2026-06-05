@@ -39,7 +39,7 @@ if ($safeLoginUrl === '' || ! in_array($loginScheme, ['http', 'https'], true)) {
         </p>
         <hr style="border:none; border-top:1px solid #CBD5E1; margin:24px 0;">
         <p style="margin:0; color:#475569; font-size:13px;">
-            Ce lien est valable 15 minutes. Si vous n'avez pas fait cette demande,
+            Ce lien est valable <?= (int) ($ttlMinutes ?? 15) ?> minutes. Si vous n'avez pas fait cette demande,
             vous pouvez ignorer cet email.
         </p>
     </td></tr>

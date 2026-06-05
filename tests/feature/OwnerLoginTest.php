@@ -171,7 +171,7 @@ final class OwnerLoginTest extends CIUnitTestCase
 
     public function testValidEmailAlwaysShowsNeutralConfirmation(): void
     {
-        // Valid email format, but no owner in DB → neutral message
+        // Valid email format, but no owner in DB → neutral message; no token or email_event created (AC4)
         $result = $this->post('owner/login', [
             'csrf_test_name' => csrf_hash(),
             'owner_email'    => 'nobody@unknown-domain.example',
@@ -182,6 +182,14 @@ final class OwnerLoginTest extends CIUnitTestCase
 
         // Must show neutral confirmation
         $this->assertStringContainsString('Vérifiez votre email', $body);
+
+        // Unknown email must not trigger token or email_event creation
+        $db         = db_connect();
+        $tokenCount = (int) $db->query('SELECT COUNT(*) AS cnt FROM db_access_tokens')->getRow()->cnt;
+        $this->assertSame(0, $tokenCount, 'Unknown email must not create any token');
+
+        $eventCount = (int) $db->query('SELECT COUNT(*) AS cnt FROM db_email_events')->getRow()->cnt;
+        $this->assertSame(0, $eventCount, 'Unknown email must not create any email_event');
     }
 
     public function testLoginConfirmationDoesNotRevealAccountExistence(): void
@@ -315,6 +323,14 @@ final class OwnerLoginTest extends CIUnitTestCase
             "SELECT id FROM db_access_tokens WHERE owner_id = {$ownerId} AND token_type = 'owner_validation' LIMIT 1"
         )->getRow();
         $this->assertNull($validationTokenRow, 'Active owner must not receive an owner_validation token');
+
+        // An email_events row with event_type = owner_login must be traced (AC1)
+        $emailEventRow = $db->query(
+            "SELECT id, event_type FROM db_email_events WHERE event_type = 'owner_login' LIMIT 1"
+        )->getRow();
+        $this->assertNotNull($emailEventRow,
+            'An email_events row with event_type=owner_login must be traced for active owner login');
+        $this->assertSame('owner_login', $emailEventRow->event_type);
     }
 
     public function testLoginPostWithoutCsrfIsRefused(): void

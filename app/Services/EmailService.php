@@ -102,6 +102,7 @@ class EmailService
                 'ownerName'    => $ownerName,
                 'kermesseName' => $kermesseName,
                 'loginUrl'     => $loginUrl,
+                'ttlMinutes'   => (int) round(config('Kermesse')->ownerLoginTokenTTL / 60),
             ]);
             $safeKermesseName = str_replace(["\r", "\n"], ' ', $kermesseName);
 

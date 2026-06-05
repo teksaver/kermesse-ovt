@@ -224,12 +224,16 @@ class OwnerLoginService
             $loginUrl,
         );
 
-        if ($emailResult->sent) {
-            // Email delivered — safe to revoke older links now that the user has a working one.
-            $this->tokenService->revokeActiveOwnerLoginTokens($ownerId, $newTokenId);
-        } else {
-            // Email failed — revoke only the undelivered token; old links stay usable.
-            $this->tokenService->revokeLoginToken($newTokenId);
+        try {
+            if ($emailResult->sent) {
+                // Email delivered — safe to revoke older active links now that the user has a working one.
+                $this->tokenService->revokeActiveOwnerLoginTokens($ownerId, $newTokenId);
+            } else {
+                // Email failed — revoke only the undelivered token; old links stay usable.
+                $this->tokenService->revokeLoginToken($newTokenId);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'OwnerLoginService: post-email cleanup failed: ' . $e->getMessage());
         }
 
         return new LoginRequestResult(LoginRequestResult::CHECK_EMAIL);

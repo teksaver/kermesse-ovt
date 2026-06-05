@@ -4,7 +4,11 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
 /**
- * Feature tests for GET /owner/login/{token} — owner login token consumption.
+ * Feature tests for GET /owner/login/{token} (confirmation page)
+ * and POST /owner/login/{token} (token consumption).
+ *
+ * GET shows a confirmation page so email-scanner prefetch does not consume the token.
+ * POST performs the actual consumption.
  *
  * @internal
  */
@@ -105,7 +109,53 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Success path
+    // GET — confirmation page (prefetch protection)
+    // ------------------------------------------------------------------
+
+    public function testGetTokenShowsConfirmationPage(): void
+    {
+        $result = $this->get('owner/login/some-valid-looking-token');
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('Se connecter', $body);
+    }
+
+    public function testGetConfirmationPageHasCsrfField(): void
+    {
+        $result = $this->get('owner/login/some-valid-looking-token');
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('csrf_test_name', $body,
+            'Confirmation page must contain CSRF field');
+    }
+
+    public function testGetConfirmationPageHasLinkBackToLoginForm(): void
+    {
+        $result = $this->get('owner/login/some-valid-looking-token');
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('owner/login', $body,
+            'Confirmation page must link back to the login form');
+    }
+
+    public function testGetRequestDoesNotConsumeToken(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+
+        $db  = db_connect();
+        $row = $db->query("SELECT used_at FROM db_access_tokens WHERE id = {$tokenId}")->getRow();
+        $this->assertNull($row->used_at,
+            'GET request must not consume the token (prefetch-scanner protection)');
+    }
+
+    // ------------------------------------------------------------------
+    // POST — success path
     // ------------------------------------------------------------------
 
     public function testValidTokenRedirectsToAdminDashboard(): void
@@ -114,7 +164,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
             $this->insertActiveOwnerWithKermesse();
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $result = $this->get('owner/login/' . $rawToken);
+        $result = $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertRedirectTo(site_url('admin/kermesses/' . $kermesseId));
     }
@@ -127,7 +179,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
             $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $this->get('owner/login/' . $rawToken);
+        $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $row = $db->query("SELECT used_at FROM db_access_tokens WHERE id = {$tokenId}")->getRow();
         $this->assertNotNull($row->used_at, 'Token must be marked used_at after successful consumption');
@@ -139,7 +193,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
             $this->insertActiveOwnerWithKermesse();
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $this->get('owner/login/' . $rawToken);
+        $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $this->assertTrue(session()->get('owner_admin_authenticated') === true,
             'owner_admin_authenticated must be true after successful consumption');
@@ -153,7 +209,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
             $this->insertActiveOwnerWithKermesse();
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $this->get('owner/login/' . $rawToken);
+        $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         /** @var \CodeIgniter\Test\Mock\MockSession $session */
         $session = session();
@@ -162,7 +220,7 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Token reuse prevention
+    // POST — token reuse prevention
     // ------------------------------------------------------------------
 
     public function testUsedTokenCannotBeReused(): void
@@ -172,10 +230,14 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
         // Consume the token a first time
-        $this->get('owner/login/' . $rawToken);
+        $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         // Try to reuse the same token
-        $result = $this->get('owner/login/' . $rawToken);
+        $result = $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
@@ -190,12 +252,16 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
         // Consume the token once (session created)
-        $this->get('owner/login/' . $rawToken);
+        $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         // Wipe session to simulate a fresh browser, then try again
         session()->destroy();
 
-        $result = $this->get('owner/login/' . $rawToken);
+        $result = $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         // After failed consumption the controller purges admin session keys
@@ -204,12 +270,14 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Invalid / expired / revoked token error pages
+    // POST — invalid / expired / revoked token error pages
     // ------------------------------------------------------------------
 
     public function testInvalidTokenShowsInvalidMicrocopy(): void
     {
-        $result = $this->get('owner/login/completely-unknown-token-that-does-not-exist');
+        $result = $this->post('owner/login/completely-unknown-token-that-does-not-exist', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
@@ -219,14 +287,15 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
 
     public function testExpiredTokenShowsExpiredMicrocopy(): void
     {
-        $db = db_connect();
         ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
             $this->insertActiveOwnerWithKermesse();
 
         // Insert an already-expired token (ttl = -1 means expires_at is in the past)
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email, -1);
 
-        $result = $this->get('owner/login/' . $rawToken);
+        $result = $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
@@ -244,7 +313,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         // Revoke the token manually
         $db->query("UPDATE db_access_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = {$tokenId}");
 
-        $result = $this->get('owner/login/' . $rawToken);
+        $result = $this->post('owner/login/' . $rawToken, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
@@ -252,7 +323,7 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Session purge on failure
+    // POST — session purge on failure
     // ------------------------------------------------------------------
 
     public function testFailedConsumptionPurgesAdminSessionKeys(): void
@@ -264,7 +335,9 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
             'kermesse_id'               => 888,
         ]);
 
-        $result = $this->get('owner/login/completely-invalid-token');
+        $result = $this->post('owner/login/completely-invalid-token', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $this->assertNotTrue(session()->get('owner_admin_authenticated'),
@@ -276,23 +349,32 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Security: no raw token in response body
+    // POST — security: no raw token or sensitive data in error response body
     // ------------------------------------------------------------------
 
     public function testInvalidTokenResponseDoesNotLeakSensitiveData(): void
     {
-        $result = $this->get('owner/login/some-token-value');
+        $tokenValue = 'some-token-value';
+
+        $result = $this->post('owner/login/' . $tokenValue, [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $body = $result->response()->getBody();
         $this->assertStringNotContainsString('SELECT', $body);
         $this->assertStringNotContainsString('stack trace', strtolower($body));
         $this->assertStringNotContainsString('.env', $body);
         $this->assertStringNotContainsString('token_hash', $body);
+        // Raw token value must not appear in the error result page body
+        $this->assertStringNotContainsString($tokenValue, $body,
+            'Raw token must not appear in the error response body');
     }
 
     public function testLoginResultPageLinksBackToLoginForm(): void
     {
-        $result = $this->get('owner/login/invalid-token-for-link-check');
+        $result = $this->post('owner/login/invalid-token-for-link-check', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
 
         $result->assertStatus(200);
         $body = $result->response()->getBody();
