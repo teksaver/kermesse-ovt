@@ -176,6 +176,21 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
             'Raw token must not appear in the HTML source of the confirmation page');
     }
 
+    public function testGetConfirmationStoresOnlyTokenIdInSession(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+
+        $this->assertNull(session()->get('pending_login_token'),
+            'Raw login token must never be stored in the session');
+        $this->assertSame($tokenId, (int) session()->get('pending_login_token_id'),
+            'Only the prevalidated token id may be stored in the session');
+    }
+
     public function testGetRequestDoesNotConsumeToken(): void
     {
         ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
@@ -189,6 +204,105 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
         $row = $db->query("SELECT used_at FROM db_access_tokens WHERE id = {$tokenId}")->getRow();
         $this->assertNull($row->used_at,
             'GET request must not consume the token (prefetch-scanner protection)');
+    }
+
+    public function testGetInvalidTokenDoesNotPurgeExistingAdminSession(): void
+    {
+        $this->withSession([
+            'owner_admin_authenticated' => true,
+            'owner_id'                  => 999,
+            'kermesse_id'               => 888,
+        ]);
+
+        $this->get('owner/login/completely-unknown-token');
+
+        $this->assertTrue(session()->get('owner_admin_authenticated') === true,
+            'GET error page must not mutate an existing admin session');
+        $this->assertSame(999, (int) session()->get('owner_id'));
+        $this->assertSame(888, (int) session()->get('kermesse_id'));
+    }
+
+    public function testGetInvalidTokenClearsPendingLoginState(): void
+    {
+        $this->withSession(['pending_login_token_id' => 123, 'pending_login_token' => 'raw-secret']);
+
+        $this->get('owner/login/completely-unknown-token');
+
+        $this->assertNull(session()->get('pending_login_token_id'),
+            'GET error page must clear any pending login token id');
+        $this->assertNull(session()->get('pending_login_token'),
+            'GET error page must clear legacy raw pending token state');
+    }
+
+    public function testValidGetThenInvalidGetPreventsConfirmingOldPendingToken(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->get('owner/login/' . $rawToken);
+        $this->get('owner/login/completely-unknown-token');
+
+        $result = $this->post('owner/login/confirm', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString("n'est plus valide", $body);
+        $this->assertNotTrue(session()->get('owner_admin_authenticated'),
+            'Old pending login state must not survive a later invalid GET');
+    }
+
+    public function testGetExpiredTokenShowsExpiredResultPage(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email, -1);
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('expiré', $body);
+        $this->assertStringNotContainsString('Se connecter', $body);
+        $this->assertStringContainsString('Demander un nouveau lien', $body);
+    }
+
+    public function testGetUsedTokenShowsUsedResultPage(): void
+    {
+        $db = db_connect();
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+        $db->query("UPDATE db_access_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = {$tokenId}");
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('déjà été utilisé', $body);
+        $this->assertStringNotContainsString('Se connecter', $body);
+        $this->assertStringContainsString('Demander un nouveau lien', $body);
+    }
+
+    public function testGetRevokedTokenShowsInvalidResultPage(): void
+    {
+        $db = db_connect();
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
+        ['rawToken' => $rawToken, 'tokenId' => $tokenId] =
+            $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+        $db->query("UPDATE db_access_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = {$tokenId}");
+
+        $result = $this->get('owner/login/' . $rawToken);
+
+        $result->assertStatus(200);
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString("n'est plus valide", $body);
+        $this->assertStringNotContainsString('Se connecter', $body);
+        $this->assertStringContainsString('Demander un nouveau lien', $body);
     }
 
     // ------------------------------------------------------------------
@@ -427,9 +541,29 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     {
         ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
             $this->insertActiveOwnerWithKermesse();
+        ['tokenId' => $tokenId] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+
+        $this->withSession(['pending_login_token_id' => $tokenId]);
+        $result = $this->post('owner/login/confirm', [
+            'csrf_test_name' => csrf_hash(),
+        ]);
+
+        $result->assertRedirectTo(site_url('admin/kermesses/' . $kermesseId));
+        $this->assertTrue(session()->get('owner_admin_authenticated') === true);
+    }
+
+    public function testGetPreparedTokenIdThenConfirmLoginSucceedsWithoutRawTokenInSession(): void
+    {
+        ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
+            $this->insertActiveOwnerWithKermesse();
         ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $this->withSession(['pending_login_token' => $rawToken]);
+        $this->get('owner/login/' . $rawToken);
+        $this->assertNull(session()->get('pending_login_token'));
+        $pendingTokenId = session()->get('pending_login_token_id');
+        $this->assertNotNull($pendingTokenId);
+
+        $this->withSession(['pending_login_token_id' => $pendingTokenId]);
         $result = $this->post('owner/login/confirm', [
             'csrf_test_name' => csrf_hash(),
         ]);
@@ -455,12 +589,14 @@ final class OwnerLoginConsumptionTest extends CIUnitTestCase
     {
         ['ownerId' => $ownerId, 'kermesseId' => $kermesseId, 'email' => $email] =
             $this->insertActiveOwnerWithKermesse();
-        ['rawToken' => $rawToken] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
+        ['tokenId' => $tokenId] = $this->insertOwnerLoginToken($ownerId, $kermesseId, $email);
 
-        $this->withSession(['pending_login_token' => $rawToken]);
+        $this->withSession(['pending_login_token_id' => $tokenId]);
         $this->post('owner/login/confirm', ['csrf_test_name' => csrf_hash()]);
 
+        $this->assertNull(session()->get('pending_login_token_id'),
+            'pending_login_token_id must be cleared from session after consumption');
         $this->assertNull(session()->get('pending_login_token'),
-            'pending_login_token must be cleared from session after consumption');
+            'legacy raw pending_login_token must be cleared from session after consumption');
     }
 }

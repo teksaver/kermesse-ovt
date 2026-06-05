@@ -583,6 +583,30 @@ final class TokenServiceTest extends CIUnitTestCase
         $this->assertTrue($result->isValid());
     }
 
+    public function testValidateOwnerLoginTokenByIdFiltersIdAndTokenType(): void
+    {
+        $capturedFilters = [];
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['first'])
+            ->getMock();
+        $mockModel->method('where')->willReturnCallback(
+            function (string $field, $value) use (&$capturedFilters, $mockModel) {
+                $capturedFilters[$field] = $value;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('first')->willReturn(null);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->validateOwnerLoginTokenById(44);
+
+        $this->assertSame(44, $capturedFilters['id']);
+        $this->assertSame('owner_login', $capturedFilters['token_type']);
+    }
+
     public function testMarkLoginTokenAsUsedSetsUsedAt(): void
     {
         $capturedData = null;

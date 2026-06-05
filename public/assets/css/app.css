@@ -275,6 +275,96 @@ p {
 	    color: var(--color-primary);
 }
 
+/* ----- Secondary button ----- */
+
+.btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-primary);
+    border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+    background: var(--color-muted-surface);
+}
+
+/* ----- Status badge variants ----- */
+
+.status-badge--open {
+    background: #EFF6FF;
+    border-color: #BFDBFE;
+    color: #1D4ED8;
+}
+
+.status-badge--closed {
+    background: var(--color-muted-surface);
+    border-color: var(--color-border);
+    color: var(--color-muted-text);
+}
+
+/* ----- Admin header ----- */
+
+.admin-header {
+    margin-bottom: 20px;
+}
+
+.admin-header .status-badge {
+    margin-top: 8px;
+}
+
+/* ----- Admin actions ----- */
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+    width: 100%;
+    overflow-wrap: break-word;
+}
+
+.admin-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* ----- Disabled action ----- */
+
+.disabled-action {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ----- Empty state ----- */
+
+.empty-state {
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-muted-surface);
+    padding: 32px 24px;
+    text-align: center;
+    margin-bottom: 24px;
+    width: 100%;
+    overflow-wrap: break-word;
+}
+
+.empty-state__title {
+    margin: 0 0 8px;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--color-text);
+    max-width: none;
+}
+
+.empty-state__text {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--color-muted-text);
+    max-width: 52ch;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 @media (min-width: 720px) {
     .app-shell {
         padding-top: 64px;
