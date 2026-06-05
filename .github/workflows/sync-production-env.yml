@@ -25,12 +25,10 @@ jobs:
     environment: production
 
     env:
-      OUVATON_DEPLOY_PROTOCOL: ${{ secrets.OUVATON_DEPLOY_PROTOCOL }}
       OUVATON_DEPLOY_HOST: ${{ secrets.OUVATON_DEPLOY_HOST }}
       OUVATON_DEPLOY_USERNAME: ${{ secrets.OUVATON_DEPLOY_USERNAME }}
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
       OUVATON_DEPLOY_REMOTE_PATH: ${{ secrets.OUVATON_DEPLOY_REMOTE_PATH }}
-      OUVATON_SFTP_KNOWN_HOSTS: ${{ secrets.OUVATON_SFTP_KNOWN_HOSTS }}
       KERMESSE_PUBLIC_BASE_URL: ${{ secrets.KERMESSE_PUBLIC_BASE_URL }}
       KERMESSE_APP_TIMEZONE: ${{ secrets.KERMESSE_APP_TIMEZONE }}
       KERMESSE_SESSION_SAVE_PATH: ${{ secrets.KERMESSE_SESSION_SAVE_PATH }}
@@ -38,14 +36,12 @@ jobs:
       KERMESSE_DATABASE_DATABASE: ${{ secrets.KERMESSE_DATABASE_DATABASE }}
       KERMESSE_DATABASE_USERNAME: ${{ secrets.KERMESSE_DATABASE_USERNAME }}
       KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}
-      KERMESSE_DATABASE_PORT: ${{ secrets.KERMESSE_DATABASE_PORT }}
       KERMESSE_EMAIL_SMTP_HOST: ${{ secrets.KERMESSE_EMAIL_SMTP_HOST }}
       KERMESSE_EMAIL_SMTP_USER: ${{ secrets.KERMESSE_EMAIL_SMTP_USER }}
       KERMESSE_EMAIL_SMTP_PASS: ${{ secrets.KERMESSE_EMAIL_SMTP_PASS }}
       KERMESSE_EMAIL_SMTP_PORT: ${{ secrets.KERMESSE_EMAIL_SMTP_PORT }}
       KERMESSE_EMAIL_SMTP_CRYPTO: ${{ secrets.KERMESSE_EMAIL_SMTP_CRYPTO }}
       KERMESSE_EMAIL_FROM_EMAIL: ${{ secrets.KERMESSE_EMAIL_FROM_EMAIL }}
-      KERMESSE_EMAIL_FROM_NAME: ${{ secrets.KERMESSE_EMAIL_FROM_NAME }}
       KERMESSE_TOKEN_SECRET: ${{ secrets.KERMESSE_TOKEN_SECRET }}
       OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
       CONFIRM_FIRST_INSTALL_ENV: ${{ inputs.confirm_first_install_env }}
@@ -65,7 +61,6 @@ jobs:
           set -euo pipefail
 
           required_secrets=(
-            OUVATON_DEPLOY_PROTOCOL
             OUVATON_DEPLOY_HOST
             OUVATON_DEPLOY_USERNAME
             OUVATON_DEPLOY_PASSWORD
@@ -76,14 +71,10 @@ jobs:
             KERMESSE_DATABASE_DATABASE
             KERMESSE_DATABASE_USERNAME
             KERMESSE_DATABASE_PASSWORD
-            KERMESSE_DATABASE_PORT
             KERMESSE_EMAIL_SMTP_HOST
             KERMESSE_EMAIL_SMTP_USER
             KERMESSE_EMAIL_SMTP_PASS
-            KERMESSE_EMAIL_SMTP_PORT
-            KERMESSE_EMAIL_SMTP_CRYPTO
             KERMESSE_EMAIL_FROM_EMAIL
-            KERMESSE_EMAIL_FROM_NAME
             KERMESSE_TOKEN_SECRET
             OPS_MIGRATION_HMAC_SECRET
           )
@@ -101,23 +92,6 @@ jobs:
 
           if [ "${missing}" -ne 0 ]; then
             exit 1
-          fi
-
-          case "${OUVATON_DEPLOY_PROTOCOL}" in
-            ftps|sftp) ;;
-            *)
-              echo "::error::OUVATON_DEPLOY_PROTOCOL must be ftps or sftp for production secret sync"
-              exit 1
-              ;;
-          esac
-
-          if [ "${OUVATON_DEPLOY_PROTOCOL}" = "sftp" ]; then
-            sftp_known_hosts_without_space="${OUVATON_SFTP_KNOWN_HOSTS//[[:space:]]/}"
-
-            if [ -z "${sftp_known_hosts_without_space}" ]; then
-              echo "::error::Missing required production secret for sftp: OUVATON_SFTP_KNOWN_HOSTS"
-              exit 1
-            fi
           fi
 
           reject_multiline_secret() {
@@ -147,16 +121,6 @@ jobs:
           for secret_name in "${required_secrets[@]}" KERMESSE_APP_TIMEZONE; do
             reject_dotenv_nested_reference "${secret_name}"
           done
-
-          if [[ ! "${KERMESSE_DATABASE_PORT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::KERMESSE_DATABASE_PORT must contain digits only"
-            exit 1
-          fi
-
-          if [[ ! "${KERMESSE_EMAIL_SMTP_PORT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::KERMESSE_EMAIL_SMTP_PORT must contain digits only"
-            exit 1
-          fi
 
           if [ "${#KERMESSE_TOKEN_SECRET}" -lt 32 ]; then
             echo "::error::KERMESSE_TOKEN_SECRET must be at least 32 characters"
@@ -205,7 +169,7 @@ jobs:
             write_quoted database.default.password "${KERMESSE_DATABASE_PASSWORD}"
             write_raw database.default.DBDriver MySQLi
             write_raw database.default.DBPrefix ''
-            write_raw database.default.port "${KERMESSE_DATABASE_PORT}"
+            write_raw database.default.port 3306
             write_raw database.default.charset utf8mb4
             write_raw database.default.DBCollat utf8mb4_general_ci
 
@@ -230,10 +194,10 @@ jobs:
             write_quoted email.SMTPHost "${KERMESSE_EMAIL_SMTP_HOST}"
             write_quoted email.SMTPUser "${KERMESSE_EMAIL_SMTP_USER}"
             write_quoted email.SMTPPass "${KERMESSE_EMAIL_SMTP_PASS}"
-            write_raw email.SMTPPort "${KERMESSE_EMAIL_SMTP_PORT}"
-            write_quoted email.SMTPCrypto "${KERMESSE_EMAIL_SMTP_CRYPTO}"
+            write_raw email.SMTPPort "${KERMESSE_EMAIL_SMTP_PORT:-587}"
+            write_quoted email.SMTPCrypto "${KERMESSE_EMAIL_SMTP_CRYPTO:-tls}"
             write_quoted email.fromEmail "${KERMESSE_EMAIL_FROM_EMAIL}"
-            write_quoted email.fromName "${KERMESSE_EMAIL_FROM_NAME}"
+            write_quoted email.fromName Kermesse
 
             printf '\n'
             write_quoted kermesse.tokenSecret "${KERMESSE_TOKEN_SECRET}"
@@ -250,7 +214,7 @@ jobs:
 
             printf '\n'
             write_quoted kermesse.deployTarget ouvaton
-            write_quoted kermesse.deployProtocol "${OUVATON_DEPLOY_PROTOCOL}"
+            write_quoted kermesse.deployProtocol ftps
             write_quoted kermesse.deployHost "${OUVATON_DEPLOY_HOST}"
             write_quoted kermesse.deployRemotePath "${OUVATON_DEPLOY_REMOTE_PATH}"
             write_raw kermesse.deployPreserveEnv true
@@ -268,7 +232,6 @@ jobs:
           local_backup="${RUNNER_TEMP}/.env.backup-${timestamp}"
           remote_backup=".env.backup-${timestamp}"
           remote_previous=".env.previous-${timestamp}"
-          known_hosts_file="${RUNNER_TEMP}/ouvaton_known_hosts"
           remote_candidate_uploaded=0
 
           cleanup_remote_candidate() {
@@ -277,16 +240,11 @@ jobs:
             fi
           }
 
-          trap 'cleanup_remote_candidate; rm -f "${env_next}" "${local_backup}" "${known_hosts_file}"' EXIT
+          trap 'cleanup_remote_candidate; rm -f "${env_next}" "${local_backup}"' EXIT
 
           if [ ! -s "${env_next}" ]; then
             echo "::error::.env.next was not generated"
             exit 1
-          fi
-
-          if [ "${OUVATON_DEPLOY_PROTOCOL}" = "sftp" ]; then
-            umask 077
-            printf '%s\n' "${OUVATON_SFTP_KNOWN_HOSTS}" > "${known_hosts_file}"
           fi
 
           lftp_quote() {
@@ -301,22 +259,15 @@ jobs:
             printf 'set net:max-retries 2\n'
             printf 'set net:timeout 30\n'
             printf 'set ssl:verify-certificate yes\n'
-
-            if [ "${OUVATON_DEPLOY_PROTOCOL}" = "ftps" ]; then
-              printf 'set ftp:ssl-force yes\n'
-              printf 'set ftp:ssl-protect-data yes\n'
-            fi
-
-            if [ "${OUVATON_DEPLOY_PROTOCOL}" = "sftp" ]; then
-              printf 'set sftp:connect-program %s\n' "$(lftp_quote "ssh -a -x -o BatchMode=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${known_hosts_file}")"
-            fi
+            printf 'set ftp:ssl-force yes\n'
+            printf 'set ftp:ssl-protect-data yes\n'
           }
 
           run_lftp() {
             local commands="$1"
             {
               lftp_settings
-              printf 'open %s\n' "$(lftp_quote "${OUVATON_DEPLOY_PROTOCOL}://${OUVATON_DEPLOY_HOST}")"
+              printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
               printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
               printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_PATH}")"
               printf '%s\n' "${commands}"

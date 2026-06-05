@@ -91,29 +91,27 @@ Configurer ces secrets dans l'environnement GitHub `production` :
 
 | Secret | Description |
 |--------|-------------|
-| `OUVATON_DEPLOY_PROTOCOL` | Protocole de transfert pour secrets : `ftps` ou `sftp`. `ftp` est refusé pour le `.env` |
-| `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton |
+| `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (FTPS) |
 | `OUVATON_DEPLOY_USERNAME` | Nom d'utilisateur du compte Ouvaton |
-| `OUVATON_DEPLOY_PASSWORD` | Mot de passe du compte Ouvaton. Les clés SSH privées ne sont pas prises en charge par ce workflow |
+| `OUVATON_DEPLOY_PASSWORD` | Mot de passe du compte Ouvaton |
 | `OUVATON_DEPLOY_REMOTE_PATH` | Chemin distant contenant le `.env` CodeIgniter (ex. `/www/kermesse`) |
-| `OUVATON_SFTP_KNOWN_HOSTS` | Requis si `OUVATON_DEPLOY_PROTOCOL=sftp` ; ligne `known_hosts` attendue pour vérifier l'hôte SSH |
 | `KERMESSE_PUBLIC_BASE_URL` | URL publique canonique de l'application |
-| `KERMESSE_APP_TIMEZONE` | Optionnel ; timezone applicative. Défaut workflow : `Europe/Paris` |
+| `KERMESSE_APP_TIMEZONE` | Optionnel ; timezone applicative. Défaut : `Europe/Paris` |
 | `KERMESSE_SESSION_SAVE_PATH` | Chemin absolu du dossier de sessions sur Ouvaton |
 | `KERMESSE_DATABASE_HOSTNAME` | Hôte MariaDB Ouvaton |
 | `KERMESSE_DATABASE_DATABASE` | Nom de la base MariaDB |
 | `KERMESSE_DATABASE_USERNAME` | Utilisateur MariaDB |
 | `KERMESSE_DATABASE_PASSWORD` | Mot de passe MariaDB |
-| `KERMESSE_DATABASE_PORT` | Port MariaDB |
 | `KERMESSE_EMAIL_SMTP_HOST` | Hôte SMTP |
 | `KERMESSE_EMAIL_SMTP_USER` | Utilisateur SMTP |
 | `KERMESSE_EMAIL_SMTP_PASS` | Mot de passe SMTP |
-| `KERMESSE_EMAIL_SMTP_PORT` | Port SMTP |
-| `KERMESSE_EMAIL_SMTP_CRYPTO` | Chiffrement SMTP (`tls`, `ssl` ou valeur attendue par CodeIgniter) |
+| `KERMESSE_EMAIL_SMTP_PORT` | Optionnel ; port SMTP. Défaut : `587` |
+| `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
 | `KERMESSE_EMAIL_FROM_EMAIL` | Adresse expéditrice |
-| `KERMESSE_EMAIL_FROM_NAME` | Nom expéditeur |
 | `KERMESSE_TOKEN_SECRET` | Secret applicatif de 32 octets minimum |
 | `OPS_MIGRATION_HMAC_SECRET` | Secret HMAC du runner de migrations ops |
+
+Valeurs fixées par le workflow (pas de secret à configurer) : protocole FTPS, port MariaDB 3306, nom expéditeur `Kermesse`.
 
 ## Configurer les secrets GitHub — guide pas-à-pas
 
@@ -129,40 +127,33 @@ Ordre recommandé pour une première installation :
 
 | Priorité | Secret | Exemple / format |
 |----------|--------|-----------------|
-| 1 | `OUVATON_DEPLOY_PROTOCOL` | `ftps` ou `sftp` |
-| 2 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
-| 3 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
-| 4 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTP/SFTP Ouvaton |
-| 5 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
-| 6 | `OUVATON_SFTP_KNOWN_HOSTS` | Uniquement si `sftp` — ligne `known_hosts` au format `host ssh-rsa AAAA…` |
+| 1 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
+| 2 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
+| 3 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTPS Ouvaton |
+| 4 | `OUVATON_DEPLOY_REMOTE_PATH` | `/www/kermesse` |
 
-Pour obtenir la ligne `OUVATON_SFTP_KNOWN_HOSTS`, exécuter depuis un poste local :
-```bash
-ssh-keyscan -H <nom-hote-ouvaton>
-```
-Copier la ligne complète dans le secret.
+Le protocole FTPS est fixé en dur dans le workflow — aucun secret `OUVATON_DEPLOY_PROTOCOL` à configurer.
 
 **Secrets applicatifs (configuration `.env` production)**
 
 | Priorité | Secret | Exemple / format |
 |----------|--------|-----------------|
-| 7 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
-| 8 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
-| 9 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
-| 10 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
-| 11 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
-| 12 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
-| 13 | `KERMESSE_DATABASE_PORT` | `3306` |
-| 14 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP de votre fournisseur d'email |
-| 15 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
-| 16 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
-| 17 | `KERMESSE_EMAIL_SMTP_PORT` | `587` (TLS) ou `465` (SSL) |
-| 18 | `KERMESSE_EMAIL_SMTP_CRYPTO` | `tls` ou `ssl` |
-| 19 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
-| 20 | `KERMESSE_EMAIL_FROM_NAME` | `Kermesse` |
-| 21 | `KERMESSE_TOKEN_SECRET` | chaîne aléatoire de 32 octets minimum — générer avec `openssl rand -hex 32` |
-| 22 | `OPS_MIGRATION_HMAC_SECRET` | chaîne aléatoire de 32 octets minimum — générer avec `openssl rand -hex 32` |
-| 23 | `KERMESSE_APP_TIMEZONE` | `Europe/Paris` (optionnel, c'est le défaut) |
+| 5 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
+| 6 | `KERMESSE_SESSION_SAVE_PATH` | `/home/moncompte/kermesse/writable/session` |
+| 7 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
+| 8 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
+| 9 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
+| 10 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
+| 11 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP de votre fournisseur d'email |
+| 12 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
+| 13 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
+| 14 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
+| 15 | `KERMESSE_TOKEN_SECRET` | générer avec `openssl rand -hex 32` |
+| 16 | `OPS_MIGRATION_HMAC_SECRET` | générer avec `openssl rand -hex 32` |
+
+Valeurs fixes (pas de secret à créer) : port MariaDB `3306`, port SMTP `587`, crypto SMTP `tls`, nom expéditeur `Kermesse`.
+
+Overrides optionnels : `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`, `KERMESSE_APP_TIMEZONE` — uniquement si votre fournisseur SMTP ou timezone diffère des défauts.
 
 Générer les deux secrets aléatoires en une commande :
 ```bash
@@ -172,7 +163,7 @@ echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 
 **Vérification**
 
-Après saisie de tous les secrets, ouvrir **Settings → Environments → production** et vérifier que les 22 secrets (ou 23 avec `KERMESSE_APP_TIMEZONE`) sont listés. Aucun secret ne doit afficher une valeur vide.
+Après saisie de tous les secrets, ouvrir **Settings → Environments → production** et vérifier que les 16 secrets requis sont listés. Aucun ne doit afficher une valeur vide.
 
 Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 
@@ -244,23 +235,15 @@ Sur le serveur, les sous-dossiers `writable/` doivent être **accessibles en éc
 
 ## Protocole de transfert
 
-**⚠️ Le protocole exact dépend du compte Ouvaton et reste à confirmer.**
+Le workflow utilise **FTPS** (FTP over TLS) via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
 
-Le workflow de synchronisation du `.env` utilise `lftp`, mais il refuse FTP car le fichier contient des secrets. La valeur `OUVATON_DEPLOY_PROTOCOL` doit être `ftps` ou `sftp`.
+Le workflow de déploiement applicatif est structuré avec un job `deploy` désactivé (`if: false`). Pour l'activer :
 
-Pour SFTP, configurer `OUVATON_SFTP_KNOWN_HOSTS` avec la ligne `known_hosts` exacte du serveur Ouvaton. Le workflow n'accepte pas automatiquement les clés hôtes inconnues.
+1. Configurer les secrets GitHub Actions `OUVATON_DEPLOY_*` dans l'environnement `production`
+2. Remplacer le placeholder `Deploy to Ouvaton` par une vraie étape de transfert FTPS qui échoue en cas d'erreur
+3. Retirer la condition `if: false` du job `deploy`
 
-Le workflow de déploiement est structuré avec un job `deploy` désactivé (`if: false`). Pour l'activer :
-
-1. Confirmer le protocole disponible sur le compte Ouvaton
-2. Configurer les secrets GitHub Actions correspondants
-3. Remplacer le placeholder `Deploy to Ouvaton` par une vraie étape de transfert qui échoue en cas d'erreur
-4. Retirer la condition `if: false` du job `deploy`
-5. Adapter l'étape de transfert selon le protocole :
-   - FTPS : `lftp` ou une action de transfert fichier compatible
-   - SFTP : transfert fichier SFTP uniquement, sans shell distant ni `rsync`
-
-Le workflow de déploiement refuse les refs autres que `main` et vérifie qu'un run CI réussi existe pour le SHA à déployer. Cela évite de packager ou migrer la production depuis une branche de travail.
+Le workflow refuse les refs autres que `main` et vérifie qu'un run CI réussi existe pour le SHA à déployer. Cela évite de packager ou migrer la production depuis une branche de travail.
 
 ## Version PHP
 
