@@ -47,11 +47,23 @@ final class AdminDashboardTest extends CIUnitTestCase
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_stands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT \'active\',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_owners');
         $db->query('DELETE FROM db_kermesses');
         parent::tearDown();
@@ -277,8 +289,9 @@ final class AdminDashboardTest extends CIUnitTestCase
         ])->get('admin/kermesses/' . $ids['kermesseId']);
 
         $body = $result->response()->getBody();
+        // Story 2.2: placeholder replaced by real add-stand form
         $this->assertStringContainsString('Aucun stand pour le moment', $body);
-        $this->assertStringContainsString('Ajouter un stand', $body);
+        $this->assertStringContainsString('Ajouter le stand', $body);
     }
 
     public function testOpeningBlockedMessageVisibleWithoutStandOrSlot(): void
