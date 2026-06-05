@@ -118,6 +118,8 @@ Après déploiement de l'artefact applicatif, l'étape post-deploy appelle `POST
 
 Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
 
+En cas de certificat de production temporairement invalide, la variable GitHub `KERMESSE_ALLOW_INSECURE_TLS=true` autorise uniquement l'étape post-déploiement à appeler `/ops/migrate` avec `curl --insecure`. Retirer cette variable dès que le certificat couvre correctement l'hôte public.
+
 **Ne jamais** :
 - Logger le secret HMAC, la signature, le nonce brut ou le token
 - Exposer le détail d'un refus HMAC dans une réponse HTTP

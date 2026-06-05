@@ -121,6 +121,7 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | `KERMESSE_EMAIL_FROM_NAME` | Optionnel ; nom d'expéditeur. Défaut : `Kermesse` |
 | `KERMESSE_EMAIL_SMTP_PORT` | Optionnel ; port SMTP. Défaut : `587` |
 | `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
+| `KERMESSE_ALLOW_INSECURE_TLS` | Optionnel ; `true` autorise temporairement l'appel post-déploiement `/ops/migrate` avec vérification TLS désactivée |
 
 ### Secrets à configurer (`Settings → Environments → production → Secrets`)
 
@@ -159,6 +160,8 @@ Toutes les entrées sont à configurer dans l'**environnement GitHub `production
 | 11 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
 
 Variables optionnelles (défauts appliqués si absentes) : `KERMESSE_APP_TIMEZONE` (`Europe/Paris`), `KERMESSE_EMAIL_SMTP_PORT` (`587`), `KERMESSE_EMAIL_SMTP_CRYPTO` (`tls`).
+
+Variable de secours temporaire : `KERMESSE_ALLOW_INSECURE_TLS=true` permet au workflow de terminer l'étape post-déploiement même si le certificat HTTPS ne correspond pas au nom d'hôte. Ne l'activer que le temps de corriger le certificat, puis supprimer la variable ou la remettre à `false`.
 
 **Étape B — Secrets** (`Add secret` dans l'environnement `production`)
 
@@ -268,5 +271,7 @@ Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA2
 Après chaque déploiement applicatif, une étape post-deploy doit appeler cette route pour appliquer les migrations SQL en attente sur la MariaDB managée Ouvaton déjà configurée. Voir `docs/migration-runner.md` pour le contrat complet (en-têtes, payload signé, codes de réponse, verrouillage).
 
 Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
+
+Si le certificat de production est temporairement invalide, définir la variable d'environnement GitHub `KERMESSE_ALLOW_INSECURE_TLS=true` pour que le `curl` post-déploiement utilise `--insecure`. Ce mode conserve HTTPS et la signature HMAC, mais désactive la validation du certificat : il doit rester strictement temporaire.
 
 Les fichiers SQL de migrations sont inclus dans l'artefact (`database/migrations_sql/`).

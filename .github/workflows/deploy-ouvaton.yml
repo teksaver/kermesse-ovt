@@ -211,6 +211,7 @@ jobs:
       - name: Run post-deploy migrations
         env:
           BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
+          ALLOW_INSECURE_TLS: ${{ vars.KERMESSE_ALLOW_INSECURE_TLS }}
           OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail
@@ -237,7 +238,13 @@ jobs:
           PAYLOAD="$(printf '%s\n%s\nPOST\nops/migrate\n%s' "$TIMESTAMP" "$NONCE" "$BODY_HASH")"
           SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
 
-          curl -fsS -X POST "${BASE_URL%/}/ops/migrate" \
+          CURL_TLS_ARGS=()
+          if [ "${ALLOW_INSECURE_TLS:-false}" = "true" ]; then
+            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true: skipping TLS certificate verification for post-deploy migrations. Remove this once the production certificate is fixed."
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          curl -fsS "${CURL_TLS_ARGS[@]}" -X POST "${BASE_URL%/}/ops/migrate" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
             -H "X-Kermesse-Nonce: ${NONCE}" \
