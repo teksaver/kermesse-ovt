@@ -28,6 +28,7 @@ $routes->get('admin/kermesses/(:num)', '\App\Controllers\Admin\DashboardControll
 // Admin stands — state-changing routes, CSRF active
 $routes->post('admin/kermesses/(:num)/stands', '\App\Controllers\Admin\StandController::create/$1');
 $routes->post('admin/kermesses/(:num)/stands/(:num)', '\App\Controllers\Admin\StandController::update/$1/$2');
+$routes->post('admin/kermesses/(:num)/stands/(:num)/delete', '\App\Controllers\Admin\StandController::delete/$1/$2');
 
 // Ops endpoints — protected by HMAC authentication, CSRF excluded
 $routes->post('ops/migrate', '\App\Controllers\Ops\MigrationController::migrate', ['filter' => 'ops-auth']);
