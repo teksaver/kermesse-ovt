@@ -60,10 +60,12 @@ Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement g
 
 | Variable | Valeur typique | Contenu déployé |
 |----------|---------------|-----------------|
-| `OUVATON_DEPLOY_REMOTE_PATH` | `kermesse` | `app/`, `vendor/`, `writable/`, `database/`, `public/`, `.env` |
-| `OUVATON_HTTPDOCS_PATH` | `httpdocs` | `index.php` (shim), `.htaccess`, `robots.txt`, `assets/` |
+| `OUVATON_DEPLOY_REMOTE_FOLDER` | `kermesse` | `app/`, `vendor/`, `writable/`, `database/`, `public/`, `.env` |
+| `OUVATON_HTTPDOCS_FOLDER` | `httpdocs` | `index.php` (shim), `.htaccess`, `robots.txt`, `assets/` |
 
-**Format attendu : chemin relatif depuis la racine FTP.** Le serveur FTP Ouvaton est chroot dans le répertoire home du compte — la racine FTP `/` *est* le home. Utiliser `kermesse` et `httpdocs` (sans slash initial, sans chemin filesystem absolu comme `/var/www/vhosts/...`).
+`OUVATON_DEPLOY_REMOTE_FOLDER` et `OUVATON_HTTPDOCS_FOLDER` sont des **noms de dossier**, passés tels quels à `lftp cd`. Le FTP Ouvaton est chroot dans le home du compte — pas de chemin absolu du filesystem.
+
+`KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/padlapin.fr`). Il n'est pas utilisé par lftp mais permet de dériver automatiquement `session.savePath` dans le `.env` généré : `${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/writable/session`.
 
 Le `index.php` déposé dans `httpdocs/` est un shim généré par le workflow qui définit `ROOTPATH=../kermesse/` et `FCPATH=httpdocs/`, puis charge le bootstrap CodeIgniter. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
 
@@ -105,10 +107,10 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 |----------|-------------|
 | `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (FTPS) |
 | `OUVATON_DEPLOY_USERNAME` | Nom d'utilisateur du compte Ouvaton |
-| `OUVATON_DEPLOY_REMOTE_PATH` | Répertoire applicatif, chemin relatif depuis racine FTP (ex. `kermesse`) |
-| `OUVATON_HTTPDOCS_PATH` | Web root Ouvaton, chemin relatif depuis racine FTP (ex. `httpdocs`) |
+| `OUVATON_DEPLOY_REMOTE_FOLDER` | Nom du dossier applicatif depuis racine FTP (ex. `kermesse`) |
+| `OUVATON_HTTPDOCS_FOLDER` | Nom du dossier web root depuis racine FTP (ex. `httpdocs`) |
+| `KERMESSE_OUVATON_ROOT` | Chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/padlapin.fr`) |
 | `KERMESSE_PUBLIC_BASE_URL` | URL publique canonique de l'application |
-| `KERMESSE_SESSION_SAVE_PATH` | Chemin absolu du dossier de sessions sur Ouvaton |
 | `KERMESSE_DATABASE_HOSTNAME` | Hôte MariaDB Ouvaton |
 | `KERMESSE_DATABASE_DATABASE` | Nom de la base MariaDB |
 | `KERMESSE_DATABASE_USERNAME` | Utilisateur MariaDB |
@@ -144,10 +146,10 @@ Toutes les entrées sont à configurer dans l'**environnement GitHub `production
 |---|----------|---------|
 | 1 | `OUVATON_DEPLOY_HOST` | `ftp.ouvaton.coop` |
 | 2 | `OUVATON_DEPLOY_USERNAME` | `moncompte` |
-| 3 | `OUVATON_DEPLOY_REMOTE_PATH` | `kermesse` |
-| 4 | `OUVATON_HTTPDOCS_PATH` | `httpdocs` |
+| 3 | `OUVATON_DEPLOY_REMOTE_FOLDER` | `kermesse` |
+| 4 | `OUVATON_HTTPDOCS_FOLDER` | `httpdocs` |
 | 4 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
-| 5 | `KERMESSE_SESSION_SAVE_PATH` | chemin absolu filesystem (ex. `/var/www/vhosts/padlapin.fr/kermesse/writable/session`) — lu par PHP au runtime, pas par lftp |
+| 5 | `KERMESSE_OUVATON_ROOT` | chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/padlapin.fr`) — dérive automatiquement `session.savePath` |
 | 6 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
 | 7 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
 | 8 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
@@ -173,7 +175,7 @@ echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 3 optionnels si nécessaire). Aucun ne doit être vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 3 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
 
 Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 

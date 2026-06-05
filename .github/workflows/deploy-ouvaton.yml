@@ -105,8 +105,8 @@ jobs:
       # Variables (non-sensitive)
       OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
       OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
-      OUVATON_DEPLOY_REMOTE_PATH: ${{ vars.OUVATON_DEPLOY_REMOTE_PATH }}
-      OUVATON_HTTPDOCS_PATH: ${{ vars.OUVATON_HTTPDOCS_PATH }}
+      OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
+      OUVATON_HTTPDOCS_FOLDER: ${{ vars.OUVATON_HTTPDOCS_FOLDER }}
       # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
 
@@ -150,7 +150,7 @@ jobs:
             printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'lcd deploy-staging\n'
-            printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_PATH}")"
+            printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
             printf 'mirror --reverse --delete --no-empty-dirs --exclude "^\\.env" --exclude "^writable/"\n'
             printf 'bye\n'
           } | lftp
@@ -159,14 +159,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "${OUVATON_HTTPDOCS_PATH:-}" ]; then
-            echo "::error::OUVATON_HTTPDOCS_PATH variable is required."
+          if [ -z "${OUVATON_HTTPDOCS_FOLDER:-}" ]; then
+            echo "::error::OUVATON_HTTPDOCS_FOLDER variable is required."
             exit 1
           fi
 
-          # Derive the app directory name from OUVATON_DEPLOY_REMOTE_PATH so the
-          # generated shim uses the correct relative path (../kermesse → ROOTPATH).
-          KERMESSE_DIRNAME=$(basename "${OUVATON_DEPLOY_REMOTE_PATH}")
+          KERMESSE_DIRNAME="${OUVATON_DEPLOY_REMOTE_FOLDER}"
 
           # Generate the httpdocs/index.php shim that bootstraps CodeIgniter from
           # the sibling app directory. FCPATH = httpdocs/, ROOTPATH = ../kermesse/.
@@ -208,7 +206,7 @@ EOF
             printf 'set ftp:ssl-protect-data yes\n'
             printf 'open %s\n' "$(lftp_quote "ftps://${OUVATON_DEPLOY_HOST}")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-            printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_PATH}")"
+            printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
             printf 'put /tmp/httpdocs-index.php -o index.php\n'
             printf 'put deploy-staging/public/.htaccess -o .htaccess\n'
             if [ -f deploy-staging/public/robots.txt ]; then
