@@ -88,7 +88,7 @@ class LoginController extends BaseController
         $peek    = $service->prevalidateLoginToken($rawToken);
 
         if (! $peek->isSuccess()) {
-            session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
+            session()->remove(['pending_login_token', 'pending_login_token_id']);
 
             return view('owner/login_result', [
                 'status'   => $peek->status,
@@ -96,8 +96,10 @@ class LoginController extends BaseController
             ]);
         }
 
-        // Store the raw token server-side; the confirmation view must not embed it in HTML.
-        session()->set('pending_login_token', $rawToken);
+        $session = session();
+        $session->regenerate(true);
+        $session->remove('pending_login_token');
+        $session->set('pending_login_token_id', $peek->tokenId);
 
         return view('owner/login_confirm', [
             'loginUrl' => site_url('owner/login'),
@@ -112,10 +114,10 @@ class LoginController extends BaseController
      */
     public function confirmLogin(): mixed
     {
-        $rawToken = session()->get('pending_login_token');
-        session()->remove('pending_login_token');
+        $tokenId = session()->get('pending_login_token_id');
+        session()->remove(['pending_login_token', 'pending_login_token_id']);
 
-        if ($rawToken === null || ! is_string($rawToken)) {
+        if ($tokenId === null || ! is_numeric($tokenId)) {
             session()->remove(['owner_id', 'kermesse_id', 'owner_admin_authenticated']);
 
             return view('owner/login_result', [
@@ -125,7 +127,7 @@ class LoginController extends BaseController
         }
 
         $service = new OwnerSessionService();
-        $outcome = $service->consumeLoginToken($rawToken);
+        $outcome = $service->consumePrevalidatedLoginToken((int) $tokenId);
 
         if ($outcome->isSuccess()) {
             $session = session();

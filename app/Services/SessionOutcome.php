@@ -18,6 +18,7 @@ class SessionOutcome
         public readonly string $status,
         public readonly ?int $ownerId = null,
         public readonly ?int $kermesseId = null,
+        public readonly ?int $tokenId = null,
     ) {}
 
     public function isSuccess(): bool

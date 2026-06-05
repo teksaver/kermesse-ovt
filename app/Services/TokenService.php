@@ -243,6 +243,24 @@ class TokenService
             ->where('token_type', 'owner_login')
             ->first();
 
+        return $this->validateOwnerLoginTokenRow($token);
+    }
+
+    public function validateOwnerLoginTokenById(int $tokenId): TokenValidationResult
+    {
+        $token = $this->tokenModel
+            ->where('id', $tokenId)
+            ->where('token_type', 'owner_login')
+            ->first();
+
+        return $this->validateOwnerLoginTokenRow($token);
+    }
+
+    /**
+     * @param array<string, mixed>|null $token
+     */
+    private function validateOwnerLoginTokenRow(?array $token): TokenValidationResult
+    {
         if ($token === null) {
             return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN);
         }

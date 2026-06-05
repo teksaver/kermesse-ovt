@@ -58,7 +58,7 @@ class OwnerSessionService
             return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
         }
 
-        return new SessionOutcome(SessionOutcome::SUCCESS);
+        return new SessionOutcome(SessionOutcome::SUCCESS, $ownerId, $kermesseId, (int) $tokenRow['id']);
     }
 
     /**
@@ -77,26 +77,16 @@ class OwnerSessionService
             return new SessionOutcome($result->status);
         }
 
-        $tokenRow   = $result->tokenRow;
-        $ownerId    = (int) $tokenRow['owner_id'];
-        $kermesseId = (int) $tokenRow['kermesse_id'];
-        $tokenId    = (int) $tokenRow['id'];
+        return $this->claimLoginToken((int) $result->tokenRow['id']);
+    }
 
-        // Owner must still be active at consumption time.
-        $owner = $this->ownerModel->find($ownerId);
-        if ($owner === null || $owner['status'] !== 'active') {
-            return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
-        }
+    public function consumePrevalidatedLoginToken(int $tokenId): SessionOutcome
+    {
+        return $this->claimLoginToken($tokenId);
+    }
 
-        // Kermesse must still belong to this owner (scope check).
-        $kermesse = $this->kermesseModel
-            ->where('id', $kermesseId)
-            ->where('owner_id', $ownerId)
-            ->first();
-        if ($kermesse === null) {
-            return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
-        }
-
+    private function claimLoginToken(int $tokenId): SessionOutcome
+    {
         /** @var \CodeIgniter\Database\BaseConnection $db */
         $db = \Config\Database::connect();
         $db->transException(true);
@@ -104,11 +94,44 @@ class OwnerSessionService
         try {
             $db->transBegin();
 
+            $result = $this->tokenService->validateOwnerLoginTokenById($tokenId);
+            if (! $result->isValid()) {
+                $db->transRollback();
+
+                return new SessionOutcome($result->status);
+            }
+
+            $tokenRow   = $result->tokenRow;
+            $ownerId    = (int) $tokenRow['owner_id'];
+            $kermesseId = (int) $tokenRow['kermesse_id'];
+
+            $this->lockOwnerRowForUpdate($db, $ownerId);
+            $this->lockKermesseRowForUpdate($db, $kermesseId);
+
+            // Owner must still be active at consumption time.
+            $owner = $this->ownerModel->find($ownerId);
+            if ($owner === null || $owner['status'] !== 'active') {
+                $db->transRollback();
+
+                return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
+            }
+
+            // Kermesse must still belong to this owner (scope check).
+            $kermesse = $this->kermesseModel
+                ->where('id', $kermesseId)
+                ->where('owner_id', $ownerId)
+                ->first();
+            if ($kermesse === null) {
+                $db->transRollback();
+
+                return new SessionOutcome(SessionOutcome::INVALID_TOKEN);
+            }
+
             $marked = $this->tokenService->markLoginTokenAsUsed($tokenId);
             if (! $marked) {
                 // Concurrent claim — re-validate to return precise status (used/expired/revoked).
                 $db->transRollback();
-                $recheck = $this->tokenService->validateOwnerLoginToken($rawToken);
+                $recheck = $this->tokenService->validateOwnerLoginTokenById($tokenId);
 
                 return new SessionOutcome($recheck->isValid() ? SessionOutcome::ERROR : $recheck->status);
             }
@@ -122,5 +145,33 @@ class OwnerSessionService
         }
 
         return new SessionOutcome(SessionOutcome::SUCCESS, $ownerId, $kermesseId);
+    }
+
+    private function lockOwnerRowForUpdate(\CodeIgniter\Database\BaseConnection $db, int $ownerId): void
+    {
+        if ($db->DBDriver !== 'MySQLi') {
+            return;
+        }
+
+        $table  = $db->protectIdentifiers($db->prefixTable('owners'));
+        $result = $db->query("SELECT id FROM {$table} WHERE id = ? FOR UPDATE", [$ownerId]);
+
+        if ($result === false) {
+            throw new \RuntimeException('Owner row lock failed');
+        }
+    }
+
+    private function lockKermesseRowForUpdate(\CodeIgniter\Database\BaseConnection $db, int $kermesseId): void
+    {
+        if ($db->DBDriver !== 'MySQLi') {
+            return;
+        }
+
+        $table  = $db->protectIdentifiers($db->prefixTable('kermesses'));
+        $result = $db->query("SELECT id FROM {$table} WHERE id = ? FOR UPDATE", [$kermesseId]);
+
+        if ($result === false) {
+            throw new \RuntimeException('Kermesse row lock failed');
+        }
     }
 }

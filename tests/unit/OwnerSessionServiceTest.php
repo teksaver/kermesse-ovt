@@ -62,6 +62,16 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
         );
     }
 
+    private function buildValidatingTokenService(TokenValidationResult $result, bool $markUsed = true): TokenService
+    {
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('validateOwnerLoginToken')->willReturn($result);
+        $tokenService->method('validateOwnerLoginTokenById')->willReturn($result);
+        $tokenService->method('markLoginTokenAsUsed')->willReturn($markUsed);
+
+        return $tokenService;
+    }
+
     // ------------------------------------------------------------------
     // Invalid token statuses — no DB or owner/kermesse checks needed
     // ------------------------------------------------------------------
@@ -132,9 +142,7 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
 
     public function testOwnerNotFoundReturnsInvalidToken(): void
     {
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2));
 
         $ownerModel = $this->buildMockOwnerModel(null);
 
@@ -145,9 +153,7 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
 
     public function testOwnerPendingReturnsInvalidToken(): void
     {
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2));
 
         $ownerModel = $this->buildMockOwnerModel(['id' => 1, 'status' => 'owner_pending']);
 
@@ -158,9 +164,7 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
 
     public function testKermesseNotBelongingToOwnerReturnsInvalidToken(): void
     {
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2));
 
         $ownerModel    = $this->buildMockOwnerModel(['id' => 1, 'status' => 'active']);
         $kermesseModel = $this->buildMockKermesseModel(null); // ownership check fails
@@ -177,10 +181,7 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
 
     public function testValidTokenActiveOwnerCorrectKermesseReturnsSuccess(): void
     {
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
-        $tokenService->method('markLoginTokenAsUsed')->willReturn(true);
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2));
 
         $ownerModel    = $this->buildMockOwnerModel(['id' => 1, 'status' => 'active']);
         $kermesseModel = $this->buildMockKermesseModel(['id' => 2, 'owner_id' => 1]);
@@ -196,10 +197,7 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
 
     public function testMarkTokenAsUsedFailureReturnsError(): void
     {
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
-        $tokenService->method('markLoginTokenAsUsed')->willReturn(false);
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2), false);
 
         $ownerModel    = $this->buildMockOwnerModel(['id' => 1, 'status' => 'active']);
         $kermesseModel = $this->buildMockKermesseModel(['id' => 2, 'owner_id' => 1]);
@@ -227,15 +225,42 @@ final class OwnerSessionServiceTest extends CIUnitTestCase
         $ownerModel->expects($this->never())->method('update');
         $ownerModel->expects($this->never())->method('save');
 
-        $tokenService = $this->createMock(TokenService::class);
-        $tokenService->method('validateOwnerLoginToken')
-                     ->willReturn($this->buildValidTokenResult(10, 1, 2));
-        $tokenService->method('markLoginTokenAsUsed')->willReturn(true);
+        $tokenService = $this->buildValidatingTokenService($this->buildValidTokenResult(10, 1, 2));
 
         $kermesseModel = $this->buildMockKermesseModel(['id' => 2, 'owner_id' => 1]);
 
         $service = new OwnerSessionService($tokenService, $ownerModel, $kermesseModel);
         $outcome = $service->consumeLoginToken('valid-token');
+
+        $this->assertSame(SessionOutcome::SUCCESS, $outcome->status);
+    }
+
+    public function testPrevalidateReturnsTokenIdWithoutConsuming(): void
+    {
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->method('validateOwnerLoginToken')
+                     ->willReturn($this->buildValidTokenResult(44, 1, 2));
+        $tokenService->expects($this->never())->method('markLoginTokenAsUsed');
+
+        $service = $this->buildService($tokenService);
+        $outcome = $service->prevalidateLoginToken('valid-token');
+
+        $this->assertSame(SessionOutcome::SUCCESS, $outcome->status);
+        $this->assertSame(44, $outcome->tokenId);
+    }
+
+    public function testConsumePrevalidatedLoginTokenUsesTokenIdLookup(): void
+    {
+        $tokenService = $this->createMock(TokenService::class);
+        $tokenService->expects($this->never())->method('validateOwnerLoginToken');
+        $tokenService->expects($this->once())
+                     ->method('validateOwnerLoginTokenById')
+                     ->with(44)
+                     ->willReturn($this->buildValidTokenResult(44, 1, 2));
+        $tokenService->method('markLoginTokenAsUsed')->willReturn(true);
+
+        $service = $this->buildService($tokenService);
+        $outcome = $service->consumePrevalidatedLoginToken(44);
 
         $this->assertSame(SessionOutcome::SUCCESS, $outcome->status);
     }
