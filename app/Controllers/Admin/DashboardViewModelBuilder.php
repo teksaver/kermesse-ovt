@@ -4,6 +4,7 @@ namespace App\Controllers\Admin;
 
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Services\KermesseLifecycleService;
 use App\Services\StandDeletionService;
 
 /**
@@ -47,6 +48,20 @@ class DashboardViewModelBuilder
         // Attach active slots to each stand
         $this->attachSlots($stands, $deletionService);
 
+        // Publishability uses the same active-stand/active-slot definition as
+        // KermesseLifecycleService::canOpen, derived here from already-loaded data
+        // to avoid a second round of queries.
+        $canOpenSignups = false;
+        foreach ($stands as $stand) {
+            if (! empty($stand['hasSlots'])) {
+                $canOpenSignups = true;
+                break;
+            }
+        }
+
+        $kermesseId = (int) $kermesse['id'];
+        $publicSlug = (string) ($kermesse['public_slug'] ?? '');
+
         $defaults = [
             'kermesse'         => $kermesse,
             'statusLabel'      => $statusInfo['label'],
@@ -54,7 +69,14 @@ class DashboardViewModelBuilder
             'stands'           => $stands,
             'hasStands'        => count($stands) > 0,
             'isOpen'           => $status === 'open',
-            'disabledReason'   => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
+            'canOpenSignups'   => $canOpenSignups,
+            'disabledReason'   => KermesseLifecycleService::REASON_NOT_PUBLISHABLE,
+            'lifecycleError'   => null,
+            // Prepared lifecycle / sharing URLs (no business logic in the view)
+            'openActionUrl'    => site_url("admin/kermesses/{$kermesseId}/open"),
+            'closeActionUrl'   => site_url("admin/kermesses/{$kermesseId}/close"),
+            'previewUrl'       => site_url("admin/kermesses/{$kermesseId}/preview"),
+            'publicVolunteerUrl' => site_url("k/{$publicSlug}"),
             // Stand form state
             'standErrors'      => [],
             'standInputName'   => '',

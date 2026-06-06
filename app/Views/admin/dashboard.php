@@ -21,21 +21,41 @@
         </div>
 
         <div class="admin-actions" aria-label="Actions de la kermesse">
-            <button type="button" class="btn btn-secondary disabled-action" disabled>
+            <a href="<?= esc($previewUrl) ?>" class="btn btn-secondary">
                 Prévisualiser
-            </button>
-            <button type="button" class="btn btn-secondary disabled-action" disabled>
-                Copier le lien
-            </button>
+            </a>
             <?php if ($isOpen): ?>
-            <button type="button" class="btn btn-secondary disabled-action" disabled>
-                Fermer les inscriptions
-            </button>
+            <form method="post" action="<?= esc($closeActionUrl) ?>" class="admin-action-form">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-secondary">Fermer les inscriptions</button>
+            </form>
+            <?php elseif ($canOpenSignups): ?>
+            <form method="post" action="<?= esc($openActionUrl) ?>" class="admin-action-form">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-primary">Ouvrir les inscriptions</button>
+            </form>
             <?php else: ?>
             <button type="button" class="btn btn-secondary disabled-action" disabled title="<?= esc($disabledReason) ?>">
                 Ouvrir les inscriptions
             </button>
             <?php endif; ?>
+        </div>
+
+        <!-- Public volunteer link: visible for manual copy without JS; the copy
+             button is a progressive enhancement revealed by app.js. -->
+        <div class="admin-share" aria-label="Lien public bénévole">
+            <label for="public-volunteer-link">Lien public bénévole</label>
+            <div class="admin-share__row">
+                <input type="text" id="public-volunteer-link" class="admin-share__input"
+                       value="<?= esc($publicVolunteerUrl) ?>" readonly
+                       data-copy-source onclick="this.select()">
+                <button type="button" class="btn btn-secondary admin-share__copy"
+                        data-copy-button data-copy-target="public-volunteer-link"
+                        data-copy-success="Lien copié." hidden>
+                    Copier le lien
+                </button>
+            </div>
+            <p class="admin-share__feedback" role="status" aria-live="polite" data-copy-feedback hidden></p>
         </div>
 
         <?php if (! empty($flashSuccess)): ?>
@@ -44,7 +64,13 @@
         </div>
         <?php endif; ?>
 
-        <?php if (! $hasStands && ! $isOpen): ?>
+        <?php if (! empty($lifecycleError)): ?>
+        <div class="info-box info-box--error info-box--spaced" role="alert">
+            <p><?= esc($lifecycleError) ?></p>
+        </div>
+        <?php endif; ?>
+
+        <?php if (! $canOpenSignups && ! $isOpen && empty($lifecycleError)): ?>
         <div class="info-box info-box--spaced" role="note">
             <p><?= esc($disabledReason) ?></p>
         </div>
