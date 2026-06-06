@@ -45,11 +45,11 @@ HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
 BASE_URL="http://localhost:8080"
 
 TIMESTAMP=$(date +%s)
-NONCE=$(uuidgen)
+NONCE=$(php -r "echo bin2hex(random_bytes(16));")
 BODY='{}'
-BODY_HASH=$(echo -n "$BODY" | sha256sum | cut -d' ' -f1)
+BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
 PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/migrate\n${BODY_HASH}"
-SIGNATURE=$(echo -ne "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
 
 curl -s -X POST "${BASE_URL}/ops/migrate" \
   -H "Content-Type: application/json" \
@@ -75,11 +75,11 @@ HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
 BASE_URL="http://localhost:8080"
 
 TIMESTAMP=$(date +%s)
-NONCE=$(uuidgen)
+NONCE=$(php -r "echo bin2hex(random_bytes(16));")
 BODY=''
-BODY_HASH=$(echo -n "$BODY" | sha256sum | cut -d' ' -f1)
+BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
 PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/probe\n${BODY_HASH}"
-SIGNATURE=$(echo -ne "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
 
 curl -s -X POST "${BASE_URL}/ops/probe" \
   -H "Content-Type: application/json" \

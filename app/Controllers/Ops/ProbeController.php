@@ -27,7 +27,7 @@ class ProbeController extends BaseController
 
         // Feature gate. Runs only after OpsAuthFilter has authenticated the call,
         // so an unauthenticated caller never learns whether the probe is enabled.
-        if ($config->opsProbeEnabled !== true) {
+        if (!$config->opsProbeEnabled) {
             return $this->response
                 ->setStatusCode(403)
                 ->setJSON(['error' => 'probe_disabled']);
@@ -56,8 +56,8 @@ class ProbeController extends BaseController
                 ]);
         } catch (\Throwable $e) {
             // Log server-side only; never leak SQL, stack traces, paths or secrets.
-            log_message('critical', 'ProbeController: unhandled error: {message}', [
-                'message' => $e->getMessage(),
+            log_message('critical', 'ProbeController: unhandled error: {exception}', [
+                'exception' => (string) $e,
             ]);
 
             return $this->response
