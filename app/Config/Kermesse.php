@@ -38,6 +38,13 @@ class Kermesse extends BaseConfig
     public string $opsMigrationPath = '';
 
     // -----------------------------------------------------------------
+    // Ops probe
+    // -----------------------------------------------------------------
+
+    /** Enable POST /ops/probe. Disabled by default; enable locally via docker-compose or .env. */
+    public bool $opsProbeEnabled = false;
+
+    // -----------------------------------------------------------------
     // Tokens
     // -----------------------------------------------------------------
 

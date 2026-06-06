@@ -28,6 +28,8 @@ services:
       kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
       kermesse.opsMigrationHmacSecret: local_dev_ops_secret_32_bytes_minimum
       kermesse.opsMigrationProductionOnly: "false"
+      # Local-only: enable the runtime probe to measure the container runtime.
+      kermesse.opsProbeEnabled: "true"
     volumes:
       - .:/var/www/html
       # Limites runtime Ouvaton chargées en dernier (préfixe zz-) pour écraser les défauts.

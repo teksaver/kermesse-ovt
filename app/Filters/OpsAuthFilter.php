@@ -153,8 +153,16 @@ class OpsAuthFilter implements FilterInterface
     ): bool {
         /** @var \CodeIgniter\HTTP\IncomingRequest $request */
         $method    = strtoupper($request->getMethod());
-        $routePath = 'ops/migrate'; // Stable route path, independent of base URL
-        $bodyHash  = hash('sha256', (string) $request->getBody());
+        $routePath = trim($request->getPath(), '/');
+
+        // Strip index.php front-controller prefix so the signed path stays the
+        // logical route ('ops/probe', 'ops/migrate') regardless of how Apache
+        // exposes the URI — prevents historical signature breakage.
+        if (stripos($routePath, 'index.php') === 0) {
+            $routePath = ltrim(substr($routePath, 9), '/');
+        }
+
+        $bodyHash = hash('sha256', (string) $request->getBody());
 
         $payload = implode("\n", [$timestamp, $nonce, $method, $routePath, $bodyHash]);
 
