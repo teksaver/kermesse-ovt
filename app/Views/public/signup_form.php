@@ -36,68 +36,78 @@
             </dl>
         </div>
 
-        <?php if (count($errors) >= 2): ?>
-        <div class="form-error-summary" role="alert" aria-label="Erreurs du formulaire">
-            <p>Veuillez corriger les erreurs suivantes :</p>
-            <ul>
-                <?php foreach ($errors as $error): ?>
-                <li><?= esc($error) ?></li>
-                <?php endforeach; ?>
-            </ul>
-        </div>
-        <?php endif; ?>
+
 
         <form method="post"
-            action="<?= site_url('k/' . esc($summary['publicSlug'], 'attr') . '/slots/' . esc($summary['slotId'], 'attr') . '/signup') ?>"
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>"
             novalidate>
             <?= csrf_field() ?>
 
-            <div class="form-group<?= isset($errors['first_name']) ? ' form-group--error' : '' ?>">
+            <?php $hasFirstNameError = isset($errors['first_name']); ?>
+            <div class="form-group<?= $hasFirstNameError ? ' form-group--error' : '' ?>">
                 <label for="first_name">Prénom <span aria-hidden="true">*</span></label>
                 <input id="first_name" type="text" name="first_name"
                     value="<?= esc($fields['first_name'] ?? '') ?>"
                     placeholder="Ex : Marie"
                     autocomplete="given-name"
+                    <?= $hasFirstNameError ? 'aria-invalid="true" aria-describedby="first_name-error"' : '' ?>
                     required>
-                <?php if (isset($errors['first_name'])): ?>
-                <p class="field-error" role="alert"><?= esc($errors['first_name']) ?></p>
+                <?php if ($hasFirstNameError): ?>
+                <p id="first_name-error" class="field-error" role="alert"><?= esc($errors['first_name']) ?></p>
                 <?php endif; ?>
             </div>
 
-            <div class="form-group<?= isset($errors['last_name']) ? ' form-group--error' : '' ?>">
+            <?php $hasLastNameError = isset($errors['last_name']); ?>
+            <div class="form-group<?= $hasLastNameError ? ' form-group--error' : '' ?>">
                 <label for="last_name">Nom <span aria-hidden="true">*</span></label>
                 <input id="last_name" type="text" name="last_name"
                     value="<?= esc($fields['last_name'] ?? '') ?>"
                     placeholder="Ex : Dupont"
                     autocomplete="family-name"
+                    <?= $hasLastNameError ? 'aria-invalid="true" aria-describedby="last_name-error"' : '' ?>
                     required>
-                <?php if (isset($errors['last_name'])): ?>
-                <p class="field-error" role="alert"><?= esc($errors['last_name']) ?></p>
+                <?php if ($hasLastNameError): ?>
+                <p id="last_name-error" class="field-error" role="alert"><?= esc($errors['last_name']) ?></p>
                 <?php endif; ?>
             </div>
 
-            <div class="form-group<?= isset($errors['email']) ? ' form-group--error' : '' ?>">
+            <?php $hasEmailError = isset($errors['email']); ?>
+            <div class="form-group<?= $hasEmailError ? ' form-group--error' : '' ?>">
                 <label for="email">Email <span aria-hidden="true">*</span></label>
                 <input id="email" type="email" name="email"
                     value="<?= esc($fields['email'] ?? '') ?>"
                     placeholder="Ex : marie@exemple.fr"
                     autocomplete="email"
+                    <?= $hasEmailError ? 'aria-invalid="true" aria-describedby="email-error"' : '' ?>
                     required>
-                <?php if (isset($errors['email'])): ?>
-                <p class="field-error" role="alert"><?= esc($errors['email']) ?></p>
+                <?php if ($hasEmailError): ?>
+                <p id="email-error" class="field-error" role="alert"><?= esc($errors['email']) ?></p>
                 <?php endif; ?>
             </div>
 
-            <div class="form-group<?= isset($errors['phone']) ? ' form-group--error' : '' ?>">
+            <?php $hasPhoneError = isset($errors['phone']); ?>
+            <div class="form-group<?= $hasPhoneError ? ' form-group--error' : '' ?>">
                 <label for="phone">Téléphone <span class="signup-optional">(facultatif)</span></label>
                 <input id="phone" type="tel" name="phone"
                     value="<?= esc($fields['phone'] ?? '') ?>"
                     placeholder="Ex : 06 12 34 56 78"
-                    autocomplete="tel">
-                <?php if (isset($errors['phone'])): ?>
-                <p class="field-error" role="alert"><?= esc($errors['phone']) ?></p>
+                    autocomplete="tel"
+                    <?= $hasPhoneError ? 'aria-invalid="true" aria-describedby="phone-error"' : '' ?>>
+                <?php if ($hasPhoneError): ?>
+                <p id="phone-error" class="field-error" role="alert"><?= esc($errors['phone']) ?></p>
                 <?php endif; ?>
             </div>
+
+            <?php if (count($errors) >= 2): ?>
+            <div class="form-error-summary" role="alert" aria-label="Erreurs du formulaire">
+                <p>Veuillez corriger les erreurs suivantes :</p>
+                <ul>
+                    <?php foreach ($errors as $error): ?>
+                    <li><?= esc($error) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">S'inscrire</button>

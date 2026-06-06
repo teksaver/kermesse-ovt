@@ -64,7 +64,7 @@ class SignupController extends BaseController
             'first_name' => 'required|max_length[100]',
             'last_name'  => 'required|max_length[100]',
             'email'      => 'required|valid_email|max_length[254]',
-            'phone'      => 'permit_empty|max_length[30]|regex_match[/^[0-9\+\-\(\)\s]+$/]',
+            'phone'      => 'permit_empty|max_length[30]|regex_match[/^(?=.*[0-9])[0-9\+\-\(\)\s]+$/]',
         ];
 
         $validation = service('validation');

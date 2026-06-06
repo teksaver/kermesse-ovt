@@ -22,8 +22,7 @@ $standName  = $standName ?? '';
 ?>
 <?php if (! $isFull && $signupHref): ?>
 <a href="<?= esc($signupHref) ?>"
-    class="slot-row slot-row--public slot-row--available"
-    aria-label="S'inscrire : <?= esc($slot['displayTime']) ?> - <?= esc($standName) ?>">
+    class="slot-row slot-row--public slot-row--available">
     <div class="slot-row__info">
         <span class="slot-row__time"><?= esc($slot['displayTime']) ?></span>
         <span class="slot-row__capacity">
