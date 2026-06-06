@@ -28,7 +28,7 @@ Où :
 - `timestamp` : la valeur de `X-Kermesse-Timestamp` (chaîne)
 - `nonce` : la valeur de `X-Kermesse-Nonce` (chaîne)
 - `method` : `POST` (majuscules)
-- `routePath` : `ops/migrate` (toujours stable, pas de base URL)
+- `routePath` : le chemin de la route ops appelée, normalisé sans slash de tête ni base URL (`ops/migrate`, et à terme `ops/activate`, `ops/migrate/status`, `ops/probe`). Le filtre le dérive de l'URI de la requête et retire un éventuel segment `index.php/` de tête, de sorte que chaque route ops signe son propre chemin et qu'un message signé pour une route ne puisse être rejoué sur une autre.
 - `sha256(rawBody)` : SHA-256 hex du corps brut de la requête
 
 Le secret partagé est la valeur de `kermesse.opsMigrationHmacSecret` dans le `.env` de production.
@@ -50,6 +50,8 @@ curl -X POST "${BASE_URL}/ops/migrate" \
   -H "X-Kermesse-Signature: ${SIGNATURE}" \
   -d "$BODY"
 ```
+
+> Note : les futures routes ops (`ops/activate`, `ops/migrate/status`, `ops/probe`) signent exactement de la même manière, en remplaçant `ops/migrate` par leur propre `routePath` dans le payload.
 
 ## Validations de sécurité
 
