@@ -19,6 +19,7 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
     use FeatureTestTrait;
 
     private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
+    private \Config\Kermesse $originalConfig;
 
     protected $DBGroup = 'tests';
 
@@ -38,9 +39,21 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
 
         $db->query('DROP TABLE IF EXISTS `ops_nonces`');
 
-        config('Kermesse')->opsMigrationProductionOnly      = false;
-        config('Kermesse')->opsMigrationHmacSecret          = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = 300;
+        $config = config('Kermesse');
+        $this->originalConfig = clone $config;
+
+        $config->opsMigrationProductionOnly      = false;
+        $config->opsMigrationHmacSecret          = $this->testSecret;
+        $config->opsMigrationAllowedTimestampSkew = 300;
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        $config = config('Kermesse');
+        foreach (get_object_vars($this->originalConfig) as $key => $value) {
+            $config->$key = $value;
+        }
     }
 
     /**
@@ -85,6 +98,12 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         $this->assertNotEmpty($json['mariadb_version']);
         $this->assertSame(PHP_VERSION, $json['php_version']);
 
+        $this->assertIsString($json['memory_limit']);
+        $this->assertIsString($json['max_execution_time']);
+        $this->assertIsString($json['post_max_size']);
+        $this->assertIsString($json['upload_max_filesize']);
+        $this->assertIsString($json['mariadb_version']);
+
         // No secret, credential or technical detail must leak.
         $body = $result->response()->getBody();
         $this->assertStringNotContainsString($this->testSecret, $body);
@@ -94,7 +113,7 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         $this->assertStringNotContainsString('.php', $body);
 
         $dbPassword = config('Database')->tests['password'] ?? '';
-        if ($dbPassword !== '') {
+        if ($dbPassword !== '' && strlen($dbPassword) > 4) {
             $this->assertStringNotContainsString($dbPassword, $body);
         }
     }

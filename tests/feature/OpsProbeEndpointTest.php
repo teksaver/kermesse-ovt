@@ -19,16 +19,30 @@ final class OpsProbeEndpointTest extends CIUnitTestCase
 
     private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
 
+    private \Config\Kermesse $originalConfig;
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        config('Kermesse')->opsMigrationProductionOnly = false;
-        config('Kermesse')->opsMigrationHmacSecret     = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = 300;
+        $config = config('Kermesse');
+        $this->originalConfig = clone $config;
+
+        $config->opsMigrationProductionOnly = false;
+        $config->opsMigrationHmacSecret     = $this->testSecret;
+        $config->opsMigrationAllowedTimestampSkew = 300;
         // Probe enabled so any rejection is proven to come from the HMAC filter,
         // not from the feature gate.
-        config('Kermesse')->opsProbeEnabled = true;
+        $config->opsProbeEnabled = true;
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        $config = config('Kermesse');
+        foreach (get_object_vars($this->originalConfig) as $key => $value) {
+            $config->$key = $value;
+        }
     }
 
     public function testMissingHmacIsRejectedAsUnauthorized(): void
