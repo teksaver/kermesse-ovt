@@ -27,10 +27,6 @@ Sur `push` vers `main` ou `pull_request` ciblant `main`, la CI produit aussi l'a
 
 Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
 
-
-
-Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
-
 1. Checkout, setup PHP, validation Composer, tests
 2. Exécution de `scripts/package-deploy-artifact.sh`
 3. Publication de l'archive `kermesse-deploy.zip` comme artefact GitHub (14 jours)
@@ -232,8 +228,7 @@ Le workflow utilise **SFTP** (SSH File Transfer Protocol) sur le port 115 via `l
 Le transfert utilise `lftp` en deux étapes :
 
 1. **Amorçage de `writable/`** (`mirror --reverse writable writable`, **sans** `--delete`) : dépose l'arborescence `writable/` et ses fichiers garde (`.htaccess`, `index.html`) pour que le dossier existe sur le serveur. CodeIgniter refuse de démarrer (« The WRITEPATH is not set correctly ») si ce dossier est absent. L'absence de `--delete` garantit que les fichiers runtime écrits par l'app (logs, sessions, cache, uploads) ne sont jamais supprimés.
-2. **Synchronisation du reste** (`mirror --reverse --delete`) : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Deux exclusions garantissent la sécurité :
-   - `^\.env` — le `.env` de production et ses backups ne sont jamais touchés
+2. **Synchronisation du reste** (`mirror --reverse --delete`) : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Une exclusion garantit la sécurité :
    - `^writable/` — déjà traité à l'étape 1 ; exclu ici pour préserver les fichiers runtime
 
 Le `.env` généré à la volée est désormais inclus par le mirror.
