@@ -53,6 +53,8 @@ curl -X POST "${BASE_URL}/ops/migrate" \
 
 > Note : les futures routes ops (`ops/activate`, `ops/migrate/status`, `ops/probe`) signent exactement de la même manière, en remplaçant `ops/migrate` par leur propre `routePath` dans le payload.
 
+> Sonde runtime `ops/probe` : la route de mesure `POST /ops/probe` passe le même `OpsAuthFilter` et signe son propre `routePath` (`ops/probe`). Elle reste désactivable via le drapeau `kermesse.opsProbeEnabled` (défaut `false`) ; même avec un HMAC valide, elle répond `403 {"error":"probe_disabled"}` tant que le drapeau n'est pas activé.
+
 ## Validations de sécurité
 
 L'`OpsAuthFilter` vérifie dans cet ordre :
