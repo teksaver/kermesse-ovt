@@ -147,10 +147,15 @@ jobs:
 
           # Mirror local artifact to Ouvaton over SFTP (SSH File Transfer Protocol,
           # port 115 per Ouvaton hosting requirements).
-          # --delete removes remote files not present locally (clean deploys).
-          # .env* excluded from deletion to preserve the production .env managed
-          # by sync-production-env.yml. writable/ excluded to preserve runtime
-          # files written by the app (logs, sessions, cache, uploads).
+          # Two-step mirror:
+          #   1. Seed writable/ WITHOUT --delete so the directory tree and its
+          #      guard files (.htaccess, index.html) exist on the server.
+          #      CodeIgniter refuses to boot ("The WRITEPATH is not set correctly")
+          #      when this directory is missing. No --delete here so app-written
+          #      runtime files (logs, sessions, cache, uploads) are never wiped.
+          #   2. Mirror the rest with --delete for clean deploys. writable/ stays
+          #      excluded (already handled in step 1) and .env* is preserved
+          #      (production .env is managed by sync-production-env.yml).
           {
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
@@ -160,6 +165,7 @@ jobs:
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'lcd deploy-staging\n'
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
+            printf 'mirror --reverse --no-empty-dirs writable writable\n'
             printf 'mirror --reverse --delete --no-empty-dirs --exclude "^\\.env" --exclude "^writable/"\n'
             printf 'bye\n'
           } | lftp
