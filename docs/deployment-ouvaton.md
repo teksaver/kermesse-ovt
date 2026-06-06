@@ -105,7 +105,7 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 
 | Variable | Description |
 |----------|-------------|
-| `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (FTPS) |
+| `OUVATON_DEPLOY_HOST` | Nom d'hôte du serveur Ouvaton (SFTP) |
 | `OUVATON_DEPLOY_USERNAME` | Nom d'utilisateur du compte Ouvaton |
 | `OUVATON_DEPLOY_REMOTE_FOLDER` | Nom du dossier applicatif depuis racine FTP (ex. `kermesse`) |
 | `OUVATON_HTTPDOCS_FOLDER` | Nom du dossier web root depuis racine FTP (ex. `httpdocs`) |
@@ -167,7 +167,7 @@ Variable de secours temporaire : `KERMESSE_ALLOW_INSECURE_TLS=true` permet au wo
 
 | # | Secret | Comment |
 |---|--------|---------|
-| 1 | `OUVATON_DEPLOY_PASSWORD` | mot de passe FTPS Ouvaton |
+| 1 | `OUVATON_DEPLOY_PASSWORD` | mot de passe SFTP Ouvaton |
 | 2 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
 | 3 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
 | 4 | `KERMESSE_TOKEN_SECRET` | `openssl rand -hex 32` |
@@ -251,11 +251,11 @@ Sur le serveur, les sous-dossiers `writable/` doivent être **accessibles en éc
 
 ## Protocole de transfert
 
-Le workflow utilise **FTPS** (FTP over TLS) via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
+Le workflow utilise **SFTP** (SSH File Transfer Protocol) sur le port 115 via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
 
 Le transfert utilise `lftp` en deux étapes :
 
-1. **Amorçage de `writable/`** (`mirror --reverse --no-empty-dirs writable writable`, **sans** `--delete`) : dépose l'arborescence `writable/` et ses fichiers garde (`.htaccess`, `index.html`) pour que le dossier existe sur le serveur. CodeIgniter refuse de démarrer (« The WRITEPATH is not set correctly ») si ce dossier est absent. L'absence de `--delete` garantit que les fichiers runtime écrits par l'app (logs, sessions, cache, uploads) ne sont jamais supprimés.
+1. **Amorçage de `writable/`** (`mirror --reverse writable writable`, **sans** `--delete`) : dépose l'arborescence `writable/` et ses fichiers garde (`.htaccess`, `index.html`) pour que le dossier existe sur le serveur. CodeIgniter refuse de démarrer (« The WRITEPATH is not set correctly ») si ce dossier est absent. L'absence de `--delete` garantit que les fichiers runtime écrits par l'app (logs, sessions, cache, uploads) ne sont jamais supprimés.
 2. **Synchronisation du reste** (`mirror --reverse --delete`) : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Deux exclusions garantissent la sécurité :
    - `^\.env` — le `.env` de production et ses backups ne sont jamais touchés
    - `^writable/` — déjà traité à l'étape 1 ; exclu ici pour préserver les fichiers runtime
