@@ -264,6 +264,55 @@ Le workflow vérifie qu'un run CI réussi existe pour le SHA déployé, et refus
 Le projet requiert PHP `^8.2` (CodeIgniter 4.7.x). La CI utilise PHP 8.3.
 **La version PHP exacte sur Ouvaton reste à confirmer** avant d'activer le déploiement réel.
 
+La version PHP du conteneur local est paramétrée par l'argument de build
+`PHP_VERSION_OUVATON` (défaut `8.3`), défini dans le `Dockerfile` et propagé par
+`docker-compose.yml` (`app.build.args`). Une fois la version Ouvaton mesurée via
+`/ops/probe`, ajuster ce seul argument pour réaligner l'image.
+
+## Limites runtime & parité local ⇄ Ouvaton
+
+Pour que les dépassements de limites runtime échouent en développement plutôt
+qu'en production (PJ-2 / FR-3, NFR-4), le conteneur `app` applique un `php.ini`
+versionné (`docker/app/php.ini`) monté en `conf.d/zz-kermesse.ini`. Le préfixe
+`zz-` garantit qu'il est chargé **en dernier** et écrase donc les défauts de
+l'image.
+
+Valeurs actuelles (points de départ documentés, à recalibrer sur la sortie de la
+sonde) :
+
+| Directive | Valeur | Source |
+| --- | --- | --- |
+| `memory_limit` | `128M` | Point de départ PRD infra (FR-3) |
+| `max_execution_time` | `30` | Point de départ PRD infra (FR-3) |
+| `max_input_time` | `30` | Aligné sur `max_execution_time` |
+| `post_max_size` | `8M` | Valeur prudente shared hosting, à confirmer |
+| `upload_max_filesize` | `8M` | Valeur prudente shared hosting, à confirmer |
+| `date.timezone` | `Europe/Paris` | Aligné sur `app.appTimezone` |
+
+Versions de base de données et d'extensions épinglées :
+
+- **MariaDB `10.11`** (`docker-compose.yml`, service `db`) — confirmée
+  manuellement sur Ouvaton ; la sonde la reconfirme via `SELECT VERSION()`.
+- **Extensions PHP** installées dans le `Dockerfile` : `intl`, `mysqli`,
+  `pdo_mysql`, `zip`. Outils de packaging garantis présents : `tar`, `gzip`
+  (requis par l'empaquetage de l'artefact, story 2.1).
+
+### Écarts local ⇄ Ouvaton
+
+Cette section recense les divergences connues entre le runtime local et la cible
+Ouvaton, à tenir à jour à chaque mesure de la sonde (NFR-4).
+
+- **Limites PHP** : valeurs ci-dessus = points de départ documentés, **pas encore
+  recalibrées** sur une mesure `/ops/probe` réelle. À confronter et corriger dès
+  que la sortie de la sonde Ouvaton est enregistrée.
+- **Version PHP** : `8.3` côté local (`PHP_VERSION_OUVATON`) ; valeur exacte
+  Ouvaton à reconfirmer via la sonde.
+- **Extensions PHP** : la liste locale (`intl mysqli pdo_mysql zip`) n'a pas
+  encore été confrontée aux `extensions` renvoyées par `/ops/probe` sur Ouvaton.
+  Tout écart constaté doit être soit corrigé dans le `Dockerfile`, soit consigné
+  ici comme « écart connu » avec sa justification. _Aucun écart confirmé à ce
+  jour._
+
 ## Migrations post-déploiement
 
 Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA256.
