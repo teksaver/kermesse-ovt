@@ -25,6 +25,13 @@ $routes->post('owner/login/(:segment)', '\App\Controllers\Owner\LoginController:
 // Admin minimal — protected by session-based checks in DashboardController
 $routes->get('admin/kermesses/(:num)', '\App\Controllers\Admin\DashboardController::show/$1');
 
+// Admin lifecycle — open/close signups, CSRF active on POST
+$routes->post('admin/kermesses/(:num)/open', '\App\Controllers\Admin\KermesseController::open/$1');
+$routes->post('admin/kermesses/(:num)/close', '\App\Controllers\Admin\KermesseController::close/$1');
+
+// Admin read-only preview of the planning (not the public volunteer page)
+$routes->get('admin/kermesses/(:num)/preview', '\App\Controllers\Admin\PreviewController::show/$1');
+
 // Admin stands — state-changing routes, CSRF active
 $routes->post('admin/kermesses/(:num)/stands', '\App\Controllers\Admin\StandController::create/$1');
 $routes->post('admin/kermesses/(:num)/stands/(:num)', '\App\Controllers\Admin\StandController::update/$1/$2');
