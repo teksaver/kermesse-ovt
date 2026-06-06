@@ -54,7 +54,7 @@ class PublicVolunteerPageService
 
         $stands = [];
         if ($status === 'open') {
-            $stands = $this->buildStands((int) $kermesse['id']);
+            $stands = $this->buildStands((int) $kermesse['id'], $publicSlug);
         }
 
         return [
@@ -70,11 +70,62 @@ class PublicVolunteerPageService
     }
 
     /**
+     * Build a privacy-safe summary for a single slot, used by the signup form.
+     *
+     * Returns null if the kermesse is not open, or the slot/stand is inactive or
+     * does not belong to this kermesse — callers render a neutral 404.
+     *
+     * PRIVACY: only kermesse name, stand name, slot timing, and availability are
+     * exposed. No volunteer data, no owner/admin fields, no management links.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function buildSlotSummary(string $publicSlug, int $slotId): ?array
+    {
+        $kermesse = model(KermesseModel::class)
+            ->where('public_slug', $publicSlug)
+            ->where('status', 'open')
+            ->first();
+
+        if ($kermesse === null) {
+            return null;
+        }
+
+        $slot = model(SlotModel::class)->find($slotId);
+        if ($slot === null || ($slot['status'] ?? '') !== 'active') {
+            return null;
+        }
+
+        $stand = model(StandModel::class)->find((int) $slot['stand_id']);
+        if ($stand === null
+            || ($stand['status'] ?? '') !== 'active'
+            || (int) $stand['kermesse_id'] !== (int) $kermesse['id']
+        ) {
+            return null;
+        }
+
+        $activeSignups  = model(SignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
+        $capacity       = (int) $slot['capacity'];
+        $remainingSpots = max(0, $capacity - $activeSignups);
+
+        return [
+            'kermesseName'   => (string) ($kermesse['name'] ?? ''),
+            'standName'      => (string) ($stand['name'] ?? ''),
+            'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
+            'capacity'       => $capacity,
+            'remainingSpots' => $remainingSpots,
+            'isFull'         => $remainingSpots === 0,
+            'publicSlug'     => $publicSlug,
+            'slotId'         => $slotId,
+        ];
+    }
+
+    /**
      * Load active stands with their active slots, keeping only display-safe fields.
      *
      * @return array<int, array<string, mixed>>
      */
-    private function buildStands(int $kermesseId): array
+    private function buildStands(int $kermesseId, string $publicSlug): array
     {
         $stands = model(StandModel::class)->getActiveForKermesse($kermesseId);
         if (empty($stands)) {
@@ -91,6 +142,7 @@ class PublicVolunteerPageService
             $slotsByStand[(int) $slot['stand_id']][] = $this->buildSlot(
                 $slot,
                 $signupCounts[(int) $slot['id']] ?? 0,
+                $publicSlug,
             );
         }
 
@@ -111,19 +163,23 @@ class PublicVolunteerPageService
      * @param array<string, mixed> $slot
      * @return array<string, mixed>
      */
-    private function buildSlot(array $slot, int $activeSignups): array
+    private function buildSlot(array $slot, int $activeSignups, string $publicSlug): array
     {
         $capacity = (int) $slot['capacity'];
 
         // Remaining uses the same active-signup definition as admin counters so
         // the public availability and admin planning never diverge. Never below 0.
         $remainingSpots = max(0, $capacity - $activeSignups);
+        $slotId         = (int) $slot['id'];
+        $isFull         = $remainingSpots === 0;
 
         return [
+            'slotId'         => $slotId,
+            'signupHref'     => $isFull ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
             'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
             'capacity'       => $capacity,
             'remainingSpots' => $remainingSpots,
-            'isFull'         => $remainingSpots === 0,
+            'isFull'         => $isFull,
         ];
     }
 

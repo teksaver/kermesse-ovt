@@ -488,15 +488,23 @@ p {
     margin-bottom: 0;
 }
 
-/* Available slots read as tappable rows (signup wiring lands in Story 3.2). */
+/* Available slots are <a> links leading to the signup form (Story 3.2). */
 .slot-row--available {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
     background: var(--color-surface);
     border-color: var(--color-primary);
     cursor: pointer;
 }
 
+.slot-row--available:hover {
+    background: var(--color-muted-surface);
+}
+
 .slot-row--available:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 3px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -519,6 +527,47 @@ p {
 
 .preview-actions .btn {
     width: 100%;
+}
+
+/* ----- Signup form (public) ----- */
+
+.signup-summary {
+    margin-bottom: 24px;
+}
+
+.signup-optional {
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--color-muted-text);
+}
+
+.form-actions {
+    margin-top: 8px;
+}
+
+.form-actions .btn {
+    width: 100%;
+    min-height: 44px;
+}
+
+.signup-back {
+    margin-top: 20px;
+}
+
+.back-link {
+    font-size: 14px;
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+@media (min-width: 520px) {
+    .form-actions .btn {
+        width: auto;
+    }
 }
 
 @media (min-width: 520px) {

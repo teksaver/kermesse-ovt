@@ -181,9 +181,9 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         // Remaining (= capacity when no signups) and total capacity shown
         $this->assertStringContainsString('6 places restantes', $body);
         $this->assertStringContainsString('sur 6', $body);
-        // Tappable affordance for available slots
+        // Available slot rendered as a real <a> link to the signup form
         $this->assertStringContainsString('slot-row--available', $body);
-        $this->assertStringContainsString('role="button"', $body);
+        $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/signup"#', $body);
     }
 
     public function testOpenRemainingReflectsActiveSignups(): void
