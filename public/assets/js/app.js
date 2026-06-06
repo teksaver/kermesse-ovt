@@ -28,20 +28,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
         btn.hidden = false;
 
-        var feedback   = document.querySelector('[data-copy-feedback]');
+        var feedback  = document.querySelector('[data-copy-feedback]');
         var successMsg = btn.getAttribute('data-copy-success') || 'Lien copié.';
+        var manualMsg  = 'Copiez le lien sélectionné manuellement.';
 
-        var announce = function () {
+        var announce = function (message) {
             if (feedback) {
                 feedback.hidden      = false;
-                feedback.textContent = successMsg;
+                feedback.textContent = message;
             }
         };
 
         btn.addEventListener('click', function () {
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(input.value).then(announce, function () {
+                navigator.clipboard.writeText(input.value).then(function () {
+                    announce(successMsg);
+                }, function () {
                     input.select();
+                    announce(manualMsg);
                 });
                 return;
             }
@@ -50,11 +54,14 @@ document.addEventListener('DOMContentLoaded', function () {
             input.select();
             try {
                 if (document.execCommand('copy')) {
-                    announce();
+                    announce(successMsg);
+                    return;
                 }
             } catch (e) {
                 // Clipboard unavailable: the selected, visible link can be copied manually.
             }
+
+            announce(manualMsg);
         });
     });
 });

@@ -37,6 +37,10 @@ class KermesseController extends BaseController
             ]));
         }
 
+        if ($result !== KermesseLifecycleService::RESULT_SUCCESS) {
+            return $this->renderLifecycleError($kermesse, 'Les inscriptions n\'ont pas pu être ouvertes.');
+        }
+
         return redirect()
             ->to(site_url("admin/kermesses/{$id}"))
             ->with('flash_success', 'Inscriptions ouvertes.');
@@ -50,7 +54,14 @@ class KermesseController extends BaseController
             return $denial;
         }
 
-        (new KermesseLifecycleService())->close($id, (int) session('owner_id'));
+        $result = (new KermesseLifecycleService())->close($id, (int) session('owner_id'));
+        if ($result === KermesseLifecycleService::RESULT_INVALID_TRANSITION) {
+            return $this->renderLifecycleError($kermesse, 'Les inscriptions ne peuvent être fermées que lorsqu\'elles sont ouvertes.');
+        }
+
+        if ($result !== KermesseLifecycleService::RESULT_SUCCESS) {
+            return $this->renderLifecycleError($kermesse, 'Les inscriptions n\'ont pas pu être fermées.');
+        }
 
         return redirect()
             ->to(site_url("admin/kermesses/{$id}"))
@@ -87,6 +98,18 @@ class KermesseController extends BaseController
         $denial = null;
 
         return $kermesse;
+    }
+
+    /**
+     * @param array<string, mixed> $kermesse
+     */
+    private function renderLifecycleError(array $kermesse, string $message): mixed
+    {
+        return service('response')
+            ->setStatusCode(409)
+            ->setBody(view('admin/dashboard', (new DashboardViewModelBuilder())->build($kermesse, [
+                'lifecycleError' => $message,
+            ])));
     }
 
     private function denyAccess(AuthorizationResult $result): mixed

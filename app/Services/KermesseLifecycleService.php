@@ -17,8 +17,10 @@ use App\Models\StandModel;
  */
 class KermesseLifecycleService
 {
-    public const RESULT_SUCCESS         = 'success';
-    public const RESULT_NOT_PUBLISHABLE = 'not_publishable';
+    public const RESULT_SUCCESS            = 'success';
+    public const RESULT_NOT_PUBLISHABLE    = 'not_publishable';
+    public const RESULT_INVALID_TRANSITION = 'invalid_transition';
+    public const RESULT_FAILED             = 'failed';
 
     /** Exact French copy shown when an open is blocked (matches the dashboard disabled reason). */
     public const REASON_NOT_PUBLISHABLE = 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.';
@@ -50,7 +52,9 @@ class KermesseLifecycleService
             return self::RESULT_NOT_PUBLISHABLE;
         }
 
-        $this->setStatus($kermesseId, $ownerId, 'open');
+        if (! $this->openIfPublishable($kermesseId, $ownerId)) {
+            return self::RESULT_NOT_PUBLISHABLE;
+        }
 
         return self::RESULT_SUCCESS;
     }
@@ -63,9 +67,60 @@ class KermesseLifecycleService
      */
     public function close(int $kermesseId, int $ownerId): string
     {
-        $this->setStatus($kermesseId, $ownerId, 'closed');
+        if ($this->statusForOwner($kermesseId, $ownerId) !== 'open') {
+            return self::RESULT_INVALID_TRANSITION;
+        }
+
+        if (! $this->setStatus($kermesseId, $ownerId, 'closed', 'open')) {
+            return self::RESULT_FAILED;
+        }
 
         return self::RESULT_SUCCESS;
+    }
+
+    private function statusForOwner(int $kermesseId, int $ownerId): ?string
+    {
+        $row = db_connect()->table('kermesses')
+            ->select('status')
+            ->where('id', $kermesseId)
+            ->where('owner_id', $ownerId)
+            ->get()
+            ->getRowArray();
+
+        return $row === null ? null : (string) $row['status'];
+    }
+
+    /**
+     * Owner-scoped conditional publish. The EXISTS clause keeps the final status
+     * write tied to the current active stand/slot state, so stale UI cannot open
+     * a kermesse after its last active slot was deactivated.
+     */
+    private function openIfPublishable(int $kermesseId, int $ownerId): bool
+    {
+        $db         = db_connect();
+        $kermesses = $db->prefixTable('kermesses');
+        $stands    = $db->prefixTable('stands');
+        $slots     = $db->prefixTable('slots');
+
+        $db->query(
+            "UPDATE {$kermesses}
+             SET status = ?, updated_at = ?
+             WHERE id = ?
+               AND owner_id = ?
+               AND EXISTS (
+                   SELECT 1
+                   FROM {$stands}
+                   INNER JOIN {$slots}
+                       ON {$slots}.stand_id = {$stands}.id
+                      AND {$slots}.status = ?
+                   WHERE {$stands}.kermesse_id = {$kermesses}.id
+                     AND {$stands}.status = ?
+                   LIMIT 1
+               )",
+            ['open', date('Y-m-d H:i:s'), $kermesseId, $ownerId, 'active', 'active']
+        );
+
+        return $db->affectedRows() === 1;
     }
 
     /**
@@ -73,15 +128,22 @@ class KermesseLifecycleService
      * top of the controller's authorization check, so a status change can never
      * leak across owners through the id alone.
      */
-    private function setStatus(int $kermesseId, int $ownerId, string $status): void
+    private function setStatus(int $kermesseId, int $ownerId, string $status, ?string $expectedStatus = null): bool
     {
-        $db = db_connect();
-        $db->table('kermesses')
+        $db      = db_connect();
+        $builder = $db->table('kermesses')
             ->where('id', $kermesseId)
-            ->where('owner_id', $ownerId)
-            ->update([
-                'status'     => $status,
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
+            ->where('owner_id', $ownerId);
+
+        if ($expectedStatus !== null) {
+            $builder->where('status', $expectedStatus);
+        }
+
+        $builder->update([
+            'status'     => $status,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        return $db->affectedRows() === 1;
     }
 }

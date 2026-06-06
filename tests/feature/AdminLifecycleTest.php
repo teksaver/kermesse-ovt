@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\KermesseLifecycleService;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -266,6 +267,23 @@ final class AdminLifecycleTest extends CIUnitTestCase
         $this->assertSame('closed', $this->statusOf($ids['kermesseId']));
     }
 
+    public function testCloseBlockedWhenKermesseIsStillInPreparation(): void
+    {
+        $ids     = $this->insertOwnerAndKermesse('close-preparation', 'preparation');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $this->insertSlot($standId, 5);
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/close", [csrf_token() => csrf_hash()]);
+
+        $this->assertSame(409, $result->response()->getStatusCode());
+        $this->assertStringContainsString(
+            'Les inscriptions ne peuvent être fermées que lorsqu&#039;elles sont ouvertes.',
+            $result->response()->getBody()
+        );
+        $this->assertSame('preparation', $this->statusOf($ids['kermesseId']));
+    }
+
     public function testDashboardShowsClosedBadgeAfterClosing(): void
     {
         $ids     = $this->insertOwnerAndKermesse('close-badge', 'closed');
@@ -329,6 +347,18 @@ final class AdminLifecycleTest extends CIUnitTestCase
             ->get("admin/kermesses/{$b['kermesseId']}/preview");
 
         $this->assertTrue(in_array($result->response()->getStatusCode(), [302, 403], true));
+    }
+
+    public function testLifecycleServiceDoesNotReportSuccessWhenOwnerScopedUpdateAffectsNoRows(): void
+    {
+        $ids     = $this->insertOwnerAndKermesse('service-owner-scope');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $this->insertSlot($standId, 5);
+
+        $result = (new KermesseLifecycleService())->open($ids['kermesseId'], $ids['ownerId'] + 999);
+
+        $this->assertNotSame(KermesseLifecycleService::RESULT_SUCCESS, $result);
+        $this->assertSame('preparation', $this->statusOf($ids['kermesseId']));
     }
 
     // ------------------------------------------------------------------
@@ -419,6 +449,14 @@ final class AdminLifecycleTest extends CIUnitTestCase
         $this->assertStringContainsString('data-copy-button', $body, 'Copy button hook must be present');
         $this->assertStringContainsString('Copier le lien', $body);
         $this->assertStringContainsString('Prévisualiser', $body);
+    }
+
+    public function testClipboardScriptProvidesManualFallbackFeedback(): void
+    {
+        $script = file_get_contents(ROOTPATH . 'public/assets/js/app.js');
+
+        $this->assertIsString($script);
+        $this->assertStringContainsString('Copiez le lien sélectionné manuellement.', $script);
     }
 
     public function testDashboardOpenActionAppearsOnlyWhenPublishable(): void
