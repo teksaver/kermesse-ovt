@@ -157,10 +157,10 @@ class OpsAuthFilter implements FilterInterface
         // normalised without a leading slash or base URL so a message signed
         // for one ops route cannot be replayed against another (cross-route replay).
         // A leading 'index.php/' front-controller segment is stripped so the signed
-        // path stays the logical route ('ops/migrate') no matter how the front
-        // controller exposes the URI — otherwise historical signatures would break.
+        // path stays the logical route ('ops/probe', 'ops/migrate') no matter how
+        // the front controller exposes the URI — prevents historical signature breakage.
         $routePath = trim($request->getPath(), '/');
-        
+
         // Ensure index.php prefix and any following slashes are robustly stripped
         // in case the request is routed through index.php directly.
         if (stripos($routePath, 'index.php') === 0) {
