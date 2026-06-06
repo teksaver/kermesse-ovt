@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\KermesseModel;
+use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 
@@ -64,6 +65,7 @@ class PublicVolunteerPageService
             'signupsOpen' => $status === 'open',
             'stands'      => $stands,
             'hasStands'   => count($stands) > 0,
+            'hasSlots'    => $this->hasSlots($stands),
         ];
     }
 
@@ -82,9 +84,14 @@ class PublicVolunteerPageService
         $standIds = array_map('intval', array_column($stands, 'id'));
         $allSlots = model(SlotModel::class)->getActiveForStandIds($standIds);
 
+        $signupCounts = model(SignupModel::class)->countActiveBySlotIds(array_column($allSlots, 'id'));
+
         $slotsByStand = [];
         foreach ($allSlots as $slot) {
-            $slotsByStand[(int) $slot['stand_id']][] = $this->buildSlot($slot);
+            $slotsByStand[(int) $slot['stand_id']][] = $this->buildSlot(
+                $slot,
+                $signupCounts[(int) $slot['id']] ?? 0,
+            );
         }
 
         $publicStands = [];
@@ -104,13 +111,12 @@ class PublicVolunteerPageService
      * @param array<string, mixed> $slot
      * @return array<string, mixed>
      */
-    private function buildSlot(array $slot): array
+    private function buildSlot(array $slot, int $activeSignups): array
     {
         $capacity = (int) $slot['capacity'];
 
-        // Remaining uses the same active-signup definition as admin counters so the
-        // public availability and admin planning never diverge. Never below 0.
-        $activeSignups  = (new StandDeletionService())->countActiveSignupsForSlot((int) $slot['id']);
+        // Remaining uses the same active-signup definition as admin counters so
+        // the public availability and admin planning never diverge. Never below 0.
         $remainingSpots = max(0, $capacity - $activeSignups);
 
         return [
@@ -130,5 +136,19 @@ class PublicVolunteerPageService
         $end   = substr($endsAt, 11, 5);
 
         return "{$start} - {$end}";
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $stands
+     */
+    private function hasSlots(array $stands): bool
+    {
+        foreach ($stands as $stand) {
+            if (! empty($stand['slots'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

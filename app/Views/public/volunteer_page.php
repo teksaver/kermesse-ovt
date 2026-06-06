@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
 </head>
 <body>
-<main class="app-shell">
+<main class="app-shell app-shell--public">
     <section class="form-panel public-page" aria-labelledby="public-title">
 
         <div class="admin-header">
@@ -53,7 +53,7 @@
             <p class="empty-state__text">Il n'est plus possible de s'inscrire pour cette kermesse. Merci de votre intérêt !</p>
         </div>
 
-        <?php elseif ($hasStands): ?>
+        <?php elseif ($hasSlots): ?>
         <p class="public-intro" role="note">Choisissez un créneau pour vous inscrire.</p>
         <div class="stand-list" aria-label="Stands et créneaux">
             <?php foreach ($stands as $stand): ?>

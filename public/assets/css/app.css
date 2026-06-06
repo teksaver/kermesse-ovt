@@ -474,6 +474,10 @@ p {
     color: var(--color-muted-text);
 }
 
+.app-shell--public {
+    width: min(100%, 720px);
+}
+
 .slot-row--public {
     min-height: 44px;
     display: flex;

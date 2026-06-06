@@ -128,11 +128,12 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, string $name, string $status = 'active'): int
+    private function insertSignup(int $slotId, string $name, string $status = 'active', ?string $deletedAt = null): int
     {
         $db = db_connect();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, created_at, updated_at)
-            VALUES ({$slotId}, '" . addslashes($name) . "', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, '" . addslashes($name) . "', '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         return (int) $db->insertID();
     }
 
@@ -199,6 +200,43 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         // 5 capacity - 1 active = 4 remaining
         $this->assertStringContainsString('4 places restantes', $body);
         $this->assertStringContainsString('sur 5', $body);
+    }
+
+    public function testOpenDoesNotExposeInactiveStandsOrInactiveSlots(): void
+    {
+        $kermesseId      = $this->insertKermesse('ecole-active-only', 'open');
+        $activeStandId   = $this->insertStand($kermesseId, 'Jeux actifs', 1);
+        $inactiveStandId = $this->insertStand($kermesseId, 'Stand archivé secret', 2, 'deactivated');
+        $this->insertSlot($activeStandId, 5, 'inactive');
+        $this->insertSlot($inactiveStandId, 5);
+
+        $result = $this->get('k/ecole-active-only');
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Aucun créneau disponible pour le moment', $body);
+        $this->assertStringNotContainsString('Choisissez un créneau', $body);
+        $this->assertStringNotContainsString('Stand archivé secret', $body);
+        $this->assertStringNotContainsString('09:00 - 10:30', $body);
+        $this->assertStringNotContainsString('slot-row--available', $body);
+    }
+
+    public function testOpenRemainingIgnoresSoftDeletedSignups(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-soft-delete', 'open');
+        $standId    = $this->insertStand($kermesseId, 'Accueil');
+        $slotId     = $this->insertSlot($standId, 3);
+        $this->insertSignup($slotId, 'Bénévole Actif', 'active');
+        $this->insertSignup($slotId, 'Bénévole Supprimé', 'active', '2026-09-01 12:00:00');
+
+        $result = $this->get('k/ecole-soft-delete');
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('2 places restantes', $body);
+        $this->assertStringContainsString('sur 3', $body);
+        $this->assertStringNotContainsString('Bénévole Actif', $body);
+        $this->assertStringNotContainsString('Bénévole Supprimé', $body);
     }
 
     // ------------------------------------------------------------------
