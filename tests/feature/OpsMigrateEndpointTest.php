@@ -59,6 +59,63 @@ final class OpsMigrateEndpointTest extends CIUnitTestCase
         $this->assertSame('ops_unauthorized', $json['error']);
     }
 
+    /**
+     * R-7: the route path the filter signs against is derived from the request
+     * URI, which the front controller may expose as 'index.php/ops/migrate'.
+     * After the filter's normalisation, a signature built the historical way
+     * (routePath = 'ops/migrate') must still validate against the real harness
+     * request — otherwise every historical ops/migrate signature breaks silently.
+     */
+    public function testHarnessMigrateRequestPassesSignatureStage(): void
+    {
+        // Drive a request so service('request') is the one the filter would see.
+        $this->post('ops/migrate');
+        $request = service('request');
+
+        $timestamp = (string) time();
+        $nonce     = bin2hex(random_bytes(16));
+        $bodyHash  = hash('sha256', (string) $request->getBody());
+        $payload   = implode("\n", [$timestamp, $nonce, strtoupper($request->getMethod()), 'ops/migrate', $bodyHash]);
+        $signature = hash_hmac('sha256', $payload, $this->testSecret);
+
+        $reflectionMethod = new \ReflectionMethod(\App\Filters\OpsAuthFilter::class, 'isSignatureValid');
+        $reflectionMethod->setAccessible(true);
+
+        $valid = $reflectionMethod->invoke(
+            new \App\Filters\OpsAuthFilter(),
+            $request,
+            $timestamp,
+            $nonce,
+            $signature,
+            $this->testSecret
+        );
+
+        $this->assertTrue($valid, 'A historical ops/migrate signature must still validate (R-7 backward compatibility).');
+    }
+
+    /**
+     * AC2: a message signed for ops/activate replayed on ops/migrate is rejected
+     * with a neutral 403. The signature cannot match because the derived path is
+     * ops/migrate. Fresh timestamp + unique nonce isolate the cause to signature.
+     */
+    public function testCrossRouteReplayIsRejected(): void
+    {
+        $timestamp = (string) time();
+        $nonce     = bin2hex(random_bytes(16));
+        $bodyHash  = hash('sha256', '');
+        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/activate', $bodyHash]);
+        $signature = hash_hmac('sha256', $payload, $this->testSecret);
+
+        $result = $this->withHeaders([
+            'X-Kermesse-Timestamp' => $timestamp,
+            'X-Kermesse-Nonce'     => $nonce,
+            'X-Kermesse-Signature' => $signature,
+        ])->post('ops/migrate');
+
+        $result->assertStatus(403);
+        $result->assertJSONExact(['error' => 'ops_unauthorized']);
+    }
+
     public function testRejectedResponseDoesNotContainSqlOrStackTrace(): void
     {
         $result = $this->withHeaders([

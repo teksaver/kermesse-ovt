@@ -45,11 +45,11 @@ HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
 BASE_URL="http://localhost:8080"
 
 TIMESTAMP=$(date +%s)
-NONCE=$(uuidgen)
+NONCE=$(php -r "echo bin2hex(random_bytes(16));")
 BODY='{}'
-BODY_HASH=$(echo -n "$BODY" | sha256sum | cut -d' ' -f1)
+BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
 PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/migrate\n${BODY_HASH}"
-SIGNATURE=$(echo -ne "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
 
 curl -s -X POST "${BASE_URL}/ops/migrate" \
   -H "Content-Type: application/json" \
@@ -63,6 +63,33 @@ Reponse attendue : `{"ok":true,"applied":1,"skipped":0,"failed":0}`.
 Relancer la commande apres ajout d'une migration : le runner applique uniquement les migrations absentes ou precedemment echouees.
 
 Si le port HTTP est different de 8080, adapter `BASE_URL` en consequence.
+
+### Mesurer le runtime via ops/probe
+
+La sonde `POST /ops/probe` renvoie les faits de configuration runtime du conteneur (version PHP, limites `ini`, extensions chargées, version MariaDB). Elle sert a calibrer l'environnement local sur la cible Ouvaton. Elle est activee uniquement en local : `kermesse.opsProbeEnabled: "true"` est positionne dans `docker-compose.yml` et reste `false` partout ailleurs.
+
+Elle signe son propre `routePath` (`ops/probe`) avec le meme secret de dev que `ops/migrate` :
+
+```bash
+HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
+BASE_URL="http://localhost:8080"
+
+TIMESTAMP=$(date +%s)
+NONCE=$(php -r "echo bin2hex(random_bytes(16));")
+BODY=''
+BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
+PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/probe\n${BODY_HASH}"
+SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+
+curl -s -X POST "${BASE_URL}/ops/probe" \
+  -H "Content-Type: application/json" \
+  -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
+  -H "X-Kermesse-Nonce: ${NONCE}" \
+  -H "X-Kermesse-Signature: ${SIGNATURE}" \
+  -d "$BODY"
+```
+
+Reponse attendue : un JSON `{"php_version":...,"memory_limit":...,"extensions":[...],"mariadb_version":...}`. La sonde ne renvoie aucun secret, credential ni variable `.env`. C'est une route ops temporaire de mesure, pas une API utilisateur ; ne pas l'exposer ni l'activer hors developpement local.
 
 ### Via SQL direct (alternative rapide)
 
@@ -79,7 +106,7 @@ Cette methode s'utilise aussi si l'application n'est pas encore accessible (serv
 | Service | Role | Acces local |
 |---------|------|-------------|
 | `app` | PHP 8.3, Apache, Composer, CodeIgniter | `http://localhost:8080/` |
-| `db` | MariaDB 11.4 locale | `127.0.0.1:3307` par defaut |
+| `db` | MariaDB 10.11 locale (alignee sur Ouvaton) | `127.0.0.1:3307` par defaut |
 
 Identifiants MariaDB locaux non secrets :
 

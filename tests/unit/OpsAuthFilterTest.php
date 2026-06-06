@@ -1,5 +1,9 @@
 <?php
 
+use App\Filters\OpsAuthFilter;
+use CodeIgniter\HTTP\IncomingRequest;
+use CodeIgniter\HTTP\URI;
+use CodeIgniter\HTTP\UserAgent;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -125,6 +129,69 @@ final class OpsAuthFilterTest extends CIUnitTestCase
         $this->assertStringNotContainsString('signature', strtolower($body));
         $this->assertStringNotContainsString('timestamp', strtolower($body));
         $this->assertStringNotContainsString('nonce', strtolower($body));
+    }
+
+    /**
+     * Exercise the private isSignatureValid() against a request whose URI path
+     * is {@see $uriPath}, signing the payload with {@see $signedRoutePath}.
+     *
+     * Lets us assert path derivation without touching nonce storage (no MariaDB).
+     */
+    private function signatureAccepts(string $uriPath, string $signedRoutePath): bool
+    {
+        $request = new IncomingRequest(
+            config('App'),
+            new URI('http://localhost/' . $uriPath),
+            null,
+            new UserAgent()
+        );
+
+        $timestamp = (string) time();
+        $nonce     = bin2hex(random_bytes(16));
+        $method    = strtoupper($request->getMethod());
+        $bodyHash  = hash('sha256', '');
+        $payload   = implode("\n", [$timestamp, $nonce, $method, $signedRoutePath, $bodyHash]);
+        $signature = hash_hmac('sha256', $payload, $this->testSecret);
+
+        $reflectionMethod = new \ReflectionMethod(OpsAuthFilter::class, 'isSignatureValid');
+        $reflectionMethod->setAccessible(true);
+
+        return $reflectionMethod->invoke(
+            new OpsAuthFilter(),
+            $request,
+            $timestamp,
+            $nonce,
+            $signature,
+            $this->testSecret
+        );
+    }
+
+    /**
+     * R-7 regression: a signature built the historical way for ops/migrate
+     * must still validate once routePath is derived from the URI.
+     */
+    public function testSignatureForMigrateRouteRemainsValid(): void
+    {
+        $this->assertTrue($this->signatureAccepts('ops/migrate', 'ops/migrate'));
+    }
+
+    /**
+     * AC1: routePath is derived from the request URI, so a non-migrate ops
+     * route signs and validates against its own path. Fails with the old
+     * hard-coded 'ops/migrate' value.
+     */
+    public function testSignatureForNonMigrateRouteUsesDerivedPath(): void
+    {
+        $this->assertTrue($this->signatureAccepts('ops/activate', 'ops/activate'));
+    }
+
+    /**
+     * AC2: anti cross-route replay. A message signed for ops/activate replayed
+     * on ops/migrate must fail signature validation (derived path differs).
+     */
+    public function testCrossRouteReplaySignatureIsRejected(): void
+    {
+        $this->assertFalse($this->signatureAccepts('ops/migrate', 'ops/activate'));
     }
 
     public function testEmptySecretIsRejected(): void

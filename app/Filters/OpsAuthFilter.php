@@ -152,16 +152,20 @@ class OpsAuthFilter implements FilterInterface
         string $secret
     ): bool {
         /** @var \CodeIgniter\HTTP\IncomingRequest $request */
-        $method    = strtoupper($request->getMethod());
+        $method = strtoupper($request->getMethod());
+        // Bind the signature to the route actually being called. The path is
+        // normalised without a leading slash or base URL so a message signed
+        // for one ops route cannot be replayed against another (cross-route replay).
+        // A leading 'index.php/' front-controller segment is stripped so the signed
+        // path stays the logical route ('ops/probe', 'ops/migrate') no matter how
+        // the front controller exposes the URI — prevents historical signature breakage.
         $routePath = trim($request->getPath(), '/');
 
-        // Strip index.php front-controller prefix so the signed path stays the
-        // logical route ('ops/probe', 'ops/migrate') regardless of how Apache
-        // exposes the URI — prevents historical signature breakage.
+        // Ensure index.php prefix and any following slashes are robustly stripped
+        // in case the request is routed through index.php directly.
         if (stripos($routePath, 'index.php') === 0) {
             $routePath = ltrim(substr($routePath, 9), '/');
         }
-
         $bodyHash = hash('sha256', (string) $request->getBody());
 
         $payload = implode("\n", [$timestamp, $nonce, $method, $routePath, $bodyHash]);

@@ -38,10 +38,14 @@ class Kermesse extends BaseConfig
     public string $opsMigrationPath = '';
 
     // -----------------------------------------------------------------
-    // Ops probe
+    // Ops runtime probe
     // -----------------------------------------------------------------
 
-    /** Enable POST /ops/probe. Disabled by default; enable locally via docker-compose or .env. */
+    /**
+     * Enables the temporary runtime probe at POST /ops/probe.
+     * Disabled by default — only switched on locally (Docker) to measure the
+     * target runtime. Never enable on a long-lived public environment.
+     */
     public bool $opsProbeEnabled = false;
 
     // -----------------------------------------------------------------
