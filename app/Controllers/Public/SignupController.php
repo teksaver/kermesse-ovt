@@ -25,6 +25,10 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
+        if ($summary['isFull']) {
+            return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
         return view('public/signup_form', [
             'summary' => $summary,
             'fields'  => ['first_name' => '', 'last_name' => '', 'email' => '', 'phone' => ''],
@@ -40,18 +44,27 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
+        if ($summary['isFull']) {
+            return redirect()->to(site_url("k/{$publicSlug}"))->with('error', 'Ce créneau est complet.');
+        }
+
+        $getPostString = function(string $key): string {
+            $val = $this->request->getPost($key);
+            return trim(is_array($val) ? '' : (string) $val);
+        };
+
         $raw = [
-            'first_name' => trim((string) $this->request->getPost('first_name')),
-            'last_name'  => trim((string) $this->request->getPost('last_name')),
-            'email'      => trim((string) $this->request->getPost('email')),
-            'phone'      => trim((string) $this->request->getPost('phone')),
+            'first_name' => $getPostString('first_name'),
+            'last_name'  => $getPostString('last_name'),
+            'email'      => $getPostString('email'),
+            'phone'      => $getPostString('phone'),
         ];
 
         $rules = [
             'first_name' => 'required|max_length[100]',
             'last_name'  => 'required|max_length[100]',
             'email'      => 'required|valid_email|max_length[254]',
-            'phone'      => 'permit_empty|max_length[30]',
+            'phone'      => 'permit_empty|max_length[30]|regex_match[/^[0-9\+\-\(\)\s]+$/]',
         ];
 
         $validation = service('validation');
@@ -65,7 +78,7 @@ class SignupController extends BaseController
 
         // Validated fields are ready for SignupService (Story 3.3).
         // Until then, redirect back to the volunteer page without creating an inscription.
-        return redirect()->to(site_url("k/{$publicSlug}"));
+        return redirect()->to(site_url("k/{$publicSlug}"))->with('success', 'Votre inscription a bien été prise en compte.');
     }
 
     private function neutral404(): mixed

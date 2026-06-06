@@ -20,6 +20,19 @@
             </span>
         </div>
 
+        <?php if (session()->has('success')): ?>
+        <div class="alert alert--success" role="alert">
+            <?= esc(session('success')) ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if (session()->has('error')): ?>
+        <div class="alert alert--error" role="alert">
+            <?= esc(session('error')) ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if (! empty($kermesse['event_date']) || ! empty($kermesse['location']) || ! empty($kermesse['short_description'])): ?>
         <dl class="preview-meta">
             <?php if (! empty($kermesse['event_date'])): ?>
             <div>
@@ -40,6 +53,7 @@
             </div>
             <?php endif; ?>
         </dl>
+        <?php endif; ?>
 
         <?php if ($status === 'preparation'): ?>
         <div class="empty-state" role="status" aria-label="Inscriptions à venir">

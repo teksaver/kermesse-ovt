@@ -17,7 +17,7 @@
     <?php if (! empty($stand['slots'])): ?>
     <div class="slot-list" aria-label="Créneaux de <?= esc($stand['name']) ?>">
         <?php foreach ($stand['slots'] as $slot): ?>
-        <?= view('partials/slot_row', ['slot' => $slot]) ?>
+        <?= view('partials/slot_row', ['slot' => $slot, 'standName' => $stand['name']]) ?>
         <?php endforeach; ?>
     </div>
     <?php else: ?>

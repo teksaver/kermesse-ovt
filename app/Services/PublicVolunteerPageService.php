@@ -82,36 +82,31 @@ class PublicVolunteerPageService
      */
     public function buildSlotSummary(string $publicSlug, int $slotId): ?array
     {
-        $kermesse = model(KermesseModel::class)
-            ->where('public_slug', $publicSlug)
-            ->where('status', 'open')
-            ->first();
-
-        if ($kermesse === null) {
-            return null;
-        }
-
-        $slot = model(SlotModel::class)->find($slotId);
-        if ($slot === null || ($slot['status'] ?? '') !== 'active') {
-            return null;
-        }
-
-        $stand = model(StandModel::class)->find((int) $slot['stand_id']);
-        if ($stand === null
-            || ($stand['status'] ?? '') !== 'active'
-            || (int) $stand['kermesse_id'] !== (int) $kermesse['id']
-        ) {
+        $db = \Config\Database::connect();
+        $builder = $db->table('slots');
+        $builder->select('slots.capacity, slots.starts_at, slots.ends_at, stands.name as stand_name, kermesses.name as kermesse_name');
+        $builder->join('stands', 'stands.id = slots.stand_id');
+        $builder->join('kermesses', 'kermesses.id = stands.kermesse_id');
+        $builder->where('slots.id', $slotId);
+        $builder->where('slots.status', 'active');
+        $builder->where('stands.status', 'active');
+        $builder->where('kermesses.status', 'open');
+        $builder->where('kermesses.public_slug', $publicSlug);
+        
+        $row = $builder->get()->getRowArray();
+        
+        if ($row === null) {
             return null;
         }
 
         $activeSignups  = model(SignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
-        $capacity       = (int) $slot['capacity'];
+        $capacity       = (int) $row['capacity'];
         $remainingSpots = max(0, $capacity - $activeSignups);
 
         return [
-            'kermesseName'   => (string) ($kermesse['name'] ?? ''),
-            'standName'      => (string) ($stand['name'] ?? ''),
-            'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
+            'kermesseName'   => (string) $row['kermesse_name'],
+            'standName'      => (string) $row['stand_name'],
+            'displayTime'    => $this->formatSlotTime((string) $row['starts_at'], (string) $row['ends_at']),
             'capacity'       => $capacity,
             'remainingSpots' => $remainingSpots,
             'isFull'         => $remainingSpots === 0,
@@ -188,10 +183,13 @@ class PublicVolunteerPageService
      */
     private function formatSlotTime(string $startsAt, string $endsAt): string
     {
-        $start = substr($startsAt, 11, 5); // "HH:MM" from "YYYY-MM-DD HH:MM:SS"
-        $end   = substr($endsAt, 11, 5);
-
-        return "{$start} - {$end}";
+        try {
+            $start = \CodeIgniter\I18n\Time::parse($startsAt)->format('H:i');
+            $end   = \CodeIgniter\I18n\Time::parse($endsAt)->format('H:i');
+            return "{$start} - {$end}";
+        } catch (\Exception $e) {
+            return '';
+        }
     }
 
     /**

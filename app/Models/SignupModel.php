@@ -10,6 +10,17 @@ class SignupModel extends Model
     protected $primaryKey = 'id';
     protected $returnType = 'array';
     protected $useTimestamps = true;
+    protected $useSoftDeletes = true;
+
+    public const STATUS_CANCELLED   = 'cancelled';
+    public const STATUS_DEACTIVATED = 'deactivated';
+    public const STATUS_DELETED     = 'deleted';
+
+    public const INACTIVE_STATUSES = [
+        self::STATUS_CANCELLED,
+        self::STATUS_DEACTIVATED,
+        self::STATUS_DELETED,
+    ];
 
     protected $allowedFields = [
         'slot_id',
@@ -34,15 +45,11 @@ class SignupModel extends Model
             return [];
         }
 
-        $rows = $this->db
-            ->table($this->table)
-            ->select('slot_id, COUNT(*) AS cnt')
+        $rows = $this->select('slot_id, COUNT(*) AS cnt')
             ->whereIn('slot_id', $slotIds)
-            ->whereNotIn('status', ['cancelled', 'deactivated', 'deleted'])
-            ->where('deleted_at', null)
+            ->whereNotIn('status', self::INACTIVE_STATUSES)
             ->groupBy('slot_id')
-            ->get()
-            ->getResultArray();
+            ->findAll();
 
         $counts = [];
         foreach ($rows as $row) {
