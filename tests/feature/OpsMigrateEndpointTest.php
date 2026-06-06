@@ -78,10 +78,10 @@ final class OpsMigrateEndpointTest extends CIUnitTestCase
         $payload   = implode("\n", [$timestamp, $nonce, strtoupper($request->getMethod()), 'ops/migrate', $bodyHash]);
         $signature = hash_hmac('sha256', $payload, $this->testSecret);
 
-        $method = new \ReflectionMethod(\App\Filters\OpsAuthFilter::class, 'isSignatureValid');
-        $method->setAccessible(true);
+        $reflectionMethod = new \ReflectionMethod(\App\Filters\OpsAuthFilter::class, 'isSignatureValid');
+        $reflectionMethod->setAccessible(true);
 
-        $valid = $method->invoke(
+        $valid = $reflectionMethod->invoke(
             new \App\Filters\OpsAuthFilter(),
             $request,
             $timestamp,

@@ -153,10 +153,10 @@ final class OpsAuthFilterTest extends CIUnitTestCase
         $payload   = implode("\n", [$timestamp, $nonce, $method, $signedRoutePath, $bodyHash]);
         $signature = hash_hmac('sha256', $payload, $this->testSecret);
 
-        $method = new \ReflectionMethod(OpsAuthFilter::class, 'isSignatureValid');
-        $method->setAccessible(true);
+        $reflectionMethod = new \ReflectionMethod(OpsAuthFilter::class, 'isSignatureValid');
+        $reflectionMethod->setAccessible(true);
 
-        return $method->invoke(
+        return $reflectionMethod->invoke(
             new OpsAuthFilter(),
             $request,
             $timestamp,
