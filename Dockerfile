@@ -1,4 +1,7 @@
-FROM php:8.3-apache
+# Version PHP cible Ouvaton, surchargée depuis docker-compose (build.args) pour
+# garder la parité local ⇄ production (NFR-4). Mesure exacte à reconfirmer via /ops/probe.
+ARG PHP_VERSION_OUVATON=8.3
+FROM php:${PHP_VERSION_OUVATON}-apache
 
 ARG COMPOSER_VERSION=2.8.12
 
@@ -9,8 +12,10 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
+        gzip \
         libicu-dev \
         libzip-dev \
+        tar \
         unzip \
         zip \
     && docker-php-ext-install intl mysqli pdo_mysql zip \
