@@ -466,6 +466,49 @@ p {
     background: var(--color-surface);
 }
 
+/* ----- Public volunteer page ----- */
+
+.public-intro {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--color-muted-text);
+}
+
+.slot-row--public {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+}
+
+.slot-row--public .slot-row__info {
+    margin-bottom: 0;
+}
+
+/* Available slots read as tappable rows (signup wiring lands in Story 3.2). */
+.slot-row--available {
+    background: var(--color-surface);
+    border-color: var(--color-primary);
+    cursor: pointer;
+}
+
+.slot-row--available:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Full slots stay visible but clearly disabled. */
+.slot-row--full {
+    background: var(--color-muted-surface);
+    opacity: 0.75;
+}
+
+.slot-row__status--full {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--color-danger);
+    text-transform: uppercase;
+}
+
 .preview-actions {
     margin-top: 24px;
 }

@@ -22,6 +22,9 @@ $routes->get('owner/login/(:segment)', '\App\Controllers\Owner\LoginController::
 $routes->post('owner/login/confirm', '\App\Controllers\Owner\LoginController::confirmLogin');
 $routes->post('owner/login/(:segment)', '\App\Controllers\Owner\LoginController::consumeLoginToken/$1');
 
+// Public volunteer page — privacy-safe, no auth. Slug comes from the public link.
+$routes->get('k/(:segment)', '\App\Controllers\Public\VolunteerPageController::index/$1');
+
 // Admin minimal — protected by session-based checks in DashboardController
 $routes->get('admin/kermesses/(:num)', '\App\Controllers\Admin\DashboardController::show/$1');
 
