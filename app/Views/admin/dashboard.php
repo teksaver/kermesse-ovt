@@ -121,6 +121,9 @@
                               class="slot-form slot-form--edit"
                               aria-label="Modifier le créneau <?= esc($slot['displayTime']) ?>">
                             <?= csrf_field() ?>
+                            <?php if (isset($slotEditErrors['general'])): ?>
+                            <p class="field-error" role="alert"><?= esc($slotEditErrors['general']) ?></p>
+                            <?php endif; ?>
                             <div class="slot-form__fields">
                                 <div class="form-group <?= isset($slotEditErrors['end_time']) ? 'form-group--error' : '' ?>">
                                     <label for="slot-edit-start-<?= esc($slot['id']) ?>">Heure de début</label>
@@ -176,6 +179,9 @@
                       class="slot-form slot-form--add"
                       aria-label="Ajouter un créneau à <?= esc($stand['name']) ?>">
                     <?= csrf_field() ?>
+                    <?php if (isset($slotAddErrors['general'])): ?>
+                    <p class="field-error" role="alert"><?= esc($slotAddErrors['general']) ?></p>
+                    <?php endif; ?>
                     <div class="slot-form__fields">
                         <div class="form-group <?= isset($slotAddErrors['end_time']) ? 'form-group--error' : '' ?>">
                             <label for="slot-add-start-<?= esc($stand['id']) ?>">Heure de début</label>

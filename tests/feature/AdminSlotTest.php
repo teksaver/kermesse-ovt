@@ -131,6 +131,38 @@ final class AdminSlotTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
+    private function insertSignup(int $slotId, string $status = 'active'): int
+    {
+        $db = db_connect();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, created_at, updated_at)
+            VALUES ({$slotId}, 'Bénévole', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        return (int) $db->insertID();
+    }
+
+    /**
+     * Insert an active owner + kermesse with an explicit (possibly null) event date and timezone.
+     *
+     * @return array{ownerId: int, kermesseId: int}
+     */
+    private function insertOwnerAndKermesseWith(
+        string $slug,
+        ?string $eventDate,
+        string $timezone = 'Europe/Paris'
+    ): array {
+        $db    = db_connect();
+        $email = "owner-{$slug}@example.com";
+        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, email_verified_at, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Slot Owner', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $ownerId = (int) $db->insertID();
+
+        $dateSql = $eventDate === null ? 'NULL' : "'" . $eventDate . "'";
+        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
+            VALUES ({$ownerId}, '{$slug}', 'Kermesse Slot Test', {$dateSql}, 'Paris', 'Test', '{$timezone}', 'preparation', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $kermesseId = (int) $db->insertID();
+
+        return ['ownerId' => $ownerId, 'kermesseId' => $kermesseId];
+    }
+
     private function authorizedSession(int $ownerId, int $kermesseId): array
     {
         return [
@@ -667,6 +699,255 @@ final class AdminSlotTest extends CIUnitTestCase
         $body = $result->response()->getBody();
         $this->assertStringContainsString('6', $body, 'Remaining spots (= capacity when no signups) must be shown');
         $this->assertStringContainsString('places', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — block editing a slot that has active signups
+    // ------------------------------------------------------------------
+
+    public function testUpdateSlotWithActiveSignupsIsRejected(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-edit-active-signup');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $slotId  = $this->insertSlot($standId, 5);
+        $this->insertSignup($slotId, 'active');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots/{$slotId}", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '11:00',
+                'end_time'    => '12:00',
+                'capacity'    => '10',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('inscriptions actives', $body);
+        $this->assertFalse(
+            in_array($result->response()->getStatusCode(), [301, 302, 303, 307, 308], true)
+        );
+
+        $db   = db_connect();
+        $slot = $db->query("SELECT capacity FROM db_slots WHERE id = {$slotId}")->getRowArray();
+        $this->assertSame(5, (int) $slot['capacity'], 'Slot with active signups must not be mutated');
+    }
+
+    public function testUpdateSlotWithOnlyCancelledSignupsIsAllowed(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-edit-cancelled-signup');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $slotId  = $this->insertSlot($standId, 5);
+        $this->insertSignup($slotId, 'cancelled');
+        $this->insertSignup($slotId, 'deactivated');
+
+        $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots/{$slotId}", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '11:00',
+                'end_time'    => '12:00',
+                'capacity'    => '10',
+            ]);
+
+        $db   = db_connect();
+        $slot = $db->query("SELECT capacity FROM db_slots WHERE id = {$slotId}")->getRowArray();
+        $this->assertSame(10, (int) $slot['capacity'], 'Only-cancelled signups must not block edition');
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — remaining spots account for active signups
+    // ------------------------------------------------------------------
+
+    public function testRemainingSpotsAccountForActiveSignups(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-remaining-active');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $slotId  = $this->insertSlot($standId, 6);
+        $this->insertSignup($slotId, 'active');
+        $this->insertSignup($slotId, 'active');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->get("admin/kermesses/{$ids['kermesseId']}");
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('6 places au total', $body);
+        $this->assertStringContainsString('4 places restantes', $body);
+    }
+
+    public function testRemainingSpotsIgnoreCancelledSignups(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-remaining-cancelled');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+        $slotId  = $this->insertSlot($standId, 6);
+        $this->insertSignup($slotId, 'active');
+        $this->insertSignup($slotId, 'cancelled');
+        $this->insertSignup($slotId, 'deleted');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->get("admin/kermesses/{$ids['kermesseId']}");
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('5 places restantes', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — reject out-of-range times PHP would normalize
+    // ------------------------------------------------------------------
+
+    public function testCreateWithOutOfRangeHourIsRejected(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-time-oob-hour');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '25:00',
+                'end_time'    => '26:00',
+                'capacity'    => '5',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('fin doit être après', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
+    public function testCreateWithOutOfRangeMinuteIsRejected(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-time-oob-min');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '09:75',
+                'end_time'    => '10:00',
+                'capacity'    => '5',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('fin doit être après', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
+    public function testCreateWithNonexistentDstLocalTimeIsRejected(): void
+    {
+        $ids     = $this->insertOwnerAndKermesseWith('slot-time-dst-gap', '2026-03-29', 'Europe/Paris');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '02:30',
+                'end_time'    => '04:00',
+                'capacity'    => '5',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('fin doit être après', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — bound capacity to INT UNSIGNED
+    // ------------------------------------------------------------------
+
+    public function testCreateWithCapacityAboveIntUnsignedIsRejected(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-cap-overflow');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '09:00',
+                'end_time'    => '10:00',
+                'capacity'    => '4294967296',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('trop élevée', $body);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt']);
+    }
+
+    public function testCreateWithMaxIntUnsignedCapacityIsAccepted(): void
+    {
+        $ids     = $this->insertActiveOwnerAndKermesse('slot-cap-max');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '09:00',
+                'end_time'    => '10:00',
+                'capacity'    => '4294967295',
+            ]);
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId} AND capacity = 4294967295")->getRowArray();
+        $this->assertSame(1, (int) $count['cnt'], 'Capacity at the INT UNSIGNED bound must be accepted');
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — invalid kermesse timezone must not throw
+    // ------------------------------------------------------------------
+
+    public function testCreateSlotWithInvalidKermesseTimezoneDoesNotError(): void
+    {
+        $ids     = $this->insertOwnerAndKermesseWith('slot-bad-tz', '2026-09-01', 'Invalid/Zone');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '09:00',
+                'end_time'    => '10:00',
+                'capacity'    => '5',
+            ]);
+
+        $this->assertNotSame(500, $result->response()->getStatusCode(), 'Invalid timezone must not 500');
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(1, (int) $count['cnt'], 'Slot should still be created with a timezone fallback');
+    }
+
+    // ------------------------------------------------------------------
+    // REVIEW PATCH — refuse a missing event date instead of server date
+    // ------------------------------------------------------------------
+
+    public function testCreateSlotWithMissingEventDateIsRejected(): void
+    {
+        $ids     = $this->insertOwnerAndKermesseWith('slot-no-date', '');
+        $standId = $this->insertStand($ids['kermesseId'], 'Stand');
+
+        $result = $this->withSession($this->authorizedSession($ids['ownerId'], $ids['kermesseId']))
+            ->post("admin/kermesses/{$ids['kermesseId']}/stands/{$standId}/slots", [
+                csrf_token()  => csrf_hash(),
+                'start_time'  => '09:00',
+                'end_time'    => '10:00',
+                'capacity'    => '5',
+            ]);
+
+        $body = $result->response()->getBody();
+        $this->assertStringContainsString('manquante', $body);
+        $this->assertFalse(
+            in_array($result->response()->getStatusCode(), [301, 302, 303, 307, 308], true)
+        );
+
+        $db    = db_connect();
+        $count = $db->query("SELECT COUNT(*) as cnt FROM db_slots WHERE stand_id = {$standId}")->getRowArray();
+        $this->assertSame(0, (int) $count['cnt'], 'No slot must be created without an event date');
     }
 
     // ------------------------------------------------------------------

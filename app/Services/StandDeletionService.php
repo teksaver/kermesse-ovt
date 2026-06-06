@@ -22,6 +22,23 @@ class StandDeletionService
         return $this->countActiveSignupsWithConnection($db, $standId);
     }
 
+    // Counts active signups for a single slot, using the same active-signup
+    // definition as stand deletion so admin and volunteer counters stay coherent.
+    public function countActiveSignupsForSlot(int $slotId): int
+    {
+        $db = db_connect();
+        $db->resetDataCache();
+
+        if (! $db->tableExists('signups')) {
+            return 0;
+        }
+
+        $builder = $db->table('signups')->where('slot_id', $slotId);
+        $this->applyActiveSignupFilter($builder, $db);
+
+        return (int) $builder->countAllResults();
+    }
+
     public function confirmationModeForCount(int $activeSignupCount): string
     {
         return $activeSignupCount > 0 ? self::CONFIRM_STRONG : self::CONFIRM_SIMPLE;

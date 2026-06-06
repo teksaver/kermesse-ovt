@@ -45,7 +45,7 @@ class DashboardViewModelBuilder
         unset($stand);
 
         // Attach active slots to each stand
-        $this->attachSlots($stands, $kermesse);
+        $this->attachSlots($stands, $deletionService);
 
         $defaults = [
             'kermesse'         => $kermesse,
@@ -77,9 +77,8 @@ class DashboardViewModelBuilder
      * Enrich each stand with its active slots and calculated remaining spots.
      *
      * @param array<int, array<string, mixed>> $stands  (passed by reference)
-     * @param array<string, mixed>             $kermesse
      */
-    private function attachSlots(array &$stands, array $kermesse): void
+    private function attachSlots(array &$stands, StandDeletionService $deletionService): void
     {
         if (empty($stands)) {
             return;
@@ -99,8 +98,10 @@ class DashboardViewModelBuilder
             $standSlots = $slotsByStand[(int) $stand['id']] ?? [];
 
             foreach ($standSlots as &$s) {
-                // No real signups yet: remaining = capacity
-                $s['remainingSpots'] = (int) $s['capacity'];
+                // Remaining = capacity minus active signups (0 while signups table is absent),
+                // using the same active definition as stand deletion. Never below 0.
+                $activeSignups       = $deletionService->countActiveSignupsForSlot((int) $s['id']);
+                $s['remainingSpots'] = max(0, (int) $s['capacity'] - $activeSignups);
                 $s['displayTime']    = $this->formatSlotTime($s['starts_at'], $s['ends_at']);
             }
             unset($s);

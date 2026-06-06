@@ -145,6 +145,7 @@ _bmad-output/
 _bmad/*
 !_bmad/custom/
 _bmad/custom/*.user.toml
+claude.md
 
 #-------------------------
 # Unneeded PHP & Local Test Files
