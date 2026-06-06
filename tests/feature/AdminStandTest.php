@@ -62,8 +62,8 @@ final class AdminStandTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_slots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 stand_id INTEGER NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
+                starts_at DATETIME NOT NULL,
+                ends_at DATETIME NOT NULL,
                 capacity INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -124,8 +124,8 @@ final class AdminStandTest extends CIUnitTestCase
     private function insertSlot(int $standId): int
     {
         $db = db_connect();
-        $db->query("INSERT INTO db_slots (stand_id, start_time, end_time, capacity, status, created_at, updated_at)
-            VALUES ({$standId}, '09:00', '10:00', 5, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_slots (stand_id, starts_at, ends_at, capacity, status, created_at, updated_at)
+            VALUES ({$standId}, '2026-09-01 09:00:00', '2026-09-01 10:00:00', 5, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         return (int) $db->insertID();
     }
 

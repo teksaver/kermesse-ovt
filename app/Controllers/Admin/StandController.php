@@ -10,6 +10,8 @@ use App\Services\AuthorizationResult;
 use App\Services\StandDeletionService;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
+// DashboardViewModelBuilder is in the same namespace (Admin)
+
 class StandController extends BaseController
 {
     public function create(string $kermesseId): mixed
@@ -235,11 +237,11 @@ class StandController extends BaseController
     }
 
     /**
-     * Re-render the full dashboard view with validation errors (no redirect).
+     * Re-render the full dashboard view with stand validation errors (no redirect).
      */
     private function renderWithErrors(array $kermesse, array $errors, string $inputName, ?int $editStandId): mixed
     {
-        return view('admin/dashboard', $this->buildDashboardViewModel($kermesse, [
+        return view('admin/dashboard', (new DashboardViewModelBuilder())->build($kermesse, [
             'standErrors'    => $errors,
             'standInputName' => $inputName,
             'standEditId'    => $editStandId,
@@ -248,51 +250,10 @@ class StandController extends BaseController
 
     private function renderWithDeleteError(array $kermesse, string $error, int $standId): mixed
     {
-        return view('admin/dashboard', $this->buildDashboardViewModel($kermesse, [
+        return view('admin/dashboard', (new DashboardViewModelBuilder())->build($kermesse, [
             'deleteError'   => $error,
             'deleteStandId' => $standId,
         ]));
-    }
-
-    private function buildDashboardViewModel(array $kermesse, array $overrides = []): array
-    {
-        $statusMap = [
-            'preparation' => ['label' => 'Inscriptions en préparation', 'class' => 'status-badge--preparation'],
-            'open'        => ['label' => 'Inscriptions ouvertes',        'class' => 'status-badge--open'],
-            'closed'      => ['label' => 'Inscriptions fermées',         'class' => 'status-badge--closed'],
-        ];
-
-        $status     = $kermesse['status'] ?? 'preparation';
-        $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
-
-        $standModel      = model(StandModel::class);
-        $stands          = $standModel->getActiveForKermesse((int) $kermesse['id']);
-        $deletionService = new StandDeletionService();
-
-        foreach ($stands as &$stand) {
-            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
-            $stand['activeSignupCount']      = $activeSignupCount;
-            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
-        }
-        unset($stand);
-
-        $defaults = [
-            'kermesse'       => $kermesse,
-            'statusLabel'    => $statusInfo['label'],
-            'statusClass'    => $statusInfo['class'],
-            'stands'         => $stands,
-            'hasStands'      => count($stands) > 0,
-            'isOpen'         => $status === 'open',
-            'disabledReason' => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
-            'standErrors'    => [],
-            'standInputName' => '',
-            'standEditId'    => null,
-            'flashSuccess'   => null,
-            'deleteError'    => null,
-            'deleteStandId'  => null,
-        ];
-
-        return array_merge($defaults, $overrides);
     }
 
     private function denyAccess(AuthorizationResult $result): mixed
