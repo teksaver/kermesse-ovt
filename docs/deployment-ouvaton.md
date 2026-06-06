@@ -267,7 +267,8 @@ Le projet requiert PHP `^8.2` (CodeIgniter 4.7.x). La CI utilise PHP 8.3.
 La version PHP du conteneur local est paramétrée par l'argument de build
 `PHP_VERSION_OUVATON` (défaut `8.3`), défini dans le `Dockerfile` et propagé par
 `docker-compose.yml` (`app.build.args`). Une fois la version Ouvaton mesurée via
-`/ops/probe`, ajuster ce seul argument pour réaligner l'image.
+`/ops/probe`, ajuster la valeur par défaut du `Dockerfile` et, pour le service
+Compose local, la valeur transmise dans `app.build.args`.
 
 ## Limites runtime & parité local ⇄ Ouvaton
 
@@ -285,9 +286,15 @@ sonde) :
 | `memory_limit` | `128M` | Point de départ PRD infra (FR-3) |
 | `max_execution_time` | `30` | Point de départ PRD infra (FR-3) |
 | `max_input_time` | `30` | Aligné sur `max_execution_time` |
-| `post_max_size` | `8M` | Valeur prudente shared hosting, à confirmer |
+| `post_max_size` | `8M` | Valeur prudente shared hosting, à confirmer ; limite POST complète, enveloppe multipart incluse |
 | `upload_max_filesize` | `8M` | Valeur prudente shared hosting, à confirmer |
 | `date.timezone` | `Europe/Paris` | Aligné sur `app.appTimezone` |
+
+Avec `post_max_size` et `upload_max_filesize` tous deux à `8M`, la taille utile
+d'un fichier envoyé en multipart/form-data est légèrement inférieure à `8M`,
+car `post_max_size` couvre aussi l'enveloppe multipart et les autres champs du
+formulaire. Si la mesure Ouvaton autorise un plafond POST supérieur, augmenter
+`post_max_size` pour rendre un upload proche de `8M` réellement possible.
 
 Versions de base de données et d'extensions épinglées :
 
