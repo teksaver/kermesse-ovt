@@ -107,10 +107,11 @@ jobs:
       OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
       OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
       OUVATON_HTTPDOCS_FOLDER: ${{ vars.OUVATON_HTTPDOCS_FOLDER }}
-      # Full known_hosts line — obtain with: ssh-keyscan -p 115 -H <OUVATON_DEPLOY_HOST>
-      OUVATON_SFTP_KNOWN_HOST: ${{ vars.OUVATON_SFTP_KNOWN_HOST }}
       # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
+      # Full known_hosts line for the Ouvaton SFTP host.
+      # Obtain with: ssh-keyscan -p 115 -H <OUVATON_DEPLOY_HOST>
+      OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
 
     steps:
       - name: Install transfer client
@@ -154,7 +155,6 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set sftp:known-hosts %s\n' "${HOME}/.ssh/known_hosts"
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'lcd deploy-staging\n'
@@ -217,7 +217,6 @@ jobs:
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
-            printf 'set sftp:known-hosts %s\n' "${HOME}/.ssh/known_hosts"
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
