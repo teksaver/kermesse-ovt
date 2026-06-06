@@ -159,9 +159,12 @@ class OpsAuthFilter implements FilterInterface
         // A leading 'index.php/' front-controller segment is stripped so the signed
         // path stays the logical route ('ops/migrate') no matter how the front
         // controller exposes the URI — otherwise historical signatures would break.
-        $routePath = trim($request->getUri()->getPath(), '/');
-        if (str_starts_with($routePath, 'index.php/')) {
-            $routePath = substr($routePath, strlen('index.php/'));
+        $routePath = trim($request->getPath(), '/');
+        
+        // Ensure index.php prefix and any following slashes are robustly stripped
+        // in case the request is routed through index.php directly.
+        if (stripos($routePath, 'index.php') === 0) {
+            $routePath = ltrim(substr($routePath, 9), '/');
         }
         $bodyHash = hash('sha256', (string) $request->getBody());
 
