@@ -43,3 +43,4 @@ $routes->post('admin/kermesses/(:num)/stands/(:num)/slots/(:num)', '\App\Control
 
 // Ops endpoints — protected by HMAC authentication, CSRF excluded
 $routes->post('ops/migrate', '\App\Controllers\Ops\MigrationController::migrate', ['filter' => 'ops-auth']);
+$routes->post('ops/probe', '\App\Controllers\Ops\ProbeController::probe', ['filter' => 'ops-auth']);
