@@ -104,6 +104,26 @@ CREATE TABLE IF NOT EXISTS `stands` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- -----------------------------------------------------
+-- Table: slots
+-- Post-initial schema reference for Story 2.4.
+-- Time slots for a stand, with capacity.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `slots` (
+    `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `stand_id`    BIGINT UNSIGNED NOT NULL,
+    `starts_at`   DATETIME        NOT NULL,
+    `ends_at`     DATETIME        NOT NULL,
+    `capacity`    INT UNSIGNED    NOT NULL,
+    `status`      ENUM('active','deactivated') NOT NULL DEFAULT 'active',
+    `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_slots_stand` (`stand_id`),
+    KEY `idx_slots_stand_order` (`stand_id`, `starts_at`, `id`),
+    CONSTRAINT `fk_slots_stand` FOREIGN KEY (`stand_id`) REFERENCES `stands` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- -----------------------------------------------------
 -- Table: access_tokens
 -- Hashed tokens only — never store raw tokens.
 -- -----------------------------------------------------

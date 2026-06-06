@@ -40,6 +40,7 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         // Ensure we start clean — drop tables if they exist
         $db->query('DROP TABLE IF EXISTS `quoted_table`');
         $db->query('DROP TABLE IF EXISTS `second_table`');
+        $db->query('DROP TABLE IF EXISTS `slots`');
         $db->query('DROP TABLE IF EXISTS `stands`');
         $db->query('DROP TABLE IF EXISTS `email_events`');
         $db->query('DROP TABLE IF EXISTS `access_tokens`');
@@ -316,6 +317,51 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $row = $db->query(
             'SELECT `status` FROM `schema_versions` WHERE `version` = ?',
             ['20260605180000_create_stands']
+        )->getRowArray();
+        $this->assertSame('success', $row['status'] ?? null);
+    }
+
+    public function testSlotsMigrationRunsAfterStandsAndCreatesExpectedIndexesAndForeignKey(): void
+    {
+        $initialSchemaFile = ROOTPATH . 'database/migrations_sql/20260602161500_initial_schema.sql';
+        $standsSchemaFile  = ROOTPATH . 'database/migrations_sql/20260605180000_create_stands.sql';
+        $slotsSchemaFile   = ROOTPATH . 'database/migrations_sql/20260606090000_create_slots.sql';
+        $this->assertTrue(file_exists($initialSchemaFile), 'Initial schema file must exist');
+        $this->assertTrue(file_exists($standsSchemaFile), 'Stands schema file must exist');
+        $this->assertTrue(file_exists($slotsSchemaFile), 'Slots schema file must exist');
+
+        copy($initialSchemaFile, $this->tempMigrationsDir . '/20260602161500_initial_schema.sql');
+        copy($standsSchemaFile, $this->tempMigrationsDir . '/20260605180000_create_stands.sql');
+        copy($slotsSchemaFile, $this->tempMigrationsDir . '/20260606090000_create_slots.sql');
+
+        $runner = $this->createRunner();
+        $result = $runner->run();
+
+        $this->assertTrue($result['ok']);
+        $this->assertContains('20260606090000_create_slots', $result['applied']);
+
+        $db = db_connect('tests');
+        $this->assertNotEmpty($db->query('SHOW TABLES LIKE "slots"')->getResultArray());
+
+        $standIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand"')->getResultArray();
+        $this->assertNotEmpty($standIndex, 'Slots migration should add the stand index');
+
+        $orderIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand_order"')->getResultArray();
+        $this->assertNotEmpty($orderIndex, 'Slots migration should add the display-order index');
+
+        $foreignKey = $db->query(
+            'SELECT `CONSTRAINT_NAME`, `DELETE_RULE`
+             FROM `information_schema`.`REFERENTIAL_CONSTRAINTS`
+             WHERE `CONSTRAINT_SCHEMA` = DATABASE()
+               AND `TABLE_NAME` = "slots"
+               AND `CONSTRAINT_NAME` = "fk_slots_stand"'
+        )->getRowArray();
+        $this->assertSame('fk_slots_stand', $foreignKey['CONSTRAINT_NAME'] ?? null);
+        $this->assertSame('RESTRICT', $foreignKey['DELETE_RULE'] ?? null);
+
+        $row = $db->query(
+            'SELECT `status` FROM `schema_versions` WHERE `version` = ?',
+            ['20260606090000_create_slots']
         )->getRowArray();
         $this->assertSame('success', $row['status'] ?? null);
     }

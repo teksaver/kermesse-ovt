@@ -90,13 +90,129 @@
                     <button type="submit" class="btn btn-primary">Enregistrer</button>
                 </form>
 
+                <!-- Slot list -->
+                <?php if (! empty($stand['slots'])): ?>
+                <div class="slot-list" aria-label="Créneaux de <?= esc($stand['name']) ?>">
+                    <?php foreach ($stand['slots'] as $slot): ?>
+                    <?php
+                        $isSlotEditError  = isset($slotEditSlotId) && (int) $slotEditSlotId === (int) $slot['id'];
+                        $slotEditErrors   = $isSlotEditError ? ($slotErrors ?? []) : [];
+                        $slotEditInputs   = $isSlotEditError ? ($slotInputs ?? []) : [];
+                        $editStartValue   = $isSlotEditError && ! empty($slotEditInputs['start_time'])
+                            ? esc($slotEditInputs['start_time'])
+                            : esc(substr($slot['starts_at'], 11, 5));
+                        $editEndValue     = $isSlotEditError && ! empty($slotEditInputs['end_time'])
+                            ? esc($slotEditInputs['end_time'])
+                            : esc(substr($slot['ends_at'], 11, 5));
+                        $editCapValue     = $isSlotEditError && isset($slotEditInputs['capacity'])
+                            ? esc($slotEditInputs['capacity'])
+                            : esc($slot['capacity']);
+                    ?>
+                    <div class="slot-row" id="slot-<?= esc($slot['id']) ?>">
+                        <div class="slot-row__info">
+                            <span class="slot-row__time"><?= esc($slot['displayTime']) ?></span>
+                            <span class="slot-row__capacity">
+                                <?= esc($slot['capacity']) ?> places au total,
+                                <?= esc($slot['remainingSpots']) ?> places restantes
+                            </span>
+                        </div>
+                        <form method="post"
+                              action="<?= site_url("admin/kermesses/{$kermesse['id']}/stands/{$stand['id']}/slots/{$slot['id']}") ?>"
+                              class="slot-form slot-form--edit"
+                              aria-label="Modifier le créneau <?= esc($slot['displayTime']) ?>">
+                            <?= csrf_field() ?>
+                            <?php if (isset($slotEditErrors['general'])): ?>
+                            <p class="field-error" role="alert"><?= esc($slotEditErrors['general']) ?></p>
+                            <?php endif; ?>
+                            <div class="slot-form__fields">
+                                <div class="form-group <?= isset($slotEditErrors['end_time']) ? 'form-group--error' : '' ?>">
+                                    <label for="slot-edit-start-<?= esc($slot['id']) ?>">Heure de début</label>
+                                    <input type="time" id="slot-edit-start-<?= esc($slot['id']) ?>"
+                                           name="start_time" value="<?= $editStartValue ?>">
+                                </div>
+                                <div class="form-group <?= isset($slotEditErrors['end_time']) ? 'form-group--error' : '' ?>">
+                                    <label for="slot-edit-end-<?= esc($slot['id']) ?>">Heure de fin</label>
+                                    <input type="time" id="slot-edit-end-<?= esc($slot['id']) ?>"
+                                           name="end_time" value="<?= $editEndValue ?>"
+                                           aria-describedby="<?= isset($slotEditErrors['end_time']) ? "slot-edit-time-error-{$slot['id']}" : '' ?>">
+                                    <?php if (isset($slotEditErrors['end_time'])): ?>
+                                    <p id="slot-edit-time-error-<?= esc($slot['id']) ?>" class="field-error" role="alert">
+                                        <?= esc($slotEditErrors['end_time']) ?>
+                                    </p>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="form-group <?= isset($slotEditErrors['capacity']) ? 'form-group--error' : '' ?>">
+                                    <label for="slot-edit-cap-<?= esc($slot['id']) ?>">Capacité</label>
+                                    <input type="number" id="slot-edit-cap-<?= esc($slot['id']) ?>"
+                                           name="capacity" value="<?= $editCapValue ?>" min="1"
+                                           aria-describedby="<?= isset($slotEditErrors['capacity']) ? "slot-edit-cap-error-{$slot['id']}" : '' ?>">
+                                    <?php if (isset($slotEditErrors['capacity'])): ?>
+                                    <p id="slot-edit-cap-error-<?= esc($slot['id']) ?>" class="field-error" role="alert">
+                                        <?= esc($slotEditErrors['capacity']) ?>
+                                    </p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn--slot">Enregistrer le créneau</button>
+                        </form>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php else: ?>
                 <!-- Empty slot state -->
                 <div class="slot-empty-state" aria-label="Créneaux de <?= esc($stand['name']) ?>">
                     <p class="slot-empty-state__text">Aucun créneau pour le moment</p>
-                    <button type="button" class="btn btn-secondary disabled-action" disabled>
-                        Ajouter un créneau
-                    </button>
                 </div>
+                <?php endif; ?>
+
+                <!-- Add slot form -->
+                <?php
+                    $isSlotAddError   = isset($slotAddStandId) && (int) $slotAddStandId === (int) $stand['id'];
+                    $slotAddErrors    = $isSlotAddError ? ($slotErrors ?? []) : [];
+                    $slotAddInputs    = $isSlotAddError ? ($slotInputs ?? []) : [];
+                    $addStartValue    = esc($slotAddInputs['start_time'] ?? '');
+                    $addEndValue      = esc($slotAddInputs['end_time'] ?? '');
+                    $addCapValue      = esc($slotAddInputs['capacity'] ?? '');
+                ?>
+                <form method="post"
+                      action="<?= site_url("admin/kermesses/{$kermesse['id']}/stands/{$stand['id']}/slots") ?>"
+                      class="slot-form slot-form--add"
+                      aria-label="Ajouter un créneau à <?= esc($stand['name']) ?>">
+                    <?= csrf_field() ?>
+                    <?php if (isset($slotAddErrors['general'])): ?>
+                    <p class="field-error" role="alert"><?= esc($slotAddErrors['general']) ?></p>
+                    <?php endif; ?>
+                    <div class="slot-form__fields">
+                        <div class="form-group <?= isset($slotAddErrors['end_time']) ? 'form-group--error' : '' ?>">
+                            <label for="slot-add-start-<?= esc($stand['id']) ?>">Heure de début</label>
+                            <input type="time" id="slot-add-start-<?= esc($stand['id']) ?>"
+                                   name="start_time" value="<?= $addStartValue ?>">
+                        </div>
+                        <div class="form-group <?= isset($slotAddErrors['end_time']) ? 'form-group--error' : '' ?>">
+                            <label for="slot-add-end-<?= esc($stand['id']) ?>">Heure de fin</label>
+                            <input type="time" id="slot-add-end-<?= esc($stand['id']) ?>"
+                                   name="end_time" value="<?= $addEndValue ?>"
+                                   aria-describedby="<?= isset($slotAddErrors['end_time']) ? "slot-add-time-error-{$stand['id']}" : '' ?>">
+                            <?php if (isset($slotAddErrors['end_time'])): ?>
+                            <p id="slot-add-time-error-<?= esc($stand['id']) ?>" class="field-error" role="alert">
+                                <?= esc($slotAddErrors['end_time']) ?>
+                            </p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="form-group <?= isset($slotAddErrors['capacity']) ? 'form-group--error' : '' ?>">
+                            <label for="slot-add-cap-<?= esc($stand['id']) ?>">Capacité</label>
+                            <input type="number" id="slot-add-cap-<?= esc($stand['id']) ?>"
+                                   name="capacity" value="<?= $addCapValue ?>" min="1"
+                                   aria-describedby="<?= isset($slotAddErrors['capacity']) ? "slot-add-cap-error-{$stand['id']}" : '' ?>">
+                            <?php if (isset($slotAddErrors['capacity'])): ?>
+                            <p id="slot-add-cap-error-<?= esc($stand['id']) ?>" class="field-error" role="alert">
+                                <?= esc($slotAddErrors['capacity']) ?>
+                            </p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn--slot">Ajouter le créneau</button>
+                </form>
 
                 <!-- Delete confirmation zone -->
                 <?php

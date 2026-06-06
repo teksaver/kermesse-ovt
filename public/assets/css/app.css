@@ -458,6 +458,81 @@ p {
     margin-top: 8px;
 }
 
+/* ----- Slot list ----- */
+
+.slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.slot-row {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-muted-surface);
+    padding: 12px;
+}
+
+.slot-row__info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: baseline;
+    margin-bottom: 12px;
+}
+
+.slot-row__time {
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.slot-row__capacity {
+    font-size: 13px;
+    color: var(--color-muted-text);
+}
+
+/* ----- Slot form ----- */
+
+.slot-form {
+    margin-top: 12px;
+}
+
+.slot-form--add {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-muted-surface);
+}
+
+.slot-form__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.slot-form .form-group {
+    margin-bottom: 12px;
+}
+
+.btn--slot {
+    width: 100%;
+    min-height: 44px;
+}
+
+@media (min-width: 520px) {
+    .slot-form__fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+    }
+
+    .slot-form .form-group {
+        margin-bottom: 0;
+    }
+}
+
 /* ----- Danger button ----- */
 
 .btn-danger {

@@ -4,10 +4,8 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\StandModel;
 use App\Services\AdminAuthorizationService;
 use App\Services\AuthorizationResult;
-use App\Services\StandDeletionService;
 
 /**
  * Minimal admin dashboard: GET /admin/kermesses/{kermesseId}
@@ -43,56 +41,11 @@ class DashboardController extends BaseController
             return $this->handleDenial(new AuthorizationResult(AuthorizationResult::ACCESS_DENIED));
         }
 
-        return view('admin/dashboard', $this->buildViewModel($kermesse));
-    }
+        $flashSuccess = session()->getFlashdata('flash_success');
 
-    // ------------------------------------------------------------------
-    // Private helpers
-    // ------------------------------------------------------------------
-
-    private function buildViewModel(array $kermesse): array
-    {
-        $statusMap = [
-            'preparation' => ['label' => 'Inscriptions en préparation', 'class' => 'status-badge--preparation'],
-            'open'        => ['label' => 'Inscriptions ouvertes',        'class' => 'status-badge--open'],
-            'closed'      => ['label' => 'Inscriptions fermées',         'class' => 'status-badge--closed'],
-        ];
-
-        $status     = $kermesse['status'] ?? 'preparation';
-        $statusInfo = $statusMap[$status] ?? $statusMap['preparation'];
-
-        $standModel      = model(StandModel::class);
-        $stands          = $standModel->getActiveForKermesse((int) $kermesse['id']);
-        $deletionService = new StandDeletionService();
-
-        foreach ($stands as &$stand) {
-            $activeSignupCount               = $deletionService->countActiveSignups((int) $stand['id']);
-            $stand['activeSignupCount']      = $activeSignupCount;
-            $stand['deleteConfirmationMode'] = $deletionService->confirmationModeForCount($activeSignupCount);
-        }
-        unset($stand);
-
-        // Flash data from stand form submissions
-        $standErrors    = session()->getFlashdata('stand_errors') ?? [];
-        $standInputName = session()->getFlashdata('stand_input_name') ?? '';
-        $standEditId    = session()->getFlashdata('stand_edit_id');
-        $flashSuccess   = session()->getFlashdata('flash_success');
-
-        return [
-            'kermesse'       => $kermesse,
-            'statusLabel'    => $statusInfo['label'],
-            'statusClass'    => $statusInfo['class'],
-            'stands'         => $stands,
-            'hasStands'      => count($stands) > 0,
-            'isOpen'         => $status === 'open',
-            'disabledReason' => 'Ajoutez au moins un stand avec un créneau avant d\'ouvrir les inscriptions.',
-            'standErrors'    => $standErrors,
-            'standInputName' => $standInputName,
-            'standEditId'    => $standEditId,
-            'flashSuccess'   => is_string($flashSuccess) ? $flashSuccess : null,
-            'deleteError'    => null,
-            'deleteStandId'  => null,
-        ];
+        return view('admin/dashboard', (new DashboardViewModelBuilder())->build($kermesse, [
+            'flashSuccess' => is_string($flashSuccess) ? $flashSuccess : null,
+        ]));
     }
 
     private function handleDenial(AuthorizationResult $result): mixed
