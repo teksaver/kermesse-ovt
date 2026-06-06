@@ -23,32 +23,20 @@ Le workflow `.github/workflows/ci.yml` s'exécute sur chaque `push` et `pull_req
 
 Sur `push` vers `main` ou `pull_request` ciblant `main`, la CI produit aussi l'artefact `kermesse-deploy.zip` après validation. Les validations MariaDB de CI utilisent un service MariaDB GitHub Actions isolé ; elles ne représentent pas la base de production Ouvaton.
 
-### Étape 2 : Synchronisation du `.env` de production (manuel)
+### Étape 2 : Déploiement et configuration (automatique)
 
-Le workflow `.github/workflows/sync-production-env.yml` se déclenche via `workflow_dispatch` et utilise l'environnement GitHub `production`.
+Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
 
-Décision retenue : **les secrets de l'environnement GitHub `production` sont la source de vérité du `.env` Ouvaton**. Le serveur ne reçoit jamais le fichier depuis l'artefact applicatif ; il reçoit un candidat `.env.next` généré dans le runner GitHub Actions, puis activé côté Ouvaton après backup.
 
-Déroulé :
-
-1. Validation des secrets requis, sans afficher leurs valeurs
-2. Génération de `${RUNNER_TEMP}/.env.next`
-3. Upload de `.env.next` vers le chemin Ouvaton configuré
-4. Backup de l'ancien `.env` distant en `.env.backup-<timestamp>` si le fichier existe
-5. Remplacement de `.env` par `.env.next`
-6. Rollback best-effort vers l'ancien `.env` si l'activation échoue après déplacement du fichier existant
-
-Pour une première installation sans `.env` existant, l'opérateur doit cocher l'input `confirm_first_install_env` au déclenchement manuel du workflow. Sans cette confirmation, l'impossibilité de lire le `.env` distant est traitée comme une erreur de backup et le workflow échoue avant activation.
-
-### Étape 3 : Packaging et déploiement applicatif (automatique)
 
 Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
 
 1. Checkout, setup PHP, validation Composer, tests
 2. Exécution de `scripts/package-deploy-artifact.sh`
 3. Publication de l'archive `kermesse-deploy.zip` comme artefact GitHub (14 jours)
-4. Transfert vers Ouvaton via le protocole confirmé, quand le job `deploy` sera activé
-5. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+4. Génération automatique du `.env` depuis les secrets GitHub `production`
+5. Transfert vers Ouvaton via le protocole confirmé (code applicatif + `.env`)
+6. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
 
 Ce workflow ne déclare pas de service MariaDB Docker : la production Ouvaton utilise la base MariaDB managée déjà fournie par l'hébergeur.
 
@@ -181,11 +169,11 @@ echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 
 **Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
 
-Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
+Déclencher ensuite `.github/workflows/deploy-ouvaton.yml` en cochant `confirm_first_install_env` pour la première installation.
 
 ## Variables `.env` de production
 
-Le fichier `.env` de production est généré par `.github/workflows/sync-production-env.yml` depuis les secrets GitHub `production`.
+Le fichier `.env` de production est généré par le workflow de déploiement (`deploy-ouvaton.yml`) depuis les secrets GitHub `production`.
 Voir `.env.example` pour la liste complète des variables et leurs formats.
 
 Variables critiques à configurer :
@@ -202,40 +190,28 @@ Variables critiques à configurer :
 
 La base MariaDB de production est créée et administrée par Ouvaton. Le projet ne doit pas tenter de créer une base Docker, de démarrer un conteneur, ni d'administrer MariaDB depuis le serveur de production.
 
-L'application CodeIgniter se connecte uniquement à cette base via les variables `database.default.hostname`, `database.default.database`, `database.default.username`, `database.default.password` et `database.default.port` écrites dans le `.env` de production par `.github/workflows/sync-production-env.yml`.
+L'application CodeIgniter se connecte uniquement à cette base via les variables `database.default.hostname`, `database.default.database`, `database.default.username`, `database.default.password` et `database.default.port` écrites dans le `.env` de production lors du déploiement.
 
 Les changements de schéma sont appliqués après déploiement par l'endpoint applicatif `POST /ops/migrate`. Cet endpoint utilise la connexion DB de l'application déjà configurée ; il ne nécessite ni client `mysql`, ni accès CLI serveur.
 
-## Préservation du `.env` de production
+## Déploiement du `.env` de production
 
-**Règle absolue :** le déploiement applicatif ne doit **jamais** envoyer, écraser ou supprimer le fichier `.env` de production.
+Le fichier `.env` est généré automatiquement par le workflow `deploy-ouvaton.yml` à partir des secrets de l'environnement GitHub `production` avant le transfert SFTP.
 
-- L'artefact n'inclut pas de fichier `.env` (seulement `.env.example`)
-- L'artefact n'inclut pas `.env.next`
-- Le script de packaging échoue si `.env` ou `.env.next` est détecté dans le staging ou dans le ZIP
-- Seul le workflow dédié `.github/workflows/sync-production-env.yml` est autorisé à gérer le `.env` Ouvaton
-- Avant remplacement, le workflow sauvegarde l'ancien `.env` distant sous `.env.backup-<timestamp>`
-- Le chemin distant doit rester hors document root public ; le document root web doit pointer vers `public/`
-- Les backups `.env.backup-<timestamp>` contiennent des secrets et doivent être supprimés après validation ou archivés selon la procédure d'exploitation retenue
+- L'artefact (`package-deploy-artifact.sh`) s'assure qu'aucun fichier `.env` de développement n'est inclus par erreur.
+- Le transfert `lftp mirror` envoie l'application ainsi que le fichier `.env` généré en direct.
+- Il n'y a plus de backups distants du fichier `.env` (`.env.backup-XXX`) gérés par les scripts de déploiement. L'historique des secrets est géré par GitHub.
+- Le chemin distant du `.env` reste à la racine de l'application (hors document root public) ; le document root web pointe vers `public/`.
 
 ## Rotation des secrets de production
 
 Processus standard :
 
 1. Mettre à jour les secrets concernés dans l'environnement GitHub `production`
-2. Déclencher manuellement `.github/workflows/sync-production-env.yml`
-3. Vérifier que le workflow termine avec succès et mentionne le backup créé, sauf première installation explicitement confirmée
-4. Contrôler l'application en production sans afficher le contenu du `.env`
-5. Conserver le backup jusqu'à validation fonctionnelle
+2. Déclencher manuellement `.github/workflows/deploy-ouvaton.yml` pour déployer à nouveau l'application avec la nouvelle configuration
+3. Contrôler l'application en production
 
-Rollback :
-
-1. Identifier le backup indiqué par le workflow, par exemple `.env.backup-20260602T143000Z`
-2. Restaurer ce backup comme `.env` côté Ouvaton via le protocole d'administration disponible
-3. Corriger les secrets GitHub `production`
-4. Relancer `.github/workflows/sync-production-env.yml`
-
-Ne jamais coller le contenu du `.env` ou d'un backup dans une issue, un log, un commentaire de PR, ou un artefact GitHub.
+Ne jamais coller le contenu du `.env` dans une issue, un log, un commentaire de PR, ou un artefact GitHub.
 
 ## Dossiers `writable/`
 
@@ -253,9 +229,10 @@ Sur le serveur, les sous-dossiers `writable/` doivent être **accessibles en éc
 
 Le workflow utilise **FTPS** (FTP over TLS) via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
 
-Le transfert utilise `lftp` avec `mirror --reverse --delete` : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Deux exclusions garantissent la sécurité :
-- `^\.env` — le `.env` de production et ses backups ne sont jamais touchés
+Le transfert utilise `lftp` avec `mirror --reverse --delete` : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Une exclusion garantit la sécurité :
 - `^writable/` — logs, sessions, cache et uploads écrits par l'app sont préservés
+
+Le `.env` généré à la volée est désormais inclus par le mirror.
 
 Le workflow vérifie qu'un run CI réussi existe pour le SHA déployé, et refuse les refs autres que `main`. Pour un déclenchement manuel (`workflow_dispatch`), ce contrôle est actif. Pour le déclenchement automatique, la conclusion du CI garantit déjà la validité.
 
