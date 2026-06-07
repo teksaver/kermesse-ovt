@@ -151,19 +151,38 @@ final class ShimReleaseResolverTest extends \PHPUnit\Framework\TestCase
             return;
         }
 
-        $items = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
+        try {
+            $items = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST,
+            );
 
-        foreach ($items as $item) {
-            if ($item->isLink() || $item->isFile()) {
-                @unlink($item->getRealPath() ?: $item->getPathname());
-            } elseif ($item->isDir()) {
-                @rmdir($item->getRealPath());
+            foreach ($items as $item) {
+                if ($item->isLink() || $item->isFile()) {
+                    $path = $item->getRealPath() ?: $item->getPathname();
+                    if (!@unlink($path) && file_exists($path)) {
+                        @chmod($path, 0777);
+                        @unlink($path);
+                    }
+                } elseif ($item->isDir()) {
+                    $path = $item->getRealPath() ?: $item->getPathname();
+                    if (!@rmdir($path) && is_dir($path)) {
+                        @chmod($path, 0777);
+                        @rmdir($path);
+                    }
+                }
             }
-        }
 
-        @rmdir($dir);
+            if (is_dir($dir)) {
+                if (!@rmdir($dir)) {
+                    @chmod($dir, 0777);
+                    @rmdir($dir);
+                }
+            }
+        } catch (\UnexpectedValueException $e) {
+            // Ignore access denied errors during teardown
+        } catch (\Exception $e) {
+            // Ignore other filesystem errors during teardown
+        }
     }
 }
