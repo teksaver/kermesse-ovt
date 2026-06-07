@@ -61,31 +61,33 @@ echo "Dossier cible: ${REMOTE_STAGING}/"
 echo "Archive      : $(basename "${ARCHIVE}")"
 
 # 5. Transfert via lftp — put individuel, jamais mirror
-# Les commandes sont écrites dans un fichier temporaire pour éviter d'exposer
-# le mot de passe dans la liste des processus (argument de commande visible).
-LFTP_SCRIPT="$(mktemp)"
-trap 'rm -f "${LFTP_SCRIPT}"' EXIT
+# Les commandes sont passées via substitution de processus pour éviter d'exposer
+# le mot de passe sur le disque ou dans la liste des processus.
+# Note : le case est résolu avant le <(...) — bash 3.2 (macOS) ne parse pas
+# les instructions case à l'intérieur d'une process substitution.
+ESCAPED_PASS="${TARGET_PASS//\'/\\\'}"
 
-{
-  case "${TARGET_PROTO}" in
-    sftp)
-      if [[ -n "${TARGET_KEY:-}" ]]; then
-        echo "set sftp:connect-program \"ssh -a -x -i ${TARGET_KEY}\";"
-      fi
-      ;;
-    ftps)
-      echo "set ftp:ssl-force true;"
-      echo "set ftp:ssl-protect-data true;"
-      ;;
-  esac
-  echo "open -u '${TARGET_USER}','${TARGET_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
+PROTO_SETTINGS=""
+case "${TARGET_PROTO}" in
+  sftp)
+    if [[ -n "${TARGET_KEY:-}" ]]; then
+      PROTO_SETTINGS="set sftp:connect-program \"ssh -a -x -i '${TARGET_KEY}'\";"
+    fi
+    ;;
+  ftps)
+    PROTO_SETTINGS="set ftp:ssl-force true; set ftp:ssl-protect-data true;"
+    ;;
+esac
+
+lftp -f <(
+  echo "set cmd:fail-exit true;"
+  [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
+  echo "open -u '${TARGET_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
   echo "mkdir -p ${REMOTE_STAGING};"
-  echo "put ${ARCHIVE} -o ${REMOTE_STAGING}/kermesse-deploy.tar.gz;"
-  echo "put ${CHECKSUM} -o ${REMOTE_STAGING}/kermesse-deploy.tar.gz.sha256;"
+  echo "put \"${ARCHIVE}\" -o \"${REMOTE_STAGING}/$(basename "${ARCHIVE}")\";"
+  echo "put \"${CHECKSUM}\" -o \"${REMOTE_STAGING}/$(basename "${CHECKSUM}")\";"
   echo "bye"
-} > "${LFTP_SCRIPT}"
-
-lftp -f "${LFTP_SCRIPT}"
+)
 
 echo "=== Transfert réussi ! ==="
 echo "Archive déposée : ${TARGET_PROTO}://${TARGET_HOST}:${TARGET_PORT}/${REMOTE_STAGING}/"
