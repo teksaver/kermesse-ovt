@@ -148,7 +148,7 @@ jobs:
 
       - name: Verify and extract artifact
         run: |
-          sha256sum -c kermesse-deploy.tar.gz.sha256
+          sha256sum -c kermesse-deploy.tar.gz.sha256 || (echo "Échec : Artefact corrompu" && exit 1)
           mkdir -p deploy-staging
           tar -xzf kermesse-deploy.tar.gz -C deploy-staging
 

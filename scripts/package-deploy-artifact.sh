@@ -17,12 +17,16 @@ echo "Racine du projet : ${PROJECT_ROOT}"
 echo "Dossier de staging : ${STAGING_DIR}"
 echo "Fichier de sortie : ${OUTPUT_TAR}"
 
-for command in composer tar; do
+for command in composer tar awk; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "ERREUR : commande requise introuvable : ${command}"
     exit 1
   fi
 done
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+  echo "ERREUR : commande requise introuvable : sha256sum ou shasum"
+  exit 1
+fi
 
 # Nettoyage précédent
 rm -rf "${STAGING_DIR}"
@@ -152,7 +156,7 @@ fi
 # 4. Création de l'archive tar.gz
 echo "Création de l'archive tar.gz..."
 cd "${STAGING_DIR}"
-tar -czf "${OUTPUT_TAR}" .
+tar -czf "${OUTPUT_TAR}" . || exit 1
 
 # 5. Génération du checksum SHA-256 (format compatible sha256sum -c)
 echo "Génération du checksum SHA-256..."
@@ -169,61 +173,44 @@ echo "Checksum SHA-256 : $(awk '{print $1}' "${OUTPUT_CHECKSUM}")"
 
 # 6. Validation du contenu de l'archive tar.gz générée (hors vendor/)
 echo "Validation du contenu de l'archive tar.gz générée..."
-TAR_FORBIDDEN_FOUND=0
+IS_ARCHIVE_INVALID=0
 
 echo "Contenu de l'archive tar.gz :"
-tar -tzf "${OUTPUT_TAR}"
+tar -tzf "${OUTPUT_TAR}" || exit 1
 
 while IFS= read -r line; do
+  # Nettoyage des slashs de fin pour les dossiers
   clean_line="${line%/}"
+  
+  # Retrait du préfixe ./ pour simplifier les comparaisons
+  clean_line="${clean_line#./}"
 
-  if [[ "${clean_line}" == ".env" || "${clean_line}" == ".env.next" || "${clean_line}" == */.env || "${clean_line}" == */.env.next ]]; then
-    echo "ERREUR : Fichier d'environnement interdit détecté dans l'archive tar.gz : ${line}"
-    TAR_FORBIDDEN_FOUND=1
+  in_vendor=0
+  if [[ "${clean_line}" == "vendor" || "${clean_line}" == "vendor/"* ]]; then
+    in_vendor=1
   fi
-done < <(tar -tzf "${OUTPUT_TAR}")
-
-while IFS= read -r line; do
-  clean_line="${line%/}"
 
   # Vérification par rapport aux dossiers interdits au niveau racine
   for dir in ".git" "node_modules" "tests" "_bmad-output" "_bmad" ".agents" ".agent"; do
-    if [[ "${clean_line}" == "./${dir}" || "${clean_line}" == "./${dir}/"* || "${clean_line}" == "${dir}" || "${clean_line}" == "${dir}/"* ]]; then
+    if [[ "${clean_line}" == "${dir}" || "${clean_line}" == "${dir}/"* ]]; then
       echo "ERREUR : Fichier ou répertoire interdit détecté dans l'archive tar.gz : ${line}"
-      TAR_FORBIDDEN_FOUND=1
+      IS_ARCHIVE_INVALID=1
     fi
   done
 
-  # Vérification par rapport aux fichiers interdits spécifiques
-  for file in ".env" ".env.next" ".env.local" "auth.json"; do
-    # On autorise .env.example, donc on vérifie exactement .env et les overrides locaux.
-    basename_line="$(basename "${clean_line}")"
-    if [[ "${basename_line}" == "${file}" ]]; then
+  # Vérification récursive (hors vendor)
+  if [ $in_vendor -eq 0 ]; then
+    filename="${clean_line##*/}"
+    if [[ "${filename}" == ".env" || "${filename}" == ".env.next" || "${filename}" == ".env.local" || "${filename}" == .env.*.local || "${filename}" == "auth.json" || "${filename}" == phpunit* || "${filename}" == *.key || "${filename}" == *.pem ]]; then
       echo "ERREUR : Fichier interdit détecté dans l'archive tar.gz : ${line}"
-      TAR_FORBIDDEN_FOUND=1
+      IS_ARCHIVE_INVALID=1
     fi
-  done
-
-  basename_line="$(basename "${clean_line}")"
-  if [[ "${basename_line}" == .env.*.local ]]; then
-    echo "ERREUR : Fichier local d'environnement interdit détecté dans l'archive tar.gz : ${line}"
-    TAR_FORBIDDEN_FOUND=1
   fi
+done < <(tar -tzf "${OUTPUT_TAR}" || exit 1)
 
-  if [[ "${basename_line}" == phpunit* ]]; then
-    echo "ERREUR : Fichier phpunit interdit détecté dans l'archive tar.gz : ${line}"
-    TAR_FORBIDDEN_FOUND=1
-  fi
-
-  # Vérification récursive pour *.key et *.pem
-  if [[ "${basename_line}" == *.key || "${basename_line}" == *.pem ]]; then
-    echo "ERREUR : Fichier de clé secrète détecté dans l'archive tar.gz : ${line}"
-    TAR_FORBIDDEN_FOUND=1
-  fi
-done < <(tar -tzf "${OUTPUT_TAR}" | grep -v "^\./vendor/" | grep -v "^vendor/" || true)
-
-if [ ${TAR_FORBIDDEN_FOUND} -eq 1 ]; then
+if [ ${IS_ARCHIVE_INVALID} -eq 1 ]; then
   echo "ÉCHEC : L'archive tar.gz contient des fichiers interdits."
+  rm -f "${OUTPUT_TAR}" "${OUTPUT_CHECKSUM}"
   exit 1
 fi
 
