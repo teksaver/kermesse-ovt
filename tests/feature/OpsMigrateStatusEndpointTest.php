@@ -3,6 +3,8 @@
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/TmpDirTrait.php';
+
 /**
  * Feature tests for POST /ops/migrate/status endpoint.
  *
@@ -14,16 +16,43 @@ use CodeIgniter\Test\FeatureTestTrait;
 final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
+    use TmpDirTrait;
 
     private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
+    private ?string $tmpDir = null;
+
+    private bool $originalOpsMigrationProductionOnly;
+    private string $originalOpsMigrationHmacSecret;
+    private int $originalOpsMigrationAllowedTimestampSkew;
+    private string $originalOpsMigrationPath;
 
     protected function setUp(): void
     {
         parent::setUp();
 
+        $this->originalOpsMigrationProductionOnly       = config('Kermesse')->opsMigrationProductionOnly;
+        $this->originalOpsMigrationHmacSecret           = config('Kermesse')->opsMigrationHmacSecret;
+        $this->originalOpsMigrationAllowedTimestampSkew = config('Kermesse')->opsMigrationAllowedTimestampSkew;
+        $this->originalOpsMigrationPath                 = config('Kermesse')->opsMigrationPath;
+
         config('Kermesse')->opsMigrationProductionOnly        = false;
         config('Kermesse')->opsMigrationHmacSecret            = $this->testSecret;
         config('Kermesse')->opsMigrationAllowedTimestampSkew  = 300;
+    }
+
+    protected function tearDown(): void
+    {
+        config('Kermesse')->opsMigrationProductionOnly       = $this->originalOpsMigrationProductionOnly;
+        config('Kermesse')->opsMigrationHmacSecret           = $this->originalOpsMigrationHmacSecret;
+        config('Kermesse')->opsMigrationAllowedTimestampSkew = $this->originalOpsMigrationAllowedTimestampSkew;
+        config('Kermesse')->opsMigrationPath                 = $this->originalOpsMigrationPath;
+
+        if ($this->tmpDir !== null) {
+            $this->removeDirRecursive($this->tmpDir);
+            $this->tmpDir = null;
+        }
+
+        parent::tearDown();
     }
 
     // -----------------------------------------------------------------------
@@ -132,8 +161,9 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
         );
 
         // Dossier de migrations vide → tout est pending (aucune migration découverte)
-        config('Kermesse')->opsMigrationPath = sys_get_temp_dir() . '/kermesse_status_feat_empty_' . uniqid();
-        mkdir(config('Kermesse')->opsMigrationPath, 0755, true);
+        $this->tmpDir = sys_get_temp_dir() . '/kermesse_status_feat_empty_' . uniqid();
+        mkdir($this->tmpDir, 0755, true);
+        config('Kermesse')->opsMigrationPath = $this->tmpDir;
 
         $body      = '';
         $timestamp = (string) time();
@@ -147,8 +177,6 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
             'X-Kermesse-Nonce'     => $nonce,
             'X-Kermesse-Signature' => $signature,
         ])->post('ops/migrate/status');
-
-        rmdir(config('Kermesse')->opsMigrationPath);
 
         $result->assertStatus(200);
         $json = json_decode($result->response()->getBody(), true);
@@ -179,11 +207,11 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
             $this->markTestSkipped('Ce test requiert une connexion MariaDB/MySQL (database.tests.DBDriver=MySQLi).');
         }
 
-        $tmpDir = sys_get_temp_dir() . '/kermesse_status_feat_pending_' . uniqid();
-        mkdir($tmpDir, 0755, true);
+        $this->tmpDir = sys_get_temp_dir() . '/kermesse_status_feat_pending_' . uniqid();
+        mkdir($this->tmpDir, 0755, true);
 
         // Écrire une migration qui n'a pas encore été appliquée
-        file_put_contents($tmpDir . '/20260601000000_pending_test.sql', 'SELECT 1;');
+        file_put_contents($this->tmpDir . '/20260601000000_pending_test.sql', 'SELECT 1;');
 
         $db->query(
             'CREATE TABLE IF NOT EXISTS `schema_versions` (
@@ -202,7 +230,7 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci'
         );
 
-        config('Kermesse')->opsMigrationPath = $tmpDir;
+        config('Kermesse')->opsMigrationPath = $this->tmpDir;
 
         $body      = '';
         $timestamp = (string) time();
@@ -216,9 +244,6 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
             'X-Kermesse-Nonce'     => $nonce,
             'X-Kermesse-Signature' => $signature,
         ])->post('ops/migrate/status');
-
-        @unlink($tmpDir . '/20260601000000_pending_test.sql');
-        @rmdir($tmpDir);
 
         $result->assertStatus(200);
         $json = json_decode($result->response()->getBody(), true);

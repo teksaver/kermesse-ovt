@@ -45,8 +45,18 @@ class MigrationRunnerService
             'failed'  => [],
         ];
 
-        $migrations      = $this->discoverMigrations();
-        $appliedVersions = $this->getAppliedVersions();
+        $migrations = $this->discoverMigrations();
+
+        try {
+            $appliedVersions = $this->getAppliedVersions();
+        } catch (\Throwable $e) {
+            // DB non initialisée (schema_versions n'existe pas) -> 0 migration appliquée
+            if (strpos($e->getMessage(), 'schema_versions') !== false) {
+                $appliedVersions = [];
+            } else {
+                throw $e;
+            }
+        }
 
         foreach ($migrations as $migration) {
             $version = $migration['version'];
