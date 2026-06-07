@@ -32,6 +32,45 @@ class MigrationRunnerService
     }
 
     /**
+     * Read-only status check: classify all discovered migrations without applying anything or acquiring a lock.
+     *
+     * @return array{ok: bool, pending: list<string>, applied: list<string>, failed: list<string>}
+     */
+    public function status(): array
+    {
+        $result = [
+            'ok'      => true,
+            'pending' => [],
+            'applied' => [],
+            'failed'  => [],
+        ];
+
+        $migrations      = $this->discoverMigrations();
+        $appliedVersions = $this->getAppliedVersions();
+
+        foreach ($migrations as $migration) {
+            $version = $migration['version'];
+
+            if (!isset($appliedVersions[$version])) {
+                $result['pending'][] = $version;
+                continue;
+            }
+
+            $dbStatus = $appliedVersions[$version]['status'];
+
+            if ($dbStatus === 'success') {
+                $result['applied'][] = $version;
+            } elseif ($dbStatus === 'failed') {
+                $result['failed'][] = $version;
+            } else {
+                $result['pending'][] = $version;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Run all pending migrations and return a summary.
      *
      * @return array{ok: bool, applied: list<string>, skipped: list<string>, failed: list<string>}
@@ -148,7 +187,7 @@ class MigrationRunnerService
      *
      * @return list<array{version: string, checksum: string, path: string}>
      */
-    private function discoverMigrations(): array
+    protected function discoverMigrations(): array
     {
         $files = glob($this->migrationsPath . '/*.sql');
 
@@ -200,7 +239,7 @@ class MigrationRunnerService
      *
      * @return array<string, array{checksum: string, status: string}>
      */
-    private function getAppliedVersions(): array
+    protected function getAppliedVersions(): array
     {
         $query = $this->db->query(
             'SELECT `version`, `checksum`, `status` FROM `schema_versions` ORDER BY `id` ASC'

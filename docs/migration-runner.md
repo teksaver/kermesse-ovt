@@ -35,23 +35,33 @@ Le secret partagé est la valeur de `kermesse.opsMigrationHmacSecret` dans le `.
 
 ### Exemple bash (GitHub Actions)
 
+Le champ `routePath` dans le payload HMAC est **le chemin de la route ops appelée**, normalisé sans slash de tête ni base URL. Chaque route signe son propre chemin, ce qui empêche le rejeu d'un message signé pour une route sur une autre route.
+
+| Route appelée | `routePath` à utiliser dans le payload |
+|---------------|----------------------------------------|
+| `POST /ops/migrate` | `ops/migrate` |
+| `POST /ops/migrate/status` | `ops/migrate/status` |
+| `POST /ops/activate` | `ops/activate` |
+| `POST /ops/probe` | `ops/probe` |
+
+Exemple pour `POST /ops/migrate` :
+
 ```bash
+ROUTE_PATH="ops/migrate"   # adapter selon la route appelée
 TIMESTAMP=$(date +%s)
 NONCE=$(uuidgen)
 BODY='{}' # ou vide
 BODY_HASH=$(echo -n "$BODY" | sha256sum | cut -d' ' -f1)
-PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/migrate\n${BODY_HASH}"
+PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\n${ROUTE_PATH}\n${BODY_HASH}"
 SIGNATURE=$(echo -ne "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)
 
-curl -X POST "${BASE_URL}/ops/migrate" \
+curl -X POST "${BASE_URL}/${ROUTE_PATH}" \
   -H "Content-Type: application/json" \
   -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
   -H "X-Kermesse-Nonce: ${NONCE}" \
   -H "X-Kermesse-Signature: ${SIGNATURE}" \
   -d "$BODY"
 ```
-
-> Note : les futures routes ops (`ops/activate`, `ops/migrate/status`, `ops/probe`) signent exactement de la même manière, en remplaçant `ops/migrate` par leur propre `routePath` dans le payload.
 
 > Sonde runtime `ops/probe` : la route de mesure `POST /ops/probe` passe le même `OpsAuthFilter` et signe son propre `routePath` (`ops/probe`). Elle reste désactivable via le drapeau `kermesse.opsProbeEnabled` (défaut `false`) ; même avec un HMAC valide, elle répond `403 {"error":"probe_disabled"}` tant que le drapeau n'est pas activé.
 
@@ -77,7 +87,7 @@ L'`OpsAuthFilter` vérifie dans cet ordre :
 
 Le filtre ne distingue jamais publiquement la cause exacte du refus.
 
-### Endpoint migrate
+### Endpoint migrate (`POST /ops/migrate`)
 
 | Code | Signification |
 |------|---------------|
@@ -96,6 +106,33 @@ Réponse JSON :
 ```
 
 Les valeurs `applied`, `skipped` et `failed` sont des compteurs. Aucun SQL brut, stack trace, variable d'environnement ou secret n'est exposé.
+
+### Endpoint migrate/status (`POST /ops/migrate/status`)
+
+Route en **lecture seule** : ne modifie rien, n'acquiert aucun verrou, ne crée pas de tables.
+Elle permet de connaître l'état courant des migrations sans déclencher d'application.
+
+| Code | Signification |
+|------|---------------|
+| 200  | Réponse toujours 200 (l'état « en attente » n'est pas une erreur) |
+| 500  | Erreur interne lors de la lecture de `schema_versions` |
+
+Réponse JSON :
+
+```json
+{
+  "ok": true,
+  "pending": ["20260607000000_add_volunteers"],
+  "applied": ["20260602161500_initial_schema", "20260605180000_create_stands"],
+  "failed":  []
+}
+```
+
+- `pending` : migrations découvertes mais absentes de `schema_versions`, ou avec statut `pending` (état intermédiaire).
+- `applied` : migrations présentes dans `schema_versions` avec statut `success`.
+- `failed`  : migrations présentes dans `schema_versions` avec statut `failed`.
+
+> **Note** : une liste `pending` non vide est un état normal, pas une erreur. Le code HTTP reste 200.
 
 ## Comportement du runner
 

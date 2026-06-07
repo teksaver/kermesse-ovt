@@ -14,6 +14,41 @@ use CodeIgniter\HTTP\ResponseInterface;
 class MigrationController extends BaseController
 {
     /**
+     * POST /ops/migrate/status
+     *
+     * Read-only migration state: classifies each discovered migration as pending/applied/failed.
+     * Never acquires a lock, never applies anything, never modifies data.
+     * Any DB exception bubbles up as a 500 (fail-fast rule).
+     */
+    public function status(): ResponseInterface
+    {
+        try {
+            $runner = new MigrationRunnerService();
+            $result = $runner->status();
+
+            return $this->response
+                ->setStatusCode(200)
+                ->setJSON([
+                    'ok'      => true,
+                    'pending' => $result['pending'],
+                    'applied' => $result['applied'],
+                    'failed'  => $result['failed'],
+                ]);
+        } catch (\Throwable $e) {
+            log_message('critical', 'MigrationController::status: unhandled error: {message}', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return $this->response
+                ->setStatusCode(500)
+                ->setJSON([
+                    'ok'    => false,
+                    'error' => 'status_error',
+                ]);
+        }
+    }
+
+    /**
      * POST /ops/migrate
      *
      * Runs pending SQL migrations and returns a minimal JSON summary.

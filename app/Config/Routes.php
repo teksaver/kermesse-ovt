@@ -49,6 +49,7 @@ $routes->post('admin/kermesses/(:num)/stands/(:num)/slots', '\App\Controllers\Ad
 $routes->post('admin/kermesses/(:num)/stands/(:num)/slots/(:num)', '\App\Controllers\Admin\SlotController::update/$1/$2/$3');
 
 // Ops endpoints — protected by HMAC authentication, CSRF excluded
-$routes->post('ops/migrate',   '\App\Controllers\Ops\MigrationController::migrate',   ['filter' => 'ops-auth']);
-$routes->post('ops/probe',     '\App\Controllers\Ops\ProbeController::probe',          ['filter' => 'ops-auth']);
-$routes->post('ops/activate',  '\App\Controllers\Ops\ActivateController::activate',   ['filter' => 'ops-auth']);
+$routes->post('ops/migrate',        '\App\Controllers\Ops\MigrationController::migrate',   ['filter' => 'ops-auth']);
+$routes->post('ops/migrate/status', '\App\Controllers\Ops\MigrationController::status',    ['filter' => 'ops-auth']);
+$routes->post('ops/probe',          '\App\Controllers\Ops\ProbeController::probe',          ['filter' => 'ops-auth']);
+$routes->post('ops/activate',       '\App\Controllers\Ops\ActivateController::activate',   ['filter' => 'ops-auth']);
