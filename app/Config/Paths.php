@@ -52,6 +52,10 @@ class Paths
      * need write permission to a single place that can be tucked away
      * for maximum security, keeping it out of the app and/or
      * system directories.
+     *
+     * In production (Ouvaton), the deployment shim (httpdocs/index.php)
+     * overrides this property to kermesse/shared/writable/ so that
+     * writable data is preserved across atomic release switches.
      */
     public string $writableDirectory = __DIR__ . '/../../writable';
 
@@ -85,6 +89,10 @@ class Paths
      * the .env file is located.
      * Please consider security implications when changing this
      * value - the directory should not be publicly accessible.
+     *
+     * In production (Ouvaton), the deployment shim overrides this
+     * property to kermesse/shared/ so the .env is never overwritten
+     * by a release swap.
      */
     public string $envDirectory = __DIR__ . '/../../';
 }
