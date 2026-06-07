@@ -93,7 +93,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kermesse-deploy
-          path: build/kermesse-deploy.zip
+          path: |
+            build/kermesse-deploy.tar.gz
+            build/kermesse-deploy.tar.gz.sha256
           retention-days: 14
 
   deploy:
@@ -144,10 +146,11 @@ jobs:
         with:
           name: kermesse-deploy
 
-      - name: Extract artifact
+      - name: Verify and extract artifact
         run: |
+          sha256sum -c kermesse-deploy.tar.gz.sha256 || (echo "Échec : Artefact corrompu" && exit 1)
           mkdir -p deploy-staging
-          unzip kermesse-deploy.zip -d deploy-staging
+          tar -xzf kermesse-deploy.tar.gz -C deploy-staging
 
       - name: Generate .env from production variables and secrets
         shell: bash

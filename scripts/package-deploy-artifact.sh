@@ -9,23 +9,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 STAGING_DIR="${PROJECT_ROOT}/build/staging"
-OUTPUT_ZIP="${PROJECT_ROOT}/build/kermesse-deploy.zip"
+OUTPUT_TAR="${PROJECT_ROOT}/build/kermesse-deploy.tar.gz"
+OUTPUT_CHECKSUM="${OUTPUT_TAR}.sha256"
 
 echo "=== Début du packaging de l'artefact ==="
 echo "Racine du projet : ${PROJECT_ROOT}"
 echo "Dossier de staging : ${STAGING_DIR}"
-echo "Fichier de sortie : ${OUTPUT_ZIP}"
+echo "Fichier de sortie : ${OUTPUT_TAR}"
 
-for command in composer zip unzip; do
+for command in composer tar awk; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "ERREUR : commande requise introuvable : ${command}"
     exit 1
   fi
 done
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+  echo "ERREUR : commande requise introuvable : sha256sum ou shasum"
+  exit 1
+fi
 
 # Nettoyage précédent
 rm -rf "${STAGING_DIR}"
-rm -f "${OUTPUT_ZIP}"
+rm -f "${OUTPUT_TAR}" "${OUTPUT_CHECKSUM}"
 mkdir -p "${STAGING_DIR}"
 
 # 1. Copie des fichiers et dossiers nécessaires
@@ -148,70 +153,68 @@ if [ ${FORBIDDEN_FOUND} -eq 1 ]; then
   exit 1
 fi
 
-# 4. Création de l'archive ZIP
-echo "Création de l'archive ZIP..."
+# 4. Création de l'archive tar.gz
+echo "Création de l'archive tar.gz..."
 cd "${STAGING_DIR}"
-zip -q -r "${OUTPUT_ZIP}" .
+tar -czf "${OUTPUT_TAR}" . || exit 1
 
-# 5. Vérification du contenu du ZIP généré (hors vendor/)
-echo "Validation du contenu de l'archive ZIP générée..."
-ZIP_FORBIDDEN_FOUND=0
+# 5. Génération du checksum SHA-256 (format compatible sha256sum -c)
+echo "Génération du checksum SHA-256..."
+if command -v sha256sum >/dev/null 2>&1; then
+  # Génère "<hash>  <basename>" pour compatibilité sha256sum -c
+  (cd "$(dirname "${OUTPUT_TAR}")" && sha256sum "$(basename "${OUTPUT_TAR}")") > "${OUTPUT_CHECKSUM}"
+elif command -v shasum >/dev/null 2>&1; then
+  (cd "$(dirname "${OUTPUT_TAR}")" && shasum -a 256 "$(basename "${OUTPUT_TAR}")") > "${OUTPUT_CHECKSUM}"
+else
+  echo "ERREUR : sha256sum ou shasum introuvable. Impossible de générer le checksum."
+  exit 1
+fi
+echo "Checksum SHA-256 : $(awk '{print $1}' "${OUTPUT_CHECKSUM}")"
 
-echo "Contenu de l'archive ZIP :"
-unzip -Z -1 "${OUTPUT_ZIP}"
+# 6. Validation du contenu de l'archive tar.gz générée (hors vendor/)
+echo "Validation du contenu de l'archive tar.gz générée..."
+IS_ARCHIVE_INVALID=0
 
-while IFS= read -r line; do
-  clean_line="${line%/}"
-
-  if [[ "${clean_line}" == ".env" || "${clean_line}" == ".env.next" || "${clean_line}" == */.env || "${clean_line}" == */.env.next ]]; then
-    echo "ERREUR : Fichier d'environnement interdit détecté dans l'archive ZIP : ${line}"
-    ZIP_FORBIDDEN_FOUND=1
-  fi
-done < <(unzip -Z -1 "${OUTPUT_ZIP}")
+echo "Contenu de l'archive tar.gz :"
+tar -tzf "${OUTPUT_TAR}" || exit 1
 
 while IFS= read -r line; do
   # Nettoyage des slashs de fin pour les dossiers
   clean_line="${line%/}"
   
+  # Retrait du préfixe ./ pour simplifier les comparaisons
+  clean_line="${clean_line#./}"
+
+  in_vendor=0
+  if [[ "${clean_line}" == "vendor" || "${clean_line}" == "vendor/"* ]]; then
+    in_vendor=1
+  fi
+
   # Vérification par rapport aux dossiers interdits au niveau racine
   for dir in ".git" "node_modules" "tests" "_bmad-output" "_bmad" ".agents" ".agent"; do
-    if [[ "${clean_line}" == "${dir}" || "${clean_line}" == "${dir}"/* ]]; then
-      echo "ERREUR : Fichier ou répertoire interdit détecté dans l'archive ZIP : ${line}"
-      ZIP_FORBIDDEN_FOUND=1
+    if [[ "${clean_line}" == "${dir}" || "${clean_line}" == "${dir}/"* ]]; then
+      echo "ERREUR : Fichier ou répertoire interdit détecté dans l'archive tar.gz : ${line}"
+      IS_ARCHIVE_INVALID=1
     fi
   done
 
-  # Vérification par rapport aux fichiers interdits spécifiques
-  for file in ".env" ".env.next" ".env.local" "auth.json"; do
-    # On autorise .env.example, donc on vérifie exactement .env et les overrides locaux.
-    if [[ "${clean_line}" == "${file}" || "${clean_line}" == */"${file}" ]]; then
-      echo "ERREUR : Fichier interdit détecté dans l'archive ZIP : ${line}"
-      ZIP_FORBIDDEN_FOUND=1
+  # Vérification récursive (hors vendor)
+  if [ $in_vendor -eq 0 ]; then
+    filename="${clean_line##*/}"
+    if [[ "${filename}" == ".env" || "${filename}" == ".env.next" || "${filename}" == ".env.local" || "${filename}" == .env.*.local || "${filename}" == "auth.json" || "${filename}" == phpunit* || "${filename}" == *.key || "${filename}" == *.pem ]]; then
+      echo "ERREUR : Fichier interdit détecté dans l'archive tar.gz : ${line}"
+      IS_ARCHIVE_INVALID=1
     fi
-  done
-
-  if [[ "${clean_line}" == .env.*.local || "${clean_line}" == */.env.*.local ]]; then
-    echo "ERREUR : Fichier local d'environnement interdit détecté dans l'archive ZIP : ${line}"
-    ZIP_FORBIDDEN_FOUND=1
   fi
+done < <(tar -tzf "${OUTPUT_TAR}" || exit 1)
 
-  if [[ "${clean_line}" == phpunit* || "${clean_line}" == */phpunit* ]]; then
-    echo "ERREUR : Fichier phpunit interdit détecté dans l'archive ZIP : ${line}"
-    ZIP_FORBIDDEN_FOUND=1
-  fi
-
-  # Vérification récursive pour *.key et *.pem
-  if [[ "${clean_line}" == *.key || "${clean_line}" == *.pem ]]; then
-    echo "ERREUR : Fichier de clé secrète détecté dans l'archive ZIP : ${line}"
-    ZIP_FORBIDDEN_FOUND=1
-  fi
-done < <(unzip -Z -1 "${OUTPUT_ZIP}" | grep -v "^vendor/" || true)
-
-if [ ${ZIP_FORBIDDEN_FOUND} -eq 1 ]; then
-  echo "ÉCHEC : L'archive ZIP contient des fichiers interdits."
+if [ ${IS_ARCHIVE_INVALID} -eq 1 ]; then
+  echo "ÉCHEC : L'archive tar.gz contient des fichiers interdits."
+  rm -f "${OUTPUT_TAR}" "${OUTPUT_CHECKSUM}"
   exit 1
 fi
 
 echo "=== Packaging réussi ! ==="
-echo "Archive créée avec succès : ${OUTPUT_ZIP}"
-ls -lh "${OUTPUT_ZIP}"
+echo "Archive créée avec succès : ${OUTPUT_TAR}"
+echo "Checksum SHA-256 : ${OUTPUT_CHECKSUM}"
+ls -lh "${OUTPUT_TAR}" "${OUTPUT_CHECKSUM}"
