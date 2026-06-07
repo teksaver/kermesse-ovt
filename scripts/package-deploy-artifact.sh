@@ -102,6 +102,7 @@ FORBIDDEN_ROOT_DIRS=(
   "_bmad"
   ".agents"
   ".agent"
+  "deploy"
 )
 
 for dir in "${FORBIDDEN_ROOT_DIRS[@]}"; do
@@ -191,7 +192,7 @@ while IFS= read -r line; do
   fi
 
   # Vérification par rapport aux dossiers interdits au niveau racine
-  for dir in ".git" "node_modules" "tests" "_bmad-output" "_bmad" ".agents" ".agent"; do
+  for dir in ".git" "node_modules" "tests" "_bmad-output" "_bmad" ".agents" ".agent" "deploy"; do
     if [[ "${clean_line}" == "${dir}" || "${clean_line}" == "${dir}/"* ]]; then
       echo "ERREUR : Fichier ou répertoire interdit détecté dans l'archive tar.gz : ${line}"
       IS_ARCHIVE_INVALID=1
