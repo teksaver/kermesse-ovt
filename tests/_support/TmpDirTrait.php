@@ -17,19 +17,36 @@ trait TmpDirTrait
             return;
         }
 
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
+        try {
+            $it = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST
+            );
 
-        foreach ($it as $file) {
-            if ($file->isLink() || $file->isFile()) {
-                @unlink($file->getPathname());
-            } elseif ($file->isDir()) {
-                @rmdir($file->getPathname());
+            foreach ($it as $file) {
+                if ($file->isLink() || $file->isFile()) {
+                    if (!@unlink($file->getPathname()) && file_exists($file->getPathname())) {
+                        @chmod($file->getPathname(), 0777);
+                        @unlink($file->getPathname());
+                    }
+                } elseif ($file->isDir()) {
+                    if (!@rmdir($file->getPathname()) && is_dir($file->getPathname())) {
+                        @chmod($file->getPathname(), 0777);
+                        @rmdir($file->getPathname());
+                    }
+                }
             }
-        }
 
-        @rmdir($dir);
+            if (is_dir($dir)) {
+                if (!@rmdir($dir)) {
+                    @chmod($dir, 0777);
+                    @rmdir($dir);
+                }
+            }
+        } catch (\UnexpectedValueException $e) {
+            // Ignore access denied errors during teardown
+        } catch (\Exception $e) {
+            // Ignore other filesystem errors during teardown
+        }
     }
 }
