@@ -103,13 +103,14 @@ class OpsAuthFilter implements FilterInterface
             $this->bootstrapNonceTable($db);
 
             // Purge expired nonces opportunistically.
+            // CURRENT_TIMESTAMP is standard SQL — works on MariaDB and SQLite.
             $db->query(
-                'DELETE FROM `ops_nonces` WHERE `expires_at` < NOW()'
+                'DELETE FROM ops_nonces WHERE expires_at < CURRENT_TIMESTAMP'
             );
 
-            // Attempt to insert — duplicate hash means replay.
+            // Attempt to insert — duplicate hash means replay (PRIMARY KEY violation).
             $db->query(
-                'INSERT INTO `ops_nonces` (`nonce_hash`, `expires_at`) VALUES (?, ?)',
+                'INSERT INTO ops_nonces (nonce_hash, expires_at) VALUES (?, ?)',
                 [$nonceHash, $expiresAt]
             );
         } catch (\Throwable $e) {
@@ -122,20 +123,22 @@ class OpsAuthFilter implements FilterInterface
     }
 
     /**
-     * Ensure nonce storage exists before the first migration call on a blank DB.
+     * Ensure nonce storage exists before the first ops call on a blank DB.
+     *
+     * Uses cross-database DDL (no AUTO_INCREMENT, no MySQL ENGINE clause) so
+     * the table can be bootstrapped in MariaDB, MySQL, and SQLite (tests).
+     * nonce_hash is both the natural key and the unique constraint that
+     * blocks replay attacks when a duplicate INSERT throws a constraint error.
      */
     private function bootstrapNonceTable(\CodeIgniter\Database\BaseConnection $db): void
     {
         $db->query(<<<'SQL'
-            CREATE TABLE IF NOT EXISTS `ops_nonces` (
-                `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `nonce_hash`   VARCHAR(64)     NOT NULL,
-                `expires_at`   DATETIME        NOT NULL,
-                `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`id`),
-                UNIQUE KEY `uq_ops_nonces_hash` (`nonce_hash`),
-                KEY `idx_ops_nonces_expires` (`expires_at`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            CREATE TABLE IF NOT EXISTS ops_nonces (
+                nonce_hash   VARCHAR(64)  NOT NULL,
+                expires_at   DATETIME     NOT NULL,
+                created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (nonce_hash)
+            )
             SQL);
     }
 
