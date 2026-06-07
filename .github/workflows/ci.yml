@@ -173,7 +173,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kermesse-deploy
-          path: build/kermesse-deploy.zip
+          path: |
+            build/kermesse-deploy.tar.gz
+            build/kermesse-deploy.tar.gz.sha256
           retention-days: 14
 
       - name: Upload pull request deploy artifact
@@ -181,5 +183,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kermesse-deploy-pr-${{ github.event.pull_request.number }}
-          path: build/kermesse-deploy.zip
+          path: |
+            build/kermesse-deploy.tar.gz
+            build/kermesse-deploy.tar.gz.sha256
           retention-days: 7
