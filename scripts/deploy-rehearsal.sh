@@ -19,6 +19,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── Vérifications de base (Fail-fast) ────────────────────────────────────────
+hash curl awk openssl || { echo "ERREUR : dépendances système manquantes (curl, awk, openssl)" >&2; exit 1; }
+if [[ ! -x "${SCRIPT_DIR}/package-deploy-artifact.sh" || ! -x "${SCRIPT_DIR}/transfer-archive.sh" ]]; then
+    echo "ERREUR : sous-scripts introuvables ou non exécutables dans ${SCRIPT_DIR}" >&2
+    exit 1
+fi
+
 # ── Variables d'env avec valeurs par défaut pour la cible locale (profil rehearsal) ──
 TARGET_HOST="${TARGET_HOST:-localhost}"
 TARGET_PORT="${TARGET_PORT:-2222}"
@@ -81,7 +88,7 @@ CURRENT_STEP="activation"
 echo ""
 echo "-- Étape 3/5 : Activation atomique"
 hmac_sign "ops/activate"
-curl -fsS -X POST "${BASE_URL%/}/ops/activate" \
+curl --max-time 30 --fail-with-body -fsS -X POST "${BASE_URL%/}/ops/activate" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
@@ -94,7 +101,7 @@ CURRENT_STEP="migration"
 echo ""
 echo "-- Étape 4/5 : Migration de la base de données"
 hmac_sign "ops/migrate"
-curl -fsS -X POST "${BASE_URL%/}/ops/migrate" \
+curl --max-time 30 --fail-with-body -fsS -X POST "${BASE_URL%/}/ops/migrate" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
@@ -107,7 +114,7 @@ CURRENT_STEP="verification-etat"
 echo ""
 echo "-- Étape 5/5 : Vérification de l'état des migrations"
 hmac_sign "ops/migrate/status"
-curl -fsS -X POST "${BASE_URL%/}/ops/migrate/status" \
+curl --max-time 30 --fail-with-body -fsS -X POST "${BASE_URL%/}/ops/migrate/status" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
