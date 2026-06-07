@@ -59,8 +59,75 @@ services:
       retries: 20
       start_period: 20s
 
+  # ---------------------------------------------------------------------------
+  # Profile: rehearsal — cible de déploiement locale Ouvaton-like
+  # ---------------------------------------------------------------------------
+  # Démarrage: docker compose --profile rehearsal up
+  # Ces services ne démarrent PAS avec docker compose up sans le profil.
+
+  deploy-target:
+    profiles: [rehearsal]
+    image: atmoz/sftp:latest
+    ports:
+      - "127.0.0.1:${DEPLOY_TARGET_SFTP_PORT:-2222}:22"
+    environment:
+      # Identifiants locaux uniquement — utilisateur SFTP: deploy / deploy_rehearsal.
+      SFTP_USERS: "deploy:deploy_rehearsal:1000:1000"
+    volumes:
+      - deploy-target-data:/home/deploy
+      - ./docker/deploy-target/init-dirs.sh:/etc/sftp.d/init-dirs.sh:ro
+
+  deploy-web:
+    profiles: [rehearsal]
+    build:
+      context: .
+      args:
+        PHP_VERSION_OUVATON: "8.3"
+    ports:
+      - "127.0.0.1:${DEPLOY_WEB_HTTP_PORT:-8081}:80"
+    environment:
+      CI_ENVIRONMENT: development
+      app.baseURL: "http://localhost:${DEPLOY_WEB_HTTP_PORT:-8081}/"
+      app.appTimezone: "Europe/Paris"
+      app.forceGlobalSecureRequests: "false"
+      app.CSPEnabled: "false"
+      logger.threshold: "4"
+      database.default.hostname: db
+      database.default.database: kermesse
+      database.default.username: kermesse_user
+      database.default.password: kermesse_password
+      database.default.DBDriver: MySQLi
+      database.default.DBPrefix: ""
+      database.default.port: "3306"
+      database.default.charset: utf8mb4
+      database.default.DBCollat: utf8mb4_general_ci
+      # Les données de session vivent sur le volume partagé, pas dans le conteneur app.
+      session.savePath: /srv/deploy-data/shared/writable/session
+      kermesse.publicBaseURL: "http://localhost:${DEPLOY_WEB_HTTP_PORT:-8081}/"
+      kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
+      kermesse.opsMigrationHmacSecret: local_dev_ops_secret_32_bytes_minimum
+      kermesse.opsMigrationProductionOnly: "false"
+      kermesse.opsProbeEnabled: "true"
+      # Pointe le service d'activation vers le volume partagé (et non vers dirname(ROOTPATH)).
+      kermesse.opsActivateBasePath: /srv/deploy-data
+    volumes:
+      - .:/var/www/html
+      - ./docker/app/php.ini:/usr/local/etc/php/conf.d/zz-kermesse.ini:ro
+      - ./docker/deploy-web/000-default.conf:/etc/apache2/sites-available/000-default.conf:ro
+      - ./docker/deploy-web/entrypoint.sh:/usr/local/bin/deploy-web-entrypoint:ro
+      - deploy-target-data:/srv/deploy-data
+      - composer-cache:/tmp/composer
+      - vendor:/var/www/html/vendor
+      - writable:/var/www/html/writable
+    entrypoint: ["deploy-web-entrypoint"]
+    command: ["apache2-foreground"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   composer-cache:
   mariadb-data:
   vendor:
   writable:
+  deploy-target-data:

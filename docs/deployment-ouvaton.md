@@ -296,6 +296,53 @@ Ouvaton, à tenir à jour à chaque mesure de la sonde (NFR-4).
   ici comme « écart connu » avec sa justification. _Aucun écart confirmé à ce
   jour._
 
+#### Écarts spécifiques au profil `rehearsal` (R-4, NFR-4)
+
+Ces divergences sont propres à la cible locale (`docker compose --profile rehearsal`) et n'affectent pas la comparaison runtime PHP ci-dessus. Elles documenten les simplifications incontournables pour reproduire Ouvaton localement.
+
+- **Structure du home SFTP** : sur Ouvaton, le dossier applicatif est
+  `{home}/{OUVATON_DEPLOY_REMOTE_FOLDER}/` (ex. `kermesse/`) et l'archive
+  atterrit dans `kermesse/staging/`. En local (profil `rehearsal`), la racine
+  du home SFTP est directement la base de déploiement : `staging/`, `releases/`,
+  `current`, `shared/`, `httpdocs/` sont à la racine du volume. Le script
+  d'orchestration (epic 4) doit donc utiliser `REMOTE_STAGING=staging/` (et non
+  `kermesse/staging/`) pour la répétition locale.
+
+- **Shim `httpdocs/index.php`** : l'entrée web Ouvaton est générée par le
+  workflow GitHub Actions et référence `realpath('../kermesse')` (le dossier
+  applicatif Ouvaton). En local, le shim de bootstrap (créé par
+  `docker/deploy-web/entrypoint.sh` au premier démarrage) pointe vers
+  `/var/www/html` (le code source monté). Après activation d'une première
+  release, l'orchestrateur de répétition (story 4-2) doit déposer un shim
+  pointant vers `../current/` pour que `deploy-web` serve réellement la release
+  activée.
+
+- **`kermesse.opsActivateBasePath`** : cette variable doit être fixée
+  explicitement à `/srv/deploy-data` dans l'environnement du service `deploy-web`
+  (ce qui est fait dans `docker-compose.yml`). Sur Ouvaton, le chemin est dérivé
+  automatiquement depuis `dirname(ROOTPATH)` ; en local le `ROOTPATH` pointe vers
+  `/var/www/html/`, ce qui rendrait la dérivation incorrecte sans surcharge.
+
+- **Permissions et propriétaire (`chroot` SFTP)** : le chroot SFTP exige que le
+  répertoire racine (`/home/deploy`) soit détenu par `root:root` avec permissions
+  `755`. Les sous-dossiers (`staging/`, `releases/`, etc.) sont détenus par
+  l'utilisateur `deploy`. Sur Ouvaton, les permissions sont gérées par
+  l'hébergeur ; en local elles sont initialisées par
+  `docker/deploy-target/init-dirs.sh`.
+
+- **`symlink()` / `rename()` atomiques** : `ReleaseActivationService` crée
+  le symlink `current` via `symlink()` + `rename()` pour une bascule atomique.
+  Sur Linux (conteneur), `rename()` sur un lien symbolique est atomique. Sur
+  Ouvaton (hébergement mutualisé), cette atomicité n'est pas garantie si le
+  système de fichiers ou le noyau ne la supporte pas — c'est une limitation
+  connue documentée ici. Le fichier de secours `CURRENT_RELEASE` assure la
+  résilience dans les deux cas.
+
+- **Document root et teardown** : pour remettre le profil `rehearsal` à zéro,
+  utiliser `docker compose --profile rehearsal down -v` (supprime le volume
+  `deploy-target-data`). Sans cette option, le volume et son contenu (releases,
+  `httpdocs/index.php` bootstrap) persistent entre les redémarrages.
+
 ## Migrations post-déploiement
 
 Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA256.
