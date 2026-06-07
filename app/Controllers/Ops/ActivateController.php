@@ -27,8 +27,16 @@ class ActivateController extends BaseController
     public function activate(): ResponseInterface
     {
         try {
-            $body        = $this->request->getJSON(true) ?? [];
-            $archiveName = trim((string) ($body['archive'] ?? ''));
+            $body = $this->request->getJSON(true) ?? [];
+            if (!is_array($body)) {
+                $body = [];
+            }
+            
+            if (!is_string($body['archive'] ?? '')) {
+                $archiveName = '';
+            } else {
+                $archiveName = trim((string) ($body['archive'] ?? ''));
+            }
 
             // Reject empty names and any path traversal attempt before hitting the service
             if ($archiveName === '' || str_contains($archiveName, '/') || str_contains($archiveName, '..')) {
@@ -59,9 +67,11 @@ class ActivateController extends BaseController
                 default             => 500,
             };
 
+            $displayError = $statusCode === 500 ? 'internal_error' : $error;
+
             return $this->response
                 ->setStatusCode($statusCode)
-                ->setJSON(['error' => $error]);
+                ->setJSON(['error' => $displayError]);
 
         } catch (\Throwable $e) {
             log_message('critical', 'ActivateController: unhandled error: {message}', [

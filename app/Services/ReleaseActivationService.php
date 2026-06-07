@@ -81,10 +81,10 @@ class ReleaseActivationService
             return ['ok' => false, 'error' => 'checksum_mismatch'];
         }
 
-        $expectedChecksum = trim((string) file_get_contents($checksumPath));
-        $actualChecksum   = (string) hash_file('sha256', $archivePath);
+        $expectedChecksum = trim((string) @file_get_contents($checksumPath));
+        $actualChecksum   = (string) @hash_file('sha256', $archivePath);
 
-        if (!hash_equals($expectedChecksum, $actualChecksum)) {
+        if ($expectedChecksum === '' || $actualChecksum === '' || !hash_equals($expectedChecksum, $actualChecksum)) {
             return ['ok' => false, 'error' => 'checksum_mismatch'];
         }
 
@@ -94,11 +94,13 @@ class ReleaseActivationService
         $releasesDir = $this->basePath . '/releases/';
         $releaseDir  = $releasesDir . $releaseName . '/';
 
-        if (!is_dir($releasesDir)) {
-            mkdir($releasesDir, 0755, true);
+        if (!is_dir($releasesDir) && !@mkdir($releasesDir, 0755, true)) {
+            return ['ok' => false, 'error' => 'internal_error'];
         }
 
-        mkdir($releaseDir, 0755, true);
+        if (!@mkdir($releaseDir, 0755, true)) {
+            return ['ok' => false, 'error' => 'internal_error'];
+        }
 
         // AC-4 — extract and validate structure
         if (!$this->extractArchive($archivePath, $releaseDir)) {
@@ -116,6 +118,10 @@ class ReleaseActivationService
 
         // AC-6 — prune old releases; shared/ is never scanned here
         $pruned = $this->pruneOldReleases($releasesDir, $releaseName, $this->releasesRetention);
+
+        // Clean up the staging artifact
+        @unlink($archivePath);
+        @unlink($checksumPath);
 
         return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned];
     }
@@ -145,14 +151,18 @@ class ReleaseActivationService
     protected function switchCurrent(string $releaseDir, string $releaseName): void
     {
         // Always write the pointer file so the fallback path in the shim works
-        file_put_contents($this->basePath . '/CURRENT_RELEASE', $releaseName . "\n");
+        if (@file_put_contents($this->basePath . '/CURRENT_RELEASE', $releaseName . "\n") === false) {
+            log_message('error', 'ReleaseActivationService: Failed to write CURRENT_RELEASE pointer');
+        }
 
         // Attempt atomic symlink swap: tmp symlink → rename() → current
         $currentSymlink = $this->basePath . '/current';
         $tmpLink        = $currentSymlink . '.tmp.' . uniqid('', true);
 
         if (@symlink(rtrim($releaseDir, '/'), $tmpLink)) {
-            rename($tmpLink, $currentSymlink);
+            if (!@rename($tmpLink, $currentSymlink)) {
+                @unlink($tmpLink);
+            }
         }
     }
 
@@ -203,11 +213,19 @@ class ReleaseActivationService
 
             return ($result['acquired'] ?? 0) == 1;
         } catch (\Throwable $e) {
-            log_message('debug', 'ReleaseActivationService: GET_LOCK unsupported, proceeding unlocked: {msg}', [
+            $msg = strtolower($e->getMessage());
+            if (str_contains($msg, 'no such function: get_lock') || str_contains($msg, 'syntax error')) {
+                log_message('debug', 'ReleaseActivationService: GET_LOCK unsupported, proceeding unlocked: {msg}', [
+                    'msg' => $e->getMessage(),
+                ]);
+                return true;
+            }
+
+            log_message('error', 'ReleaseActivationService: database error acquiring lock: {msg}', [
                 'msg' => $e->getMessage(),
             ]);
 
-            return true;
+            return false;
         }
     }
 
