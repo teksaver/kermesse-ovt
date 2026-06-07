@@ -103,9 +103,9 @@ class OpsAuthFilter implements FilterInterface
             $this->bootstrapNonceTable($db);
 
             // Purge expired nonces opportunistically.
-            // CURRENT_TIMESTAMP is standard SQL — works on MariaDB and SQLite.
             $db->query(
-                'DELETE FROM ops_nonces WHERE expires_at < CURRENT_TIMESTAMP'
+                'DELETE FROM ops_nonces WHERE expires_at < ?',
+                [date('Y-m-d H:i:s')]
             );
 
             // Attempt to insert — duplicate hash means replay (PRIMARY KEY violation).
@@ -140,6 +140,7 @@ class OpsAuthFilter implements FilterInterface
                 PRIMARY KEY (nonce_hash)
             )
             SQL);
+        $db->query('CREATE INDEX IF NOT EXISTS idx_ops_nonces_expires ON ops_nonces (expires_at)');
     }
 
     /**

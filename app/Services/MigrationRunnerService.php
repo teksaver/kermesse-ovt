@@ -51,7 +51,8 @@ class MigrationRunnerService
             $appliedVersions = $this->getAppliedVersions();
         } catch (\Throwable $e) {
             // DB non initialisée (schema_versions n'existe pas) -> 0 migration appliquée
-            if (strpos($e->getMessage(), 'schema_versions') !== false) {
+            $code = $e->getCode();
+            if ($code === 1146 || $code === 1 || strpos($e->getMessage(), 'schema_versions') !== false) {
                 $appliedVersions = [];
             } else {
                 throw $e;

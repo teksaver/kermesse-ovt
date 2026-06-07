@@ -39,7 +39,7 @@ class ActivateController extends BaseController
             }
 
             // Reject empty names and any path traversal attempt before hitting the service
-            if ($archiveName === '' || str_contains($archiveName, '/') || str_contains($archiveName, '..')) {
+            if ($archiveName === '' || basename($archiveName) !== $archiveName) {
                 return $this->response
                     ->setStatusCode(422)
                     ->setJSON(['error' => 'archive_missing']);
@@ -75,7 +75,7 @@ class ActivateController extends BaseController
 
         } catch (\Throwable $e) {
             log_message('critical', 'ActivateController: unhandled error: {message}', [
-                'message' => $e->getMessage(),
+                'message' => $e,
             ]);
 
             return $this->response

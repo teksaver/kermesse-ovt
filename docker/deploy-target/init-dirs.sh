@@ -22,3 +22,9 @@ chown -R deploy:deploy \
   "${DEPLOY_HOME}/releases" \
   "${DEPLOY_HOME}/shared" \
   "${DEPLOY_HOME}/httpdocs"
+
+chmod -R 777 \
+  "${DEPLOY_HOME}/staging" \
+  "${DEPLOY_HOME}/releases" \
+  "${DEPLOY_HOME}/shared" \
+  "${DEPLOY_HOME}/httpdocs"

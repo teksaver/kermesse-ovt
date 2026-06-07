@@ -56,7 +56,8 @@ use Config\Paths;
 
 define('FCPATH', __DIR__ . DIRECTORY_SEPARATOR);
 if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) { chdir(FCPATH); }
-$appRoot = '/var/www/html';
+$appRoot = realpath(__DIR__ . '/../current');
+if ($appRoot === false) { $appRoot = '/var/www/html'; }
 require $appRoot . '/app/Config/Paths.php';
 $paths = new Paths();
 require $paths->systemDirectory . '/Boot.php';
