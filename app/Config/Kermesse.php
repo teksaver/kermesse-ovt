@@ -49,6 +49,26 @@ class Kermesse extends BaseConfig
     public bool $opsProbeEnabled = false;
 
     // -----------------------------------------------------------------
+    // Ops release activation
+    // -----------------------------------------------------------------
+
+    /**
+     * Named lock used by GET_LOCK() to serialise activation runs.
+     * Distinct from the migration lock to avoid blocking one with the other.
+     */
+    public string $opsActivateLockName = 'kermesse_ops_activate_lock';
+
+    /** Number of latest releases to retain after a successful activation. Older ones are pruned. */
+    public int $releasesRetention = 3;
+
+    /**
+     * Base path for the deployment layout: releases/, staging/, current, CURRENT_RELEASE.
+     * Defaults to the parent of ROOTPATH (i.e. the kermesse/ home directory on Ouvaton).
+     * Override in .env for local rehearsal or tests.
+     */
+    public string $opsActivateBasePath = '';
+
+    // -----------------------------------------------------------------
     // Tokens
     // -----------------------------------------------------------------
 
