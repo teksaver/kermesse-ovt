@@ -10,6 +10,7 @@
  * Tests run without booting CodeIgniter (KERMESSE_SHIM_TESTING guard is set).
  *
  * @internal
+ * @runTestsInSeparateProcesses
  */
 final class ShimReleaseResolverTest extends \PHPUnit\Framework\TestCase
 {
@@ -157,12 +158,12 @@ final class ShimReleaseResolverTest extends \PHPUnit\Framework\TestCase
 
         foreach ($items as $item) {
             if ($item->isLink() || $item->isFile()) {
-                unlink($item->getRealPath() ?: $item->getPathname());
+                @unlink($item->getRealPath() ?: $item->getPathname());
             } elseif ($item->isDir()) {
-                rmdir($item->getRealPath());
+                @rmdir($item->getRealPath());
             }
         }
 
-        rmdir($dir);
+        @rmdir($dir);
     }
 }

@@ -23,8 +23,9 @@ function shim_find_release_dir(string $kermDir): string|false
 
     // Méthode 2 (repli) : fichier pointeur `CURRENT_RELEASE`
     $pointerFile = $kermDir . '/CURRENT_RELEASE';
-    if (is_readable($pointerFile)) {
-        $releaseName = trim((string) file_get_contents($pointerFile));
+    $pointerContent = @file_get_contents($pointerFile);
+    if ($pointerContent !== false) {
+        $releaseName = basename(trim((string) $pointerContent));
         if ($releaseName !== '') {
             $candidate = $kermDir . '/releases/' . $releaseName;
             if (is_dir($candidate)) {
@@ -65,10 +66,19 @@ if (!defined('KERMESSE_SHIM_TESTING')) {
     // FCPATH = répertoire du contrôleur frontal (httpdocs/) — constante CodeIgniter
     define('FCPATH', $shimFcPath);
 
+    // ROOTPATH = répertoire racine de la release
+    define('ROOTPATH', $releaseDir . DIRECTORY_SEPARATOR);
+
     // Chargement de la configuration des chemins depuis la release active.
     // Config\Paths::$systemDirectory et $appDirectory sont calculés par __DIR__
     // depuis app/Config/ — ils pointent correctement dans la release.
-    require $releaseDir . '/app/Config/Paths.php';
+    $pathsFile = $releaseDir . '/app/Config/Paths.php';
+    if (!is_file($pathsFile)) {
+        header('HTTP/1.1 503 Service Unavailable.', true, 503);
+        echo 'Release invalide : Paths.php introuvable.';
+        exit(1);
+    }
+    require $pathsFile;
     $paths = new Config\Paths();
 
     // Surcharge des chemins qui vivent dans shared/ (hors releases) :
