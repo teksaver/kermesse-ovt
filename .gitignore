@@ -148,6 +148,14 @@ _bmad/custom/*.user.toml
 claude.md
 
 #-------------------------
+# Code Review Diff Exports
+#-------------------------
+# Snapshots de revue régénérables (ex. `git diff main > diff_to_review.diff`).
+# Artefacts de travail, jamais versionnés.
+diff_to_review.diff
+*-review.diff
+
+#-------------------------
 # Unneeded PHP & Local Test Files
 #-------------------------
 preload.php
