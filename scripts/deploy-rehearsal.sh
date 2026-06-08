@@ -34,6 +34,10 @@ while [[ $# -gt 0 ]]; do
                 echo "ERREUR : --inject requiert un argument (truncated-transfer|bad-checksum|failing-migration)" >&2
                 exit 1
             fi
+            if [[ -n "${INJECT_MODE}" ]]; then
+                echo "ERREUR : argument --inject passé plusieurs fois" >&2
+                exit 1
+            fi
             INJECT_MODE="$2"
             shift 2
             ;;
@@ -56,7 +60,7 @@ if [[ -n "${INJECT_MODE}" ]]; then
 fi
 
 # ── Vérifications de base (Fail-fast) ────────────────────────────────────────
-hash curl awk openssl || { echo "ERREUR : dépendances système manquantes (curl, awk, openssl)" >&2; exit 1; }
+hash curl awk openssl lftp || { echo "ERREUR : dépendances système manquantes (curl, awk, openssl, lftp)" >&2; exit 1; }
 if [[ ! -x "${SCRIPT_DIR}/package-deploy-artifact.sh" || ! -x "${SCRIPT_DIR}/transfer-archive.sh" ]]; then
     echo "ERREUR : sous-scripts introuvables ou non exécutables dans ${SCRIPT_DIR}" >&2
     exit 1
@@ -76,6 +80,8 @@ CURRENT_STEP="initialisation"
 
 # Fichier SQL d'injection à supprimer en fin d'exécution (failing-migration).
 INJECT_SQL_FILE=""
+INJECT_TMP_TRUNCATED=""
+INJECT_TMP_CHECKSUM=""
 
 # ── Gestion des traps ─────────────────────────────────────────────────────────
 # cleanup s'exécute à chaque sortie (normale ou sur erreur) via EXIT.
@@ -85,6 +91,8 @@ cleanup() {
         rm -f "${INJECT_SQL_FILE}"
         echo "[INJECT] Fichier SQL d'injection supprimé : $(basename "${INJECT_SQL_FILE}")" >&2
     fi
+    [[ -n "${INJECT_TMP_TRUNCATED}" && -f "${INJECT_TMP_TRUNCATED}" ]] && rm -f "${INJECT_TMP_TRUNCATED}"
+    [[ -n "${INJECT_TMP_CHECKSUM}" && -f "${INJECT_TMP_CHECKSUM}" ]] && rm -f "${INJECT_TMP_CHECKSUM}"
 }
 
 on_error() {
@@ -93,7 +101,7 @@ on_error() {
     exit 1
 }
 trap 'on_error' ERR
-trap 'cleanup' EXIT
+trap 'cleanup' EXIT INT TERM
 
 # ── Génération de signature HMAC-SHA256 ──────────────────────────────────────
 # Payload (conforme à OpsAuthFilter) : timestamp\nnonce\nPOST\nroutePath\nsha256(body)
@@ -118,12 +126,14 @@ inject_remote_file() {
     local remote_name="$2"
     local remote_staging="kermesse/staging"
 
+    local escaped_user="${TARGET_USER//\'/\\\'}"
     local escaped_pass="${TARGET_PASS//\'/\\\'}"
     local proto_settings=""
     case "${TARGET_PROTO}" in
         sftp)
             if [[ -n "${TARGET_KEY:-}" ]]; then
-                proto_settings="set sftp:connect-program \"ssh -a -x -i '${TARGET_KEY}'\";"
+                local escaped_key="${TARGET_KEY//\'/\\\'}"
+                proto_settings="set sftp:connect-program \"ssh -a -x -i '${escaped_key}'\";"
             fi
             ;;
         ftps)
@@ -131,13 +141,13 @@ inject_remote_file() {
             ;;
     esac
 
-    lftp -f <(
-        echo "set cmd:fail-exit true;"
-        [[ -n "${proto_settings}" ]] && echo "${proto_settings}"
-        echo "open -u '${TARGET_USER}','${escaped_pass}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
-        echo "put \"${local_file}\" -o \"${remote_staging}/${remote_name}\";"
-        echo "bye"
-    )
+    lftp <<EOF
+set cmd:fail-exit true;
+${proto_settings}
+open -u '${escaped_user}','${escaped_pass}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};
+put "${local_file}" -o "${remote_staging}/${remote_name}";
+bye
+EOF
 }
 
 echo "=== Répétition de déploiement Kermesse ==="
@@ -157,6 +167,7 @@ if [[ "${INJECT_MODE}" == "failing-migration" ]]; then
     CURRENT_STEP="injection-failing-migration"
     echo "[INJECT] Injection d'un fichier SQL invalide dans database/migrations_sql/"
     INJECT_SQL_FILE="${PROJECT_ROOT}/database/migrations_sql/99991231235959_inject_test_failure.sql"
+    mkdir -p "$(dirname "${INJECT_SQL_FILE}")"
     printf 'SELECT BOOM;\n' > "${INJECT_SQL_FILE}"
     echo "[INJECT] Fichier injecté : $(basename "${INJECT_SQL_FILE}")"
     echo ""
@@ -183,21 +194,19 @@ if [[ "${INJECT_MODE}" == "truncated-transfer" ]]; then
     CURRENT_STEP="injection-truncated-transfer"
     echo ""
     echo "[INJECT] Troncature de l'archive sur la cible (1 024 octets)..."
-    _tmp_truncated="$(mktemp)"
-    dd if=/dev/zero of="${_tmp_truncated}" bs=1024 count=1 2>/dev/null
-    inject_remote_file "${_tmp_truncated}" "kermesse-deploy.tar.gz"
-    rm -f "${_tmp_truncated}"
+    INJECT_TMP_TRUNCATED="$(mktemp)"
+    dd if=/dev/zero of="${INJECT_TMP_TRUNCATED}" bs=1024 count=1 2>/dev/null
+    inject_remote_file "${INJECT_TMP_TRUNCATED}" "kermesse-deploy.tar.gz"
     echo "[INJECT] Archive tronquée sur la cible."
 
 elif [[ "${INJECT_MODE}" == "bad-checksum" ]]; then
     CURRENT_STEP="injection-bad-checksum"
     echo ""
     echo "[INJECT] Altération du checksum sur la cible..."
-    _tmp_checksum="$(mktemp)"
+    INJECT_TMP_CHECKSUM="$(mktemp)"
     printf '0000000000000000000000000000000000000000000000000000000000000000  kermesse-deploy.tar.gz\n' \
-        > "${_tmp_checksum}"
-    inject_remote_file "${_tmp_checksum}" "kermesse-deploy.tar.gz.sha256"
-    rm -f "${_tmp_checksum}"
+        > "${INJECT_TMP_CHECKSUM}"
+    inject_remote_file "${INJECT_TMP_CHECKSUM}" "kermesse-deploy.tar.gz.sha256"
     echo "[INJECT] Checksum altéré sur la cible."
 fi
 
