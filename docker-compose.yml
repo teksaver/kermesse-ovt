@@ -60,11 +60,13 @@ services:
       start_period: 20s
 
   phpmyadmin:
-    image: phpmyadmin:latest
+    image: phpmyadmin:5
     ports:
       - "127.0.0.1:${KERMESSE_PMA_PORT:-8082}:80"
     environment:
       PMA_HOST: db
+      PMA_USER: kermesse_user
+      PMA_PASSWORD: kermesse_password
     depends_on:
       db:
         condition: service_healthy
