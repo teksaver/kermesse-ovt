@@ -76,7 +76,9 @@ echo "Archive      : $(basename "${ARCHIVE}")"
 # Les commandes sont passées via substitution de processus pour éviter d'exposer
 # le mot de passe sur le disque ou dans la liste des processus. Le bloc case est
 # résolu AVANT le <(...), qui ne fait alors qu'écho.
-ESCAPED_PASS="${TARGET_PASS//\'/\\\'}"
+_PASS="${TARGET_PASS:-}"
+_PASS="${_PASS//\\/\\\\}"
+ESCAPED_PASS="${_PASS//\'/\\\'}"
 
 PROTO_SETTINGS=""
 case "${TARGET_PROTO}" in
@@ -92,7 +94,7 @@ case "${TARGET_PROTO}" in
       PROTO_SETTINGS="set sftp:auto-confirm yes;"
     elif [[ -n "${TARGET_KEY:-}" ]]; then
       # Production with key-based auth: delegate to external SSH.
-      _escaped_key="${TARGET_KEY//\'/\\\'}"
+      _escaped_key="${TARGET_KEY//\'/\'\\\'\'}"
       PROTO_SETTINGS="set sftp:connect-program \"ssh -a -x -i '${_escaped_key}'\";"
     fi
     ;;
@@ -104,10 +106,12 @@ esac
 lftp -f <(
   echo "set cmd:fail-exit true;"
   [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
-  echo "open -u '${TARGET_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
+  _USER="${TARGET_USER//\\/\\\\}"
+  _USER="${_USER//\'/\\\'}"
+  echo "open -u '${_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
   # Disable fail-exit for mkdir: the directory may already exist (idempotent).
   # The "mkdir: Failure" message is harmless when the directory already exists.
-  echo "set cmd:fail-exit false; mkdir -p ${REMOTE_STAGING}; set cmd:fail-exit true;"
+  echo "set cmd:fail-exit false; mkdir -p \"${REMOTE_STAGING}\"; set cmd:fail-exit true;"
   echo "put \"${ARCHIVE}\" -o \"${REMOTE_STAGING}/$(basename "${ARCHIVE}")\";"
   echo "put \"${CHECKSUM}\" -o \"${REMOTE_STAGING}/$(basename "${CHECKSUM}")\";"
   echo "bye"

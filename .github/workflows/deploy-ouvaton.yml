@@ -139,11 +139,17 @@ jobs:
         run: |
           sha256sum -c kermesse-deploy.tar.gz.sha256 || (echo "Échec : Artefact corrompu" && exit 1)
           mkdir -p deploy-staging
-          tar -xzf kermesse-deploy.tar.gz -C deploy-staging
+          # Extract only the public directory needed for static assets
+          tar -xzf kermesse-deploy.tar.gz -C deploy-staging ./public
 
       - name: Upload archive to staging
         run: |
           set -euo pipefail
+
+          if [ -z "${OUVATON_DEPLOY_PASSWORD:-}" ]; then
+            echo "::error::OUVATON_DEPLOY_PASSWORD is required."
+            exit 1
+          fi
 
           lftp_quote() {
             local value="$1"
@@ -243,7 +249,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE_URL="${KERMESSE_PUBLIC_BASE_URL}"
+          # Sanitize BASE_URL by stripping any trailing slashes
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
           ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
 
           if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
@@ -269,14 +276,14 @@ jobs:
           SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
 
           CURL_TLS_ARGS=()
-          if echo "${ALLOW_INSECURE_TLS}" | grep -iq "^true$"; then
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
             echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour l'activation. À retirer dès que le certificat de production est valide."
             CURL_TLS_ARGS+=(--insecure)
           fi
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
           # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          curl -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL%/}/ops/activate" \
+          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/ops/activate" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
             -H "X-Kermesse-Nonce: ${NONCE}" \
@@ -287,7 +294,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE_URL="${KERMESSE_PUBLIC_BASE_URL}"
+          # Sanitize BASE_URL by stripping any trailing slashes
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
           ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
 
           if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
@@ -313,13 +321,13 @@ jobs:
           SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
 
           CURL_TLS_ARGS=()
-          if echo "${ALLOW_INSECURE_TLS}" | grep -iq "^true$"; then
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
             echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour les migrations. À retirer dès que le certificat de production est valide."
             CURL_TLS_ARGS+=(--insecure)
           fi
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
-          curl -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL%/}/ops/migrate" \
+          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/ops/migrate" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
             -H "X-Kermesse-Nonce: ${NONCE}" \
