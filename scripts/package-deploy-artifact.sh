@@ -8,8 +8,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Nom d'artefact : source de vérité unique partagée avec transfer-archive.sh / deploy-rehearsal.sh.
+# shellcheck source=lib/artifact.sh
+source "${SCRIPT_DIR}/lib/artifact.sh"
+
 STAGING_DIR="${PROJECT_ROOT}/build/staging"
-OUTPUT_TAR="${PROJECT_ROOT}/build/kermesse-deploy.tar.gz"
+OUTPUT_TAR="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}"
 OUTPUT_CHECKSUM="${OUTPUT_TAR}.sha256"
 
 echo "=== Début du packaging de l'artefact ==="

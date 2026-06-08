@@ -9,7 +9,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-ARCHIVE="${PROJECT_ROOT}/build/kermesse-deploy.tar.gz"
+# Nom d'artefact : source de vérité unique partagée avec package-deploy-artifact.sh.
+# shellcheck source=lib/artifact.sh
+source "${SCRIPT_DIR}/lib/artifact.sh"
+
+ARCHIVE="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}"
 CHECKSUM="${ARCHIVE}.sha256"
 # Relative path from the SFTP root — must be set explicitly by the caller.
 # No hardcoded default: the correct value depends on the deployment context.
@@ -105,6 +109,10 @@ esac
 
 lftp -f <(
   echo "set cmd:fail-exit true;"
+  # Robustesse réseau (reprise sur coupure transitoire) — alignée sur l'ancien
+  # bloc inline du workflow de production, désormais factorisé ici.
+  echo "set net:max-retries 3;"
+  echo "set net:timeout 60;"
   [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
   _USER="${TARGET_USER//\\/\\\\}"
   _USER="${_USER//\'/\\\'}"

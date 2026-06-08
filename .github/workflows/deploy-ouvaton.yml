@@ -117,7 +117,8 @@ jobs:
       # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
       OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
-      OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+      # Le secret HMAC est injecté au niveau des étapes webhook (sous le nom OPS_HMAC_SECRET
+      # attendu par scripts/lib/ops-sign.sh), pas au niveau du job.
 
     steps:
       - name: Install transfer client
@@ -134,49 +135,40 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: kermesse-deploy
+          # Dépose l'archive dans build/ — emplacement attendu par scripts/transfer-archive.sh.
+          path: build
 
       - name: Verify and extract artifact
         run: |
-          sha256sum -c kermesse-deploy.tar.gz.sha256 || (echo "Échec : Artefact corrompu" && exit 1)
+          set -euo pipefail
+          # Le .sha256 référence l'archive par son nom nu → vérifier depuis build/.
+          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu"; exit 1; }
           mkdir -p deploy-staging
           # Extract only the public directory needed for static assets
-          tar -xzf kermesse-deploy.tar.gz -C deploy-staging ./public
+          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
 
       - name: Upload archive to staging
+        # Réutilise EXACTEMENT le script validé en répétition (locale + job CI deploy-rehearsal)
+        # au lieu de réimplémenter lftp inline : la parité FR-18 couvre désormais le transfert
+        # de production. put (jamais mirror) ; le .env de prod n'est ni dans l'archive ni
+        # transféré ici (NFR-2 — il vit dans shared/, géré par sync-production-env.yml).
+        # Pas de TARGET_SFTP_SKIP_HOST_CHECK : la clé hôte est vérifiée via ~/.ssh/known_hosts
+        # (étape « Configure SFTP known hosts »).
+        env:
+          TARGET_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
+          TARGET_PORT: "115"
+          TARGET_PROTO: sftp
+          TARGET_USER: ${{ vars.OUVATON_DEPLOY_USERNAME }}
+          TARGET_PASS: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
+          # Sur Ouvaton, le dossier applicatif est un sous-dossier de la racine SFTP.
+          REMOTE_STAGING: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}/staging
         run: |
           set -euo pipefail
-
-          if [ -z "${OUVATON_DEPLOY_PASSWORD:-}" ]; then
+          if [ -z "${TARGET_PASS:-}" ]; then
             echo "::error::OUVATON_DEPLOY_PASSWORD is required."
             exit 1
           fi
-
-          lftp_quote() {
-            local value="$1"
-            value="${value//\\/\\\\}"
-            value="${value//\"/\\\"}"
-            printf '"%s"' "${value}"
-          }
-
-          # Dépose le .tar.gz et son .sha256 dans le dossier de staging distant
-          # (${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/) via lftp put — jamais mirror.
-          # Le .env de production n'est ni dans l'archive ni transféré ici (NFR-2) :
-          # il vit dans shared/ et est géré par sync-production-env.yml.
-          # L'activation atomique (étape suivante) extrait et bascule current/ côté serveur.
-          {
-            printf 'set cmd:fail-exit yes\n'
-            printf 'set net:max-retries 3\n'
-            printf 'set net:timeout 60\n'
-            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
-            printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-            # Crée le dossier staging/ s'il n'existe pas (idempotent).
-            printf 'set cmd:fail-exit no\n'
-            printf 'mkdir -p %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging")"
-            printf 'set cmd:fail-exit yes\n'
-            printf 'put kermesse-deploy.tar.gz -o %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/kermesse-deploy.tar.gz")"
-            printf 'put kermesse-deploy.tar.gz.sha256 -o %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/kermesse-deploy.tar.gz.sha256")"
-            printf 'bye\n'
-          } | lftp
+          bash scripts/transfer-archive.sh
 
       - name: Deploy httpdocs entry point and static assets
         run: |
@@ -246,34 +238,27 @@ jobs:
           } | lftp
 
       - name: Activate release via webhook
+        env:
+          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail
+          # MÊME signature qu'en répétition (scripts/deploy-rehearsal.sh) — source unique (FR-18).
+          source scripts/lib/ops-sign.sh
 
           # Sanitize BASE_URL by stripping any trailing slashes
           BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
           ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
 
-          if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL and OPS_MIGRATION_HMAC_SECRET sont requis."
+          if [ -z "$BASE_URL" ] || [ -z "${OPS_HMAC_SECRET:-}" ]; then
+            echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
             exit 1
           fi
+          ops_require_https_endpoint "$BASE_URL" 32
 
-          if ! echo "${BASE_URL}" | grep -iq "^https://"; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL doit commencer par https:// pour l'activation en production."
-            exit 1
-          fi
-
-          if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
-            echo "::error::OPS_MIGRATION_HMAC_SECRET doit faire au moins 32 caractères."
-            exit 1
-          fi
-
+          ROUTE="ops/activate"
           BODY='{"archive":"kermesse-deploy.tar.gz"}'
-          TIMESTAMP="$(date +%s)"
-          NONCE="$(openssl rand -hex 16)"
-          BODY_HASH="$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)"
-          PAYLOAD="$(printf '%s\n%s\nPOST\nops/activate\n%s' "$TIMESTAMP" "$NONCE" "$BODY_HASH")"
-          SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
+          ops_sign "$ROUTE" "$BODY"
 
           CURL_TLS_ARGS=()
           if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
@@ -283,42 +268,35 @@ jobs:
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
           # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/ops/activate" \
+          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
-            -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
-            -H "X-Kermesse-Nonce: ${NONCE}" \
-            -H "X-Kermesse-Signature: ${SIGNATURE}" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
             -d "$BODY"
 
       - name: Run post-deploy migrations
+        env:
+          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail
+          # MÊME signature qu'en répétition (scripts/deploy-rehearsal.sh) — source unique (FR-18).
+          source scripts/lib/ops-sign.sh
 
           # Sanitize BASE_URL by stripping any trailing slashes
           BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
           ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
 
-          if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
+          if [ -z "$BASE_URL" ] || [ -z "${OPS_HMAC_SECRET:-}" ]; then
             echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
             exit 1
           fi
+          ops_require_https_endpoint "$BASE_URL" 32
 
-          if ! echo "${BASE_URL}" | grep -iq "^https://"; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL doit commencer par https:// pour les migrations en production."
-            exit 1
-          fi
-
-          if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
-            echo "::error::OPS_MIGRATION_HMAC_SECRET doit faire au moins 32 caractères."
-            exit 1
-          fi
-
+          ROUTE="ops/migrate"
           BODY='{}'
-          TIMESTAMP="$(date +%s)"
-          NONCE="$(openssl rand -hex 16)"
-          BODY_HASH="$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)"
-          PAYLOAD="$(printf '%s\n%s\nPOST\nops/migrate\n%s' "$TIMESTAMP" "$NONCE" "$BODY_HASH")"
-          SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
+          ops_sign "$ROUTE" "$BODY"
 
           CURL_TLS_ARGS=()
           if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
@@ -327,9 +305,9 @@ jobs:
           fi
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
-          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/ops/migrate" \
+          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
-            -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
-            -H "X-Kermesse-Nonce: ${NONCE}" \
-            -H "X-Kermesse-Signature: ${SIGNATURE}" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
             -d "$BODY"
