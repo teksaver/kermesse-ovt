@@ -41,11 +41,14 @@ mkdir -p \
   "${DEPLOY_DATA}/shared/writable/uploads" \
   "${DEPLOY_DATA}/httpdocs"
 
+# Make the base deploy-data root writable so the activation service can write
+# CURRENT_RELEASE and create the current symlink directly under it.
+chown www-data:www-data "${DEPLOY_DATA}"
 chown -R www-data:www-data "${DEPLOY_DATA}/shared/writable"
 
-# Bootstrap shim: seed httpdocs/index.php so that ops endpoints (/ops/activate,
-# /ops/migrate, /ops/probe) are reachable before the first release is activated.
-# The real deploy process overwrites this shim with one pointing to ../current/.
+# Bootstrap shim: seed httpdocs/index.php and .htaccess so that ops endpoints
+# (/ops/activate, /ops/migrate, /ops/probe) are reachable before the first release
+# is activated. The real deploy process overwrites these with release-aware versions.
 if [ ! -f "${DEPLOY_DATA}/httpdocs/index.php" ]; then
   cat > "${DEPLOY_DATA}/httpdocs/index.php" << 'PHPEOF'
 <?php
@@ -63,6 +66,12 @@ $paths = new Paths();
 require $paths->systemDirectory . '/Boot.php';
 exit(Boot::bootWeb($paths));
 PHPEOF
+fi
+
+# .htaccess: route all requests through index.php (required for CodeIgniter clean URLs).
+# Without this Apache returns 404 for any non-root path under httpdocs/.
+if [ ! -f "${DEPLOY_DATA}/httpdocs/.htaccess" ]; then
+  cp /var/www/html/public/.htaccess "${DEPLOY_DATA}/httpdocs/.htaccess"
 fi
 
 exec "$@"

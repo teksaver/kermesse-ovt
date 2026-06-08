@@ -76,6 +76,7 @@ services:
     volumes:
       - deploy-target-data:/home/deploy
       - ./docker/deploy-target/init-dirs.sh:/etc/sftp.d/init-dirs.sh:ro
+      - ./docker/deploy-target/fix-chroot.sh:/etc/sftp.d/fix-chroot.sh:ro
 
   deploy-web:
     profiles: [rehearsal]

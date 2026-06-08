@@ -17,7 +17,9 @@ mkdir -p \
   "${DEPLOY_HOME}/shared/writable/uploads" \
   "${DEPLOY_HOME}/httpdocs"
 
-chown -R deploy:deploy \
+# atmoz/sftp creates the deploy user with uid/gid 1000 but the group name varies
+# across base images and platforms — use numeric ids to stay portable.
+chown -R 1000:1000 \
   "${DEPLOY_HOME}/staging" \
   "${DEPLOY_HOME}/releases" \
   "${DEPLOY_HOME}/shared" \

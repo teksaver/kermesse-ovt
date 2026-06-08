@@ -85,7 +85,10 @@ class ReleaseActivationService
             return ['ok' => false, 'error' => 'archive_missing'];
         }
 
-        $expectedChecksum = trim((string) file_get_contents($checksumPath));
+        // The .sha256 file may contain either a raw 64-hex hash or sha256sum(1) format
+        // ("<hash>  <filename>"). Extract the first whitespace-delimited token in both cases.
+        $rawChecksum      = trim((string) file_get_contents($checksumPath));
+        $expectedChecksum = explode(' ', $rawChecksum, 2)[0];
         $actualChecksum   = (string) hash_file('sha256', $archivePath);
 
         if ($expectedChecksum === '' || $actualChecksum === '' || !hash_equals($expectedChecksum, $actualChecksum)) {
