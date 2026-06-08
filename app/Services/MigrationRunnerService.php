@@ -192,11 +192,13 @@ class MigrationRunnerService
             )
             SQL;
 
-        $nonceIndexSql = 'CREATE INDEX IF NOT EXISTS idx_ops_nonces_expires ON ops_nonces (expires_at)';
-
         $this->db->query($bootstrapSql);
         $this->db->query($nonceSql);
-        $this->db->query($nonceIndexSql);
+
+        $indexExists = $this->db->query("SHOW INDEX FROM ops_nonces WHERE Key_name = 'idx_ops_nonces_expires'")->getNumRows() > 0;
+        if (!$indexExists) {
+            $this->db->query('CREATE INDEX idx_ops_nonces_expires ON ops_nonces (expires_at)');
+        }
     }
 
     /**

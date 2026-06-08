@@ -27,6 +27,9 @@ required_vars=(TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMO
 missing=0
 for var in "${required_vars[@]}"; do
   if [[ -z "${!var:-}" ]]; then
+    if [[ "${var}" == "TARGET_PASS" && -n "${TARGET_KEY:-}" ]]; then
+      continue
+    fi
     echo "ERREUR : variable d'environnement manquante : ${var}" >&2
     missing=1
   fi

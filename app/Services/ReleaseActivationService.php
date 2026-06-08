@@ -88,7 +88,7 @@ class ReleaseActivationService
         // The .sha256 file may contain either a raw 64-hex hash or sha256sum(1) format
         // ("<hash>  <filename>"). Extract the first whitespace-delimited token in both cases.
         $rawChecksum      = trim((string) file_get_contents($checksumPath));
-        $expectedChecksum = explode(' ', $rawChecksum, 2)[0];
+        $expectedChecksum = strtolower(explode(' ', $rawChecksum, 2)[0]);
 
         // Strict format check: a valid SHA-256 digest is exactly 64 lowercase hex chars.
         // Rejecting non-hex or wrong-length values prevents silent mismatches caused by
