@@ -146,6 +146,28 @@ jobs:
           kermesse.opsMigrationLockName: kermesse_ci_migration_lock
         run: vendor/bin/phpunit --testsuite App --group mariadb
 
+  deploy-rehearsal:
+    runs-on: ubuntu-latest
+    needs: [validate-and-test, validate-mariadb]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start rehearsal environment
+        run: docker compose --profile rehearsal up -d
+
+      - name: Wait for deploy-web to be ready
+        run: |
+          timeout 120 bash -c '
+            until curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/ 2>/dev/null | grep -qv "^000$"; do
+              sleep 3
+            done
+          '
+
+      - name: Run deploy rehearsal
+        run: bash scripts/deploy-rehearsal.sh
+
   package-artifact:
     runs-on: ubuntu-latest
     needs: [validate-and-test, validate-mariadb]
