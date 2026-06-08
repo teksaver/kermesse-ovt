@@ -3,6 +3,12 @@
 # Enchaîne : packaging → transfert → activation → migration → vérification d'état.
 # Paramétré exclusivement par variables d'env — aucun chemin de code local-only (FR-18).
 #
+# Client dockerisé (FR-21) : côté HÔTE, seul Docker est requis. Ce script relance
+# automatiquement la vraie orchestration DANS le conteneur deploy-client (bash ≥ 5 ;
+# lftp, curl, openssl, openssh-client, mysql et Composer embarqués), sur le réseau
+# Docker. Tout le code en aval du bloc d'indirection s'exécute exclusivement dans le
+# conteneur ; les mêmes scripts/*.sh que la CI y sont montés sans fork.
+#
 # Usage :
 #   bash scripts/deploy-rehearsal.sh [--inject <cas>]
 #   bash scripts/deploy-rehearsal.sh --reset
@@ -18,19 +24,48 @@
 #   --inject bad-checksum        Altère le .sha256 sur la cible après transfert
 #   --inject failing-migration   Injecte un SQL invalide dans database/migrations_sql/
 #
-# Variables d'environnement (valeurs par défaut = profil rehearsal de docker-compose.yml) :
-#   TARGET_HOST        Hôte SFTP de la cible de déploiement      (défaut : localhost)
-#   TARGET_PORT        Port SFTP                                  (défaut : 2222)
+# Variables d'environnement (valeurs par défaut = service deploy-client de docker-compose.yml,
+# résolues par NOM DE SERVICE sur le réseau Docker) :
+#   TARGET_HOST        Hôte SFTP de la cible de déploiement      (défaut : deploy-target)
+#   TARGET_PORT        Port SFTP                                  (défaut : 22)
 #   TARGET_PROTO       Protocole de transfert (sftp|ftps|ftp)     (défaut : sftp)
 #   TARGET_USER        Identifiant SFTP                           (défaut : deploy)
 #   TARGET_PASS        Mot de passe SFTP                          (défaut : deploy_rehearsal)
-#   BASE_URL           URL HTTP de l'application déployée         (défaut : http://localhost:8081)
+#   BASE_URL           URL HTTP de l'application déployée         (défaut : http://deploy-web)
 #   OPS_HMAC_SECRET    Secret HMAC pour les webhooks ops          (défaut : local_dev_ops_secret_32_bytes_minimum)
+#   DB_RESET_HOST      Hôte MariaDB pour --reset                  (défaut : db)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# ── Indirection hôte → conteneur (FR-21) ─────────────────────────────────────
+# Côté HÔTE, la répétition ne doit dépendre QUE de Docker. On relance donc
+# immédiatement la vraie orchestration dans le conteneur deploy-client. Tout le code
+# en aval s'exécute exclusivement DANS le conteneur (KERMESSE_REHEARSAL_CONTAINER=1).
+# NB : ce bloc s'exécute sur l'hôte (macOS bash 3.2) — le garder compatible bash 3.2.
+if [[ "${KERMESSE_REHEARSAL_CONTAINER:-}" != "1" ]]; then
+    if ! hash docker >/dev/null 2>&1; then
+        echo "ERREUR : Docker est requis côté hôte pour la répétition." >&2
+        exit 1
+    fi
+    # On ne propage au conteneur QUE les surcharges réellement présentes dans
+    # l'environnement de l'hôte ; sinon les valeurs par défaut du service deploy-client
+    # (docker-compose.yml) s'appliquent. L'idiome ${arr[@]+...} évite l'erreur
+    # « unbound variable » de bash 3.2 quand le tableau est vide (set -u).
+    REEXEC_ENV=()
+    for _v in TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS \
+              TARGET_SFTP_SKIP_HOST_CHECK REMOTE_STAGING BASE_URL OPS_HMAC_SECRET \
+              DB_RESET_HOST DB_RESET_USER DB_RESET_PASS DB_RESET_NAME; do
+        if [[ -n "${!_v:-}" ]]; then
+            REEXEC_ENV+=(-e "${_v}")
+        fi
+    done
+    exec docker compose --profile rehearsal run --rm -T \
+        ${REEXEC_ENV[@]+"${REEXEC_ENV[@]}"} \
+        deploy-client bash scripts/deploy-rehearsal.sh "$@"
+fi
 
 # ── Analyse des arguments ─────────────────────────────────────────────────────
 INJECT_MODE=""
@@ -77,9 +112,10 @@ if [[ -n "${INJECT_MODE}" ]]; then
 fi
 
 # ── Vérifications de base (Fail-fast) ────────────────────────────────────────
-# Pour --reset : seuls docker et mariadb-client sont nécessaires (pas de lftp, curl, etc.)
+# Exécuté DANS le conteneur deploy-client : tous ces outils y sont embarqués.
+# Pour --reset : seul le client mysql/mariadb est nécessaire (purge fichiers = volume monté).
 if [[ "${RESET_MODE}" == true ]]; then
-    hash docker || { echo "ERREUR : dépendance système manquante (docker)" >&2; exit 1; }
+    hash mysql || { echo "ERREUR : dépendance système manquante (client mysql/mariadb)" >&2; exit 1; }
 else
     hash curl awk openssl lftp || { echo "ERREUR : dépendances système manquantes (curl, awk, openssl, lftp)" >&2; exit 1; }
     if [[ ! -x "${SCRIPT_DIR}/package-deploy-artifact.sh" || ! -x "${SCRIPT_DIR}/transfer-archive.sh" ]]; then
@@ -89,17 +125,22 @@ else
 fi
 
 # ── Variables d'env avec valeurs par défaut pour la cible locale (profil rehearsal) ──
-# Use 127.0.0.1 explicitly: lftp resolves 'localhost' to ::1 on macOS, which
-# differs from the IPv4-only SFTP container, causing host key lookup mismatches.
-TARGET_HOST="${TARGET_HOST:-127.0.0.1}"
-TARGET_PORT="${TARGET_PORT:-2222}"
+# Résolues par NOM DE SERVICE sur le réseau Docker : depuis deploy-client, la cible SFTP
+# est deploy-target:22 et l'app deploy-web:80 — plus de 127.0.0.1/::1 ni de ports publiés.
+TARGET_HOST="${TARGET_HOST:-deploy-target}"
+TARGET_PORT="${TARGET_PORT:-22}"
 TARGET_PROTO="${TARGET_PROTO:-sftp}"
 TARGET_USER="${TARGET_USER:-deploy}"
 TARGET_PASS="${TARGET_PASS:-deploy_rehearsal}"
-BASE_URL="${BASE_URL:-http://localhost:8081}"
+# Dossier de staging relatif à la racine SFTP. En rehearsal, la base de déploiement est
+# montée directement à la racine SFTP → staging/ (et non kermesse/staging/ comme sur Ouvaton).
+# Le transfert ET les injections post-transfert visent ce même dossier (cohérence).
+REMOTE_STAGING="${REMOTE_STAGING:-staging}"
+BASE_URL="${BASE_URL:-http://deploy-web}"
 OPS_HMAC_SECRET="${OPS_HMAC_SECRET:-local_dev_ops_secret_32_bytes_minimum}"
-# Identifiants root MariaDB de la cible locale (profil rehearsal uniquement, conteneur db).
+# Identifiants root MariaDB de la cible locale (profil rehearsal uniquement, service db).
 # Surchargeables par l'environnement ; ne jamais coder en dur des identifiants de production.
+DB_RESET_HOST="${DB_RESET_HOST:-db}"
 DB_RESET_USER="${DB_RESET_USER:-root}"
 DB_RESET_PASS="${DB_RESET_PASS:-root_password}"
 DB_RESET_NAME="${DB_RESET_NAME:-kermesse}"
@@ -110,33 +151,33 @@ TARGET_SFTP_SKIP_HOST_CHECK="${TARGET_SFTP_SKIP_HOST_CHECK:-true}"
 
 # ── Mode reset : réinitialisation de la cible locale ─────────────────────────
 # Idempotent : pas d'erreur si les dossiers ou tables sont déjà vides/absents.
-# Aucune interaction réseau externe (FR-20) — tout passe par docker compose exec.
+# Exécuté DANS deploy-client : la purge fichiers opère sur le volume partagé monté
+# (/srv/deploy-data) et le DROP des tables passe par le client mysql vers le service db.
 if [[ "${RESET_MODE}" == true ]]; then
     echo "=== Remise à zéro de la cible locale (rehearsal) ==="
     echo ""
 
-    # Vérifier que les conteneurs rehearsal sont bien démarrés
-    if ! docker compose --profile rehearsal ps --status running --format json 2>/dev/null \
-            | grep -q '"deploy-web"'; then
-        echo "ERREUR : le conteneur deploy-web n'est pas démarré." >&2
+    # Le volume deploy-target-data est monté ici ; son absence = stack rehearsal non démarrée.
+    DEPLOY_DATA="${DEPLOY_DATA:-/srv/deploy-data}"
+    if [[ ! -d "${DEPLOY_DATA}" ]]; then
+        echo "ERREUR : volume de déploiement absent (${DEPLOY_DATA})." >&2
         echo "Lancez d'abord : docker compose --profile rehearsal up -d" >&2
         exit 1
     fi
 
     echo "-- Étape 1/2 : Purge de staging/, releases/ et des pointeurs current"
-    # Utilise deploy-web (/srv/deploy-data) pour éviter les contraintes de chroot SFTP ;
-    # exec tourne en root dans le conteneur, donc les chown ci-dessous sont autorisés.
-    # rm -rf + mkdir -p garantit l'idempotence (pas d'erreur si déjà vide/absent). On pose
-    # le minimum de droits nécessaire plutôt qu'un chmod 777 trop permissif :
+    # deploy-client tourne en root, donc les chown ci-dessous sont autorisés. rm -rf + mkdir -p
+    # garantit l'idempotence (pas d'erreur si déjà vide/absent). On pose le minimum de droits
+    # nécessaire plutôt qu'un chmod 777 trop permissif (www-data = uid 33, identique à deploy-web
+    # car même image de base) :
     #   - staging/  : déposé par le user SFTP (uid 1000) ET nettoyé par www-data (uid 33,
     #                 qui supprime l'archive après extraction, cf. ReleaseActivationService).
     #                 → propriétaire 1000, groupe www-data, droit d'écriture du groupe (775).
     #   - releases/ : écrit uniquement par www-data à l'activation → propriétaire www-data (755).
-    docker compose --profile rehearsal exec deploy-web sh -c \
-        'rm -rf /srv/deploy-data/staging  && mkdir -p /srv/deploy-data/staging  && chown 1000:www-data /srv/deploy-data/staging && chmod 775 /srv/deploy-data/staging
-         rm -rf /srv/deploy-data/releases && mkdir -p /srv/deploy-data/releases && chown www-data:www-data /srv/deploy-data/releases
-         rm -f  /srv/deploy-data/current
-         rm -f  /srv/deploy-data/CURRENT_RELEASE'
+    rm -rf "${DEPLOY_DATA}/staging"  && mkdir -p "${DEPLOY_DATA}/staging"  && chown 1000:www-data "${DEPLOY_DATA}/staging" && chmod 775 "${DEPLOY_DATA}/staging"
+    rm -rf "${DEPLOY_DATA}/releases" && mkdir -p "${DEPLOY_DATA}/releases" && chown www-data:www-data "${DEPLOY_DATA}/releases"
+    rm -f  "${DEPLOY_DATA}/current"
+    rm -f  "${DEPLOY_DATA}/CURRENT_RELEASE"
     echo "   staging/     → purgé"
     echo "   releases/    → purgé"
     echo "   current      → supprimé"
@@ -146,9 +187,13 @@ if [[ "${RESET_MODE}" == true ]]; then
     echo "-- Étape 2/2 : Réinitialisation des tables techniques de test"
     # DROP TABLE IF EXISTS est idempotent : aucune erreur si les tables n'existent pas.
     # MigrationRunnerService recrée schema_versions et ops_nonces au prochain appel /ops/migrate.
-    docker compose exec db mariadb \
-        -u "${DB_RESET_USER}" -p"${DB_RESET_PASS}" "${DB_RESET_NAME}" \
-        -e "DROP TABLE IF EXISTS \`schema_versions\`, \`ops_nonces\`;" 2>/dev/null
+    # MYSQL_PWD évite l'avertissement « mot de passe sur la ligne de commande » sans masquer
+    # les erreurs réelles (stderr reste visible → fail-fast préservé).
+    # --skip-ssl : le client MariaDB (≥ 11) exige TLS par défaut en TCP, que la MariaDB locale
+    # n'expose pas. Connexion non chiffrée acceptable ici : réseau Docker interne, rehearsal only.
+    MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+        -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
+        -e "DROP TABLE IF EXISTS \`schema_versions\`, \`ops_nonces\`;"
     echo "   schema_versions → supprimé"
     echo "   ops_nonces      → supprimé"
     echo ""
@@ -179,13 +224,22 @@ cleanup() {
         rm -f "${INJECT_SQL_FILE}"
         echo "[INJECT] Fichier SQL d'injection supprimé : $(basename "${INJECT_SQL_FILE}")" >&2
     fi
-    # Use if/fi to avoid returning non-zero from cleanup, which would trigger the ERR trap
-    # in bash 3.2 (macOS) when the [[ ... ]] && cmd pattern returns 1 (condition false).
+    # if/fi (et non `[[ ... ]] && cmd`) pour ne pas renvoyer un code non-zéro depuis cleanup
+    # quand la condition est fausse — ce qui déclencherait le trap ERR.
     if [[ -n "${INJECT_TMP_TRUNCATED}" && -f "${INJECT_TMP_TRUNCATED}" ]]; then
         rm -f "${INJECT_TMP_TRUNCATED}"
     fi
     if [[ -n "${INJECT_TMP_CHECKSUM}" && -f "${INJECT_TMP_CHECKSUM}" ]]; then
         rm -f "${INJECT_TMP_CHECKSUM}"
+    fi
+    # Restaure l'ownership hôte des artefacts créés en root dans le bind mount /workspace.
+    # Le conteneur tourne en root (requis pour les chown de --reset et les volumes nommés) ;
+    # sans ça, sur Linux natif, build/ appartient à root et exige sudo pour le nettoyer.
+    # --reference se calque sur le propriétaire du dépôt monté (= l'utilisateur hôte) ;
+    # sur macOS/OrbStack l'ownership est déjà mappé → no-op. fail-soft : ne jamais masquer
+    # le code de sortie réel de la répétition (|| true, comme un nettoyage best-effort).
+    if [[ -d "${PROJECT_ROOT}/build" ]]; then
+        chown -R --reference="${PROJECT_ROOT}" "${PROJECT_ROOT}/build" 2>/dev/null || true
     fi
 }
 
@@ -202,9 +256,10 @@ trap 'cleanup' EXIT INT TERM
 # Expose les variables globales SIGN_TS, SIGN_NONCE, SIGN_SIG.
 hmac_sign() {
     local route="$1"
-    # bash 3.2 (macOS) parses "${2:-{}}" as "${2:-{}" + "}" — the closing brace of {}
-    # is misidentified as closing the outer expansion, appending a stray "}" to the value.
-    # Use an intermediate variable to avoid this bash 3.2 brace-parsing quirk.
+    # NE PAS écrire `${2:-{}}` : bash (3.2 ET 5.x) referme l'expansion sur le 1er `}` de
+    # la valeur par défaut, puis ajoute un `}` littéral. Quand $2 est défini (cas activation),
+    # un `}` parasite est concaténé au body → le sha256 signé diffère du body réellement
+    # envoyé par curl → signature rejetée (ops_unauthorized). Variable intermédiaire = sûr.
     local _body_default='{}'
     local body="${2:-${_body_default}}"
 
@@ -217,12 +272,13 @@ hmac_sign() {
     SIGN_SIG="$(printf '%s' "${payload}" | openssl dgst -sha256 -hmac "${OPS_HMAC_SECRET}" | awk '{print $NF}')"
 }
 
-# ── Transfert d'un fichier local vers kermesse/staging/ sur la cible ─────────
-# Utilisé uniquement par les modes d'injection post-transfert.
+# ── Transfert d'un fichier local vers le staging de la cible ─────────────────
+# Utilisé uniquement par les modes d'injection post-transfert : doit viser le MÊME
+# dossier que le transfert réel (${REMOTE_STAGING}) pour corrompre l'archive en place.
 inject_remote_file() {
     local local_file="$1"
     local remote_name="$2"
-    local remote_staging="kermesse/staging"
+    local remote_staging="${REMOTE_STAGING}"
 
     local escaped_user="${TARGET_USER//\'/\\\'}"
     local escaped_pass="${TARGET_PASS//\'/\\\'}"
@@ -280,15 +336,15 @@ bash "${SCRIPT_DIR}/package-deploy-artifact.sh"
 CURRENT_STEP="transfert"
 echo ""
 echo "-- Étape 2/5 : Transfert vers la cible"
-# Rehearsal layout: the deploy base is mounted directly at the SFTP root, so staging/
-# is at the root (not kermesse/staging/ as on Ouvaton). Override the production default.
+# REMOTE_STAGING (résolu plus haut à « staging » pour le profil rehearsal) écrase le
+# défaut production « kermesse/staging » de transfer-archive.sh.
 TARGET_HOST="${TARGET_HOST}" \
 TARGET_PORT="${TARGET_PORT}" \
 TARGET_PROTO="${TARGET_PROTO}" \
 TARGET_USER="${TARGET_USER}" \
 TARGET_PASS="${TARGET_PASS}" \
 TARGET_SFTP_SKIP_HOST_CHECK="${TARGET_SFTP_SKIP_HOST_CHECK}" \
-REMOTE_STAGING="${REMOTE_STAGING:-staging}" \
+REMOTE_STAGING="${REMOTE_STAGING}" \
     bash "${SCRIPT_DIR}/transfer-archive.sh"
 
 # ── Injection post-transfert : corruption de l'archive ou du checksum ────────

@@ -69,24 +69,21 @@ echo "Archive      : $(basename "${ARCHIVE}")"
 
 # 5. Transfert via lftp — put individuel, jamais mirror
 # Les commandes sont passées via substitution de processus pour éviter d'exposer
-# le mot de passe sur le disque ou dans la liste des processus.
-# Note : le case est résolu avant le <(...) — bash 3.2 (macOS) ne parse pas
-# les instructions case à l'intérieur d'une process substitution.
+# le mot de passe sur le disque ou dans la liste des processus. Le bloc case est
+# résolu AVANT le <(...), qui ne fait alors qu'écho.
 ESCAPED_PASS="${TARGET_PASS//\'/\\\'}"
 
 PROTO_SETTINGS=""
 case "${TARGET_PROTO}" in
   sftp)
     if [[ "${TARGET_SFTP_SKIP_HOST_CHECK:-false}" == "true" ]]; then
-      # Rehearsal mode only: the SFTP container regenerates its host key on every restart,
-      # so any pinned known_hosts entry goes stale immediately. Tell lftp to auto-accept the
-      # host key for this connection instead of writing keys into the user's ~/.ssh/known_hosts.
-      # We still REMOVE any stale entries left by older rehearsal runs so a rotated key is not
-      # rejected as "host key changed" — but we never APPEND to the user's known_hosts.
-      # This bypass must NEVER be enabled against a production target.
-      ssh-keygen -R "[${TARGET_HOST}]:${TARGET_PORT}" 2>/dev/null || true
-      ssh-keygen -R "[localhost]:${TARGET_PORT}" 2>/dev/null || true
-      ssh-keygen -R "[127.0.0.1]:${TARGET_PORT}" 2>/dev/null || true
+      # Rehearsal uniquement : le conteneur SFTP regénère sa clé hôte à chaque démarrage,
+      # donc toute entrée known_hosts épinglée devient aussitôt périmée. On demande à lftp
+      # d'accepter automatiquement la clé pour cette connexion. Exécuté DANS deploy-client,
+      # le known_hosts éventuellement écrit est celui, ÉPHÉMÈRE, du conteneur (jeté à la
+      # sortie via --rm) — jamais le ~/.ssh/known_hosts de l'hôte. Aucune entrée périmée à
+      # purger : le conteneur démarre vierge à chaque exécution.
+      # Ce bypass ne doit JAMAIS être activé contre une cible de production.
       PROTO_SETTINGS="set sftp:auto-confirm yes;"
     elif [[ -n "${TARGET_KEY:-}" ]]; then
       # Production with key-based auth: delegate to external SSH.

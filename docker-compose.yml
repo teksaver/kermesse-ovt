@@ -126,6 +126,56 @@ services:
       db:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # deploy-client — client de répétition dockerisé (FR-21)
+  # ---------------------------------------------------------------------------
+  # Exécute packaging + transfert + ops À L'INTÉRIEUR du réseau Docker : l'hôte
+  # n'a plus besoin que de Docker. scripts/deploy-rehearsal.sh (côté hôte) relance
+  # automatiquement la vraie orchestration ici via `docker compose run --rm`.
+  # Lancement implicite par le passe-plat ; usage direct possible :
+  #   docker compose --profile rehearsal run --rm deploy-client bash scripts/deploy-rehearsal.sh
+  deploy-client:
+    profiles: [rehearsal]
+    build:
+      context: .
+      dockerfile: docker/deploy-client/Dockerfile
+      args:
+        PHP_VERSION_OUVATON: "8.3"
+    environment:
+      # Marqueur lu par deploy-rehearsal.sh : « je tourne déjà dans le conteneur,
+      # ne pas re-déléguer à Docker ».
+      KERMESSE_REHEARSAL_CONTAINER: "1"
+      # Cibles résolues par NOM DE SERVICE sur le réseau Docker (plus de 127.0.0.1/::1
+      # ni de ports publiés sur l'hôte) : SFTP sur deploy-target:22, HTTP sur deploy-web:80.
+      TARGET_HOST: deploy-target
+      TARGET_PORT: "22"
+      TARGET_PROTO: sftp
+      TARGET_USER: deploy
+      TARGET_PASS: deploy_rehearsal
+      TARGET_SFTP_SKIP_HOST_CHECK: "true"
+      REMOTE_STAGING: staging
+      BASE_URL: "http://deploy-web"
+      OPS_HMAC_SECRET: local_dev_ops_secret_32_bytes_minimum
+      # --reset : la purge fichiers se fait sur le volume partagé monté ci-dessous,
+      # et le DROP des tables techniques via le client mysql vers le service db.
+      DB_RESET_HOST: db
+      DB_RESET_USER: root
+      DB_RESET_PASS: root_password
+      DB_RESET_NAME: kermesse
+    volumes:
+      # Le dépôt complet : les scripts/*.sh exécutés sont ceux du dépôt (aucun fork —
+      # FR-18) ; build/ et database/migrations_sql/ (--inject) sont sur le bind de l'hôte.
+      - .:/workspace
+      # Volume partagé avec deploy-target/deploy-web : purge directe de staging/releases
+      # au --reset, sans `docker compose exec` (indisponible depuis le conteneur).
+      - deploy-target-data:/srv/deploy-data
+      - composer-cache:/tmp/composer
+    working_dir: /workspace
+    depends_on:
+      - deploy-target
+      - deploy-web
+      - db
+
 volumes:
   composer-cache:
   mariadb-data:
