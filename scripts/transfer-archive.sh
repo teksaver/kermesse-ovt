@@ -11,18 +11,19 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 ARCHIVE="${PROJECT_ROOT}/build/kermesse-deploy.tar.gz"
 CHECKSUM="${ARCHIVE}.sha256"
-# Relative path from the SFTP root — must match the staging dir the activation service
-# reads (opsActivateBasePath + /staging/).
-# Production (Ouvaton): the application folder is a SUBDIR of the SFTP home, so the archive
-# must land in kermesse/staging/ (see docs/deployment-ouvaton.md §"Écarts profil rehearsal").
-# Local rehearsal: the deploy base is mounted directly at the SFTP root, so deploy-rehearsal.sh
-# overrides this to REMOTE_STAGING=staging. Keep the production-correct default here.
-REMOTE_STAGING="${REMOTE_STAGING:-kermesse/staging}"
+# Relative path from the SFTP root — must be set explicitly by the caller.
+# No hardcoded default: the correct value depends on the deployment context.
+#   Production (Ouvaton) :  REMOTE_STAGING=kermesse/staging
+#     (kermesse = OUVATON_DEPLOY_REMOTE_FOLDER, app folder is a sub-dir of the SFTP home)
+#   Local rehearsal        :  REMOTE_STAGING=staging
+#     (deploy base mounted directly at the SFTP root, set by deploy-rehearsal.sh)
+# See docs/deployment-ouvaton.md §"Écarts profil rehearsal".
+REMOTE_STAGING="${REMOTE_STAGING:-}"
 
 echo "=== Transfert de l'archive vers le staging ==="
 
 # 1. Vérification des variables d'environnement obligatoires
-required_vars=(TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS)
+required_vars=(TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMOTE_STAGING)
 missing=0
 for var in "${required_vars[@]}"; do
   if [[ -z "${!var:-}" ]]; then
@@ -31,7 +32,8 @@ for var in "${required_vars[@]}"; do
   fi
 done
 if [[ ${missing} -eq 1 ]]; then
-  echo "Variables requises : TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS" >&2
+  echo "Variables requises : TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMOTE_STAGING" >&2
+  echo "  REMOTE_STAGING exemples : 'staging' (rehearsal local) ou 'kermesse/staging' (Ouvaton prod)" >&2
   echo "Variable optionnelle : TARGET_KEY (chemin vers la clé SSH, pour SFTP sans mot de passe)" >&2
   exit 1
 fi

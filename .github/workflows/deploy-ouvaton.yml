@@ -104,30 +104,19 @@ jobs:
     environment: production
 
     env:
-      # Variables (non-sensitive)
+      # Variables (non-sensitive) — only what the deploy steps actually use.
+      # Database, email, token, and session vars have been removed: the deploy
+      # job no longer generates a .env file (NFR-2). The .env lives in shared/
+      # and is managed by sync-production-env.yml.
       OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
       OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
       OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
       OUVATON_HTTPDOCS_FOLDER: ${{ vars.OUVATON_HTTPDOCS_FOLDER }}
-      KERMESSE_OUVATON_ROOT: ${{ vars.KERMESSE_OUVATON_ROOT }}
       KERMESSE_PUBLIC_BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
-      KERMESSE_APP_TIMEZONE: ${{ vars.KERMESSE_APP_TIMEZONE }}
-      KERMESSE_DATABASE_HOSTNAME: ${{ vars.KERMESSE_DATABASE_HOSTNAME }}
-      KERMESSE_DATABASE_DATABASE: ${{ vars.KERMESSE_DATABASE_DATABASE }}
-      KERMESSE_DATABASE_USERNAME: ${{ vars.KERMESSE_DATABASE_USERNAME }}
-      KERMESSE_EMAIL_SMTP_HOST: ${{ vars.KERMESSE_EMAIL_SMTP_HOST }}
-      KERMESSE_EMAIL_SMTP_USER: ${{ vars.KERMESSE_EMAIL_SMTP_USER }}
-      KERMESSE_EMAIL_SMTP_PORT: ${{ vars.KERMESSE_EMAIL_SMTP_PORT }}
-      KERMESSE_EMAIL_SMTP_CRYPTO: ${{ vars.KERMESSE_EMAIL_SMTP_CRYPTO }}
-      KERMESSE_EMAIL_FROM_EMAIL: ${{ vars.KERMESSE_EMAIL_FROM_EMAIL }}
-      KERMESSE_EMAIL_FROM_NAME: ${{ vars.KERMESSE_EMAIL_FROM_NAME }}
       KERMESSE_ALLOW_INSECURE_TLS: ${{ vars.KERMESSE_ALLOW_INSECURE_TLS }}
       # Secrets (sensitive credentials)
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
       OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
-      KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}
-      KERMESSE_EMAIL_SMTP_PASS: ${{ secrets.KERMESSE_EMAIL_SMTP_PASS }}
-      KERMESSE_TOKEN_SECRET: ${{ secrets.KERMESSE_TOKEN_SECRET }}
       OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
 
     steps:
@@ -152,180 +141,7 @@ jobs:
           mkdir -p deploy-staging
           tar -xzf kermesse-deploy.tar.gz -C deploy-staging
 
-      - name: Generate .env from production variables and secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Non-sensitive configuration — set as GitHub Actions Variables.
-          required_vars=(
-            OUVATON_DEPLOY_HOST
-            OUVATON_DEPLOY_USERNAME
-            OUVATON_DEPLOY_REMOTE_FOLDER
-            KERMESSE_OUVATON_ROOT
-            KERMESSE_PUBLIC_BASE_URL
-            KERMESSE_DATABASE_HOSTNAME
-            KERMESSE_DATABASE_DATABASE
-            KERMESSE_DATABASE_USERNAME
-            KERMESSE_EMAIL_SMTP_HOST
-            KERMESSE_EMAIL_SMTP_USER
-            KERMESSE_EMAIL_FROM_EMAIL
-          )
-
-          # Sensitive credentials — set as GitHub Actions Secrets.
-          required_secrets=(
-            OUVATON_DEPLOY_PASSWORD
-            KERMESSE_DATABASE_PASSWORD
-            KERMESSE_EMAIL_SMTP_PASS
-            KERMESSE_TOKEN_SECRET
-            OPS_MIGRATION_HMAC_SECRET
-          )
-
-          missing=0
-          for name in "${required_vars[@]}"; do
-            value="${!name:-}"
-            if [ -z "${value//[[:space:]]/}" ]; then
-              echo "::error::Missing required production variable: ${name}"
-              missing=1
-            fi
-          done
-          for name in "${required_secrets[@]}"; do
-            value="${!name:-}"
-            if [ -z "${value//[[:space:]]/}" ]; then
-              echo "::error::Missing required production secret: ${name}"
-              missing=1
-            fi
-          done
-
-          if [ "${missing}" -ne 0 ]; then
-            exit 1
-          fi
-
-          reject_multiline_value() {
-            local name="$1"
-            local value="${!name:-}"
-            if [[ "${value}" == *$'\n'* || "${value}" == *$'\r'* ]]; then
-              echo "::error::Production value must be single-line: ${name}"
-              exit 1
-            fi
-          }
-
-          reject_dotenv_nested_reference() {
-            local name="$1"
-            local value="${!name:-}"
-            if [[ "${value}" =~ \$\{[A-Za-z0-9_.]+\} ]]; then
-              echo "::error::Production value must not contain dotenv nested-variable syntax: ${name}"
-              exit 1
-            fi
-          }
-
-          all_inputs=("${required_vars[@]}" "${required_secrets[@]}" KERMESSE_APP_TIMEZONE)
-          for name in "${all_inputs[@]}"; do
-            reject_multiline_value "${name}"
-            reject_dotenv_nested_reference "${name}"
-          done
-
-          if [ "${#KERMESSE_TOKEN_SECRET}" -lt 32 ]; then
-            echo "::error::KERMESSE_TOKEN_SECRET must be at least 32 characters"
-            exit 1
-          fi
-
-          if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
-            echo "::error::OPS_MIGRATION_HMAC_SECRET must be at least 32 characters"
-            exit 1
-          fi
-
-          escape_dotenv_value() {
-            local value="$1"
-            value="${value//\\/\\\\}"
-            value="${value//\"/\\\"}"
-            printf '%s' "${value}"
-          }
-
-          write_raw() {
-            printf '%s = %s\n' "$1" "$2"
-          }
-
-          write_quoted() {
-            printf '%s = "%s"\n' "$1" "$(escape_dotenv_value "$2")"
-          }
-
-          env_next="deploy-staging/.env"
-          umask 077
-
-          {
-            printf '# Generated by GitHub Actions from the production environment variables and secrets.\n'
-            printf '# Do not commit this file, upload it as an artifact, or print its contents.\n\n'
-
-            write_raw CI_ENVIRONMENT production
-            write_quoted app.baseURL "${KERMESSE_PUBLIC_BASE_URL}"
-            write_quoted app.appTimezone "${KERMESSE_APP_TIMEZONE:-Europe/Paris}"
-            write_raw app.forceGlobalSecureRequests true
-            write_raw app.CSPEnabled false
-            write_raw logger.threshold 4
-            write_quoted kermesse.publicBaseURL "${KERMESSE_PUBLIC_BASE_URL}"
-
-            printf '\n'
-            write_quoted database.default.hostname "${KERMESSE_DATABASE_HOSTNAME}"
-            write_quoted database.default.database "${KERMESSE_DATABASE_DATABASE}"
-            write_quoted database.default.username "${KERMESSE_DATABASE_USERNAME}"
-            write_quoted database.default.password "${KERMESSE_DATABASE_PASSWORD}"
-            write_raw database.default.DBDriver MySQLi
-            write_raw database.default.DBPrefix ''
-            write_raw database.default.port 3306
-            write_raw database.default.charset utf8mb4
-            write_raw database.default.DBCollat utf8mb4_general_ci
-
-            printf '\n'
-            write_quoted session.driver 'CodeIgniter\Session\Handlers\FileHandler'
-            write_quoted session.savePath "${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/writable/session"
-            write_quoted session.cookieName kermesse_session
-            write_raw session.expiration 7200
-            write_raw session.matchIP false
-            write_raw session.timeToUpdate 300
-            write_raw session.regenerateDestroy false
-            write_raw cookie.prefix ''
-            write_raw cookie.expires 0
-            write_quoted cookie.path /
-            write_raw cookie.domain ''
-            write_raw cookie.secure true
-            write_raw cookie.httponly true
-            write_quoted cookie.samesite Lax
-
-            printf '\n'
-            write_raw email.protocol smtp
-            write_quoted email.SMTPHost "${KERMESSE_EMAIL_SMTP_HOST}"
-            write_quoted email.SMTPUser "${KERMESSE_EMAIL_SMTP_USER}"
-            write_quoted email.SMTPPass "${KERMESSE_EMAIL_SMTP_PASS}"
-            write_raw email.SMTPPort "${KERMESSE_EMAIL_SMTP_PORT:-587}"
-            write_quoted email.SMTPCrypto "${KERMESSE_EMAIL_SMTP_CRYPTO:-tls}"
-            write_quoted email.fromEmail "${KERMESSE_EMAIL_FROM_EMAIL}"
-            write_quoted email.fromName "${KERMESSE_EMAIL_FROM_NAME:-Kermesse}"
-
-            printf '\n'
-            write_quoted kermesse.tokenSecret "${KERMESSE_TOKEN_SECRET}"
-            write_raw kermesse.ownerValidationTokenTTL 86400
-            write_raw kermesse.ownerLoginTokenTTL 900
-            write_raw kermesse.volunteerManagementTokenTTL 1209600
-
-            printf '\n'
-            write_quoted kermesse.opsMigrationHmacSecret "${OPS_MIGRATION_HMAC_SECRET}"
-            write_raw kermesse.opsMigrationAllowedTimestampSkew 300
-            write_raw kermesse.opsMigrationNonceTTL 600
-            write_raw kermesse.opsMigrationProductionOnly true
-            write_quoted kermesse.opsMigrationLockName kermesse_ops_migration_lock
-
-            printf '\n'
-            write_quoted kermesse.deployTarget ouvaton
-            write_quoted kermesse.deployProtocol ftps
-            write_quoted kermesse.deployHost "${OUVATON_DEPLOY_HOST}"
-            write_quoted kermesse.deployRemotePath "${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}"
-            write_raw kermesse.deployPreserveEnv true
-          } > "${env_next}"
-
-          echo "Generated .env in deploy-staging."
-
-      - name: Transfer files to Ouvaton via SFTP
+      - name: Upload archive to staging
         run: |
           set -euo pipefail
 
@@ -336,30 +152,23 @@ jobs:
             printf '"%s"' "${value}"
           }
 
-          # Mirror local artifact to Ouvaton over SFTP (SSH File Transfer Protocol,
-          # port 115 per Ouvaton hosting requirements).
-          # Note : L'option `set sftp:known-hosts` n'est plus requise. Lftp s'appuie 
-          # sur le comportement par défaut d'OpenSSH qui lit `~/.ssh/known_hosts`
-          # configuré à l'étape précédente.
-          # Two-step mirror:
-          #   1. Seed writable/ WITHOUT --delete so the directory tree and its
-          #      guard files (.htaccess, index.html) exist on the server.
-          #      CodeIgniter refuses to boot ("The WRITEPATH is not set correctly")
-          #      when this directory is missing. No --delete here so app-written
-          #      runtime files (logs, sessions, cache, uploads) are never wiped.
-          #   2. Mirror the rest with --delete for clean deploys. writable/ stays
-          #      excluded (already handled in step 1) and .env* is preserved
-          #      (production .env is managed by sync-production-env.yml).
+          # Dépose le .tar.gz et son .sha256 dans le dossier de staging distant
+          # (${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/) via lftp put — jamais mirror.
+          # Le .env de production n'est ni dans l'archive ni transféré ici (NFR-2) :
+          # il vit dans shared/ et est géré par sync-production-env.yml.
+          # L'activation atomique (étape suivante) extrait et bascule current/ côté serveur.
           {
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 3\n'
             printf 'set net:timeout 60\n'
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-            printf 'lcd deploy-staging\n'
-            printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
-            printf 'mirror --reverse writable writable\n'
-            printf 'mirror --reverse --delete --exclude "^writable/"\n'
+            # Crée le dossier staging/ s'il n'existe pas (idempotent).
+            printf 'set cmd:fail-exit no\n'
+            printf 'mkdir -p %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging")"
+            printf 'set cmd:fail-exit yes\n'
+            printf 'put kermesse-deploy.tar.gz -o %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/kermesse-deploy.tar.gz")"
+            printf 'put kermesse-deploy.tar.gz.sha256 -o %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/staging/kermesse-deploy.tar.gz.sha256")"
             printf 'bye\n'
           } | lftp
 
@@ -430,26 +239,69 @@ jobs:
             printf 'bye\n'
           } | lftp
 
-      - name: Run post-deploy migrations
-        env:
-          BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
-          ALLOW_INSECURE_TLS: ${{ vars.KERMESSE_ALLOW_INSECURE_TLS }}
-          OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+      - name: Activate release via webhook
         run: |
           set -euo pipefail
 
+          BASE_URL="${KERMESSE_PUBLIC_BASE_URL}"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+
           if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
-            echo "::error::BASE_URL and OPS_MIGRATION_HMAC_SECRET are required."
+            echo "::error::KERMESSE_PUBLIC_BASE_URL and OPS_MIGRATION_HMAC_SECRET sont requis."
             exit 1
           fi
 
           if [ "${BASE_URL#https://}" = "$BASE_URL" ]; then
-            echo "::error::BASE_URL must start with https:// for production migrations."
+            echo "::error::KERMESSE_PUBLIC_BASE_URL doit commencer par https:// pour l'activation en production."
             exit 1
           fi
 
           if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
-            echo "::error::OPS_MIGRATION_HMAC_SECRET must be at least 32 characters."
+            echo "::error::OPS_MIGRATION_HMAC_SECRET doit faire au moins 32 caractères."
+            exit 1
+          fi
+
+          BODY='{"archive":"kermesse-deploy.tar.gz"}'
+          TIMESTAMP="$(date +%s)"
+          NONCE="$(openssl rand -hex 16)"
+          BODY_HASH="$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)"
+          PAYLOAD="$(printf '%s\n%s\nPOST\nops/activate\n%s' "$TIMESTAMP" "$NONCE" "$BODY_HASH")"
+          SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
+
+          CURL_TLS_ARGS=()
+          if [ "${ALLOW_INSECURE_TLS}" = "true" ]; then
+            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour l'activation. À retirer dès que le certificat de production est valide."
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
+          # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
+          curl -fsS "${CURL_TLS_ARGS[@]}" -X POST "${BASE_URL%/}/ops/activate" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
+            -H "X-Kermesse-Nonce: ${NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGNATURE}" \
+            -d "$BODY"
+
+      - name: Run post-deploy migrations
+        run: |
+          set -euo pipefail
+
+          BASE_URL="${KERMESSE_PUBLIC_BASE_URL}"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+
+          if [ -z "$BASE_URL" ] || [ -z "$OPS_MIGRATION_HMAC_SECRET" ]; then
+            echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
+            exit 1
+          fi
+
+          if [ "${BASE_URL#https://}" = "$BASE_URL" ]; then
+            echo "::error::KERMESSE_PUBLIC_BASE_URL doit commencer par https:// pour les migrations en production."
+            exit 1
+          fi
+
+          if [ "${#OPS_MIGRATION_HMAC_SECRET}" -lt 32 ]; then
+            echo "::error::OPS_MIGRATION_HMAC_SECRET doit faire au moins 32 caractères."
             exit 1
           fi
 
@@ -461,11 +313,12 @@ jobs:
           SIGNATURE="$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$OPS_MIGRATION_HMAC_SECRET" | cut -d' ' -f2)"
 
           CURL_TLS_ARGS=()
-          if [ "${ALLOW_INSECURE_TLS:-false}" = "true" ]; then
-            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true: skipping TLS certificate verification for post-deploy migrations. Remove this once the production certificate is fixed."
+          if [ "${ALLOW_INSECURE_TLS}" = "true" ]; then
+            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour les migrations. À retirer dès que le certificat de production est valide."
             CURL_TLS_ARGS+=(--insecure)
           fi
 
+          # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
           curl -fsS "${CURL_TLS_ARGS[@]}" -X POST "${BASE_URL%/}/ops/migrate" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
