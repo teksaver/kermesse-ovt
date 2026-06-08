@@ -46,8 +46,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # en aval s'exécute exclusivement DANS le conteneur (KERMESSE_REHEARSAL_CONTAINER=1).
 # NB : ce bloc s'exécute sur l'hôte (macOS bash 3.2) — le garder compatible bash 3.2.
 if [[ "${KERMESSE_REHEARSAL_CONTAINER:-}" != "1" ]]; then
-    if ! hash docker >/dev/null 2>&1; then
-        echo "ERREUR : Docker est requis côté hôte pour la répétition." >&2
+    if ! hash docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+        echo "ERREUR : Docker et le plugin docker-compose sont requis côté hôte pour la répétition." >&2
         exit 1
     fi
     # On ne propage au conteneur QUE les surcharges réellement présentes dans
@@ -58,7 +58,9 @@ if [[ "${KERMESSE_REHEARSAL_CONTAINER:-}" != "1" ]]; then
     for _v in TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS \
               TARGET_SFTP_SKIP_HOST_CHECK REMOTE_STAGING BASE_URL OPS_HMAC_SECRET \
               DB_RESET_HOST DB_RESET_USER DB_RESET_PASS DB_RESET_NAME; do
-        if [[ -n "${!_v:-}" ]]; then
+        # On vérifie si la variable est définie (+x), même si elle est vide,
+        # pour propager les valeurs vides explicites au conteneur.
+        if eval "[ -n \"\${${_v}+x}\" ]"; then
             REEXEC_ENV+=(-e "${_v}")
         fi
     done
@@ -159,6 +161,13 @@ if [[ "${RESET_MODE}" == true ]]; then
 
     # Le volume deploy-target-data est monté ici ; son absence = stack rehearsal non démarrée.
     DEPLOY_DATA="${DEPLOY_DATA:-/srv/deploy-data}"
+
+    # Sécurité anti-catastrophe (si DEPLOY_DATA est accidentellement forcé à vide ou racine)
+    if [[ -z "${DEPLOY_DATA}" || "${DEPLOY_DATA}" == "/" ]]; then
+        echo "ERREUR : DEPLOY_DATA est vide ou pointe sur la racine." >&2
+        exit 1
+    fi
+
     if [[ ! -d "${DEPLOY_DATA}" ]]; then
         echo "ERREUR : volume de déploiement absent (${DEPLOY_DATA})." >&2
         echo "Lancez d'abord : docker compose --profile rehearsal up -d" >&2
