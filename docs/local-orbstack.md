@@ -107,6 +107,38 @@ Cette methode s'utilise aussi si l'application n'est pas encore accessible (serv
 |---------|------|-------------|
 | `app` | PHP 8.3, Apache, Composer, CodeIgniter | `http://localhost:8080/` |
 | `db` | MariaDB 10.11 locale (alignee sur Ouvaton) | `127.0.0.1:3307` par defaut |
+| `phpmyadmin` | Interface web d'inspection MariaDB (dev local uniquement) | `http://127.0.0.1:8082/` |
+
+### phpMyAdmin
+
+Disponible des le `docker compose up` standard (aucun profil requis) :
+
+```text
+http://127.0.0.1:8082/
+```
+
+Identifiants de connexion (identiques a ceux de la base locale) :
+
+| Champ | Valeur |
+|-------|--------|
+| Serveur | `db` (pre-configure, champ non affiche) |
+| Utilisateur | `kermesse_user` |
+| Mot de passe | `kermesse_password` |
+
+Connexion alternative avec les droits root :
+
+| Champ | Valeur |
+|-------|--------|
+| Utilisateur | `root` |
+| Mot de passe | `root_password` |
+
+Le port hote est configurable si `8082` est deja occupe :
+
+```bash
+KERMESSE_PMA_PORT=8083 docker compose up
+```
+
+Ce service n'est jamais inclus dans l'artefact de deploiement ni accessible en production : Ouvaton ne fait pas tourner Docker.
 
 Identifiants MariaDB locaux non secrets :
 

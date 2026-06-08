@@ -59,6 +59,16 @@ services:
       retries: 20
       start_period: 20s
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    ports:
+      - "127.0.0.1:${KERMESSE_PMA_PORT:-8082}:80"
+    environment:
+      PMA_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+
   # ---------------------------------------------------------------------------
   # Profile: rehearsal — cible de déploiement locale Ouvaton-like
   # ---------------------------------------------------------------------------
