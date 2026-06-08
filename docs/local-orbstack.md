@@ -107,6 +107,38 @@ Cette methode s'utilise aussi si l'application n'est pas encore accessible (serv
 |---------|------|-------------|
 | `app` | PHP 8.3, Apache, Composer, CodeIgniter | `http://localhost:8080/` |
 | `db` | MariaDB 10.11 locale (alignee sur Ouvaton) | `127.0.0.1:3307` par defaut |
+| `phpmyadmin` | Interface web d'inspection MariaDB (dev local uniquement) | `http://127.0.0.1:8082/` |
+
+### phpMyAdmin
+
+Disponible des le `docker compose up` standard (aucun profil requis) :
+
+```text
+http://127.0.0.1:8082/
+```
+
+Identifiants de connexion (identiques a ceux de la base locale) :
+
+| Champ | Valeur |
+|-------|--------|
+| Serveur | `db` (pre-configure, champ non affiche) |
+| Utilisateur | `kermesse_user` |
+| Mot de passe | `kermesse_password` |
+
+Connexion alternative avec les droits root :
+
+| Champ | Valeur |
+|-------|--------|
+| Utilisateur | `root` |
+| Mot de passe | `root_password` |
+
+Le port hote est configurable si `8082` est deja occupe :
+
+```bash
+KERMESSE_PMA_PORT=8083 docker compose up
+```
+
+Ce service n'est jamais inclus dans l'artefact de deploiement ni accessible en production : Ouvaton ne fait pas tourner Docker.
 
 Identifiants MariaDB locaux non secrets :
 
@@ -191,6 +223,50 @@ Repartir de zero en supprimant les volumes MariaDB, Composer, `vendor` et `writa
 ```bash
 docker compose down --volumes
 ```
+
+## Repetition de deploiement (client dockerise)
+
+La repetition de deploiement (packaging, transfert SFTP, appels ops signes) s'execute
+desormais ENTIEREMENT dans un conteneur dedie `deploy-client`, sur le reseau Docker.
+Cote hote, **seul Docker est requis** : plus besoin de `lftp`, `openssl`, `ssh-keyscan`,
+`composer` ni d'un client `mysql` installes localement. macOS bash 3.2 n'est plus un
+facteur (le conteneur tourne sous bash >= 5).
+
+Demarrer la cible locale puis lancer la repetition :
+
+```bash
+docker compose --profile rehearsal up -d --build
+bash scripts/deploy-rehearsal.sh
+```
+
+`scripts/deploy-rehearsal.sh` detecte qu'il tourne sur l'hote et se relance
+automatiquement dans `deploy-client` via `docker compose --profile rehearsal run --rm`.
+Les memes `scripts/*.sh` que la CI y sont montes (bind du depot), sans fork. La cible
+SFTP est `deploy-target:22` et l'application `http://deploy-web` — par nom de service
+sur le reseau Docker, sans port publie ni `127.0.0.1`/`::1`.
+
+L'artefact reste produit sur le bind de l'hote : `build/kermesse-deploy.tar.gz`.
+
+Remise a zero de la cible et injection d'echecs passent aussi par le conteneur :
+
+```bash
+bash scripts/deploy-rehearsal.sh --reset
+bash scripts/deploy-rehearsal.sh --inject truncated-transfer
+bash scripts/deploy-rehearsal.sh --inject bad-checksum
+bash scripts/deploy-rehearsal.sh --inject failing-migration
+```
+
+Usage direct du conteneur (equivalent, utile pour debug) :
+
+```bash
+docker compose --profile rehearsal run --rm deploy-client bash scripts/deploy-rehearsal.sh
+```
+
+| Service | Role | Reseau Docker |
+|---------|------|---------------|
+| `deploy-client` | Client de repetition (packaging + transfert + ops) | one-shot `run --rm` |
+| `deploy-target` | Cible SFTP Ouvaton-like (atmoz/sftp) | `deploy-target:22` |
+| `deploy-web` | Application deployee (Apache + PHP) | `http://deploy-web` |
 
 ## Configuration locale
 

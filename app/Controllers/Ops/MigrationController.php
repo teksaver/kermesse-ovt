@@ -36,7 +36,7 @@ class MigrationController extends BaseController
                 ]);
         } catch (\Throwable $e) {
             log_message('critical', 'MigrationController::status: unhandled error: {message}', [
-                'message' => $e->getMessage(),
+                'message' => $e,
             ]);
 
             return $this->response
@@ -72,7 +72,7 @@ class MigrationController extends BaseController
                 ]);
         } catch (\Throwable $e) {
             log_message('critical', 'MigrationController: unhandled error: {message}', [
-                'message' => $e->getMessage(),
+                'message' => $e,
             ]);
 
             return $this->response

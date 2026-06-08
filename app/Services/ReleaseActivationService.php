@@ -81,8 +81,15 @@ class ReleaseActivationService
             return ['ok' => false, 'error' => 'checksum_mismatch'];
         }
 
-        $expectedChecksum = trim((string) @file_get_contents($checksumPath));
-        $actualChecksum   = (string) @hash_file('sha256', $archivePath);
+        if (!is_readable($checksumPath) || !is_readable($archivePath)) {
+            return ['ok' => false, 'error' => 'archive_missing'];
+        }
+
+        // The .sha256 file may contain either a raw 64-hex hash or sha256sum(1) format
+        // ("<hash>  <filename>"). Extract the first whitespace-delimited token in both cases.
+        $rawChecksum      = trim((string) file_get_contents($checksumPath));
+        $expectedChecksum = explode(' ', $rawChecksum, 2)[0];
+        $actualChecksum   = (string) hash_file('sha256', $archivePath);
 
         if ($expectedChecksum === '' || $actualChecksum === '' || !hash_equals($expectedChecksum, $actualChecksum)) {
             return ['ok' => false, 'error' => 'checksum_mismatch'];
@@ -90,15 +97,15 @@ class ReleaseActivationService
 
         // Prepare release directory
         $sha8        = substr($actualChecksum, 0, 8);
-        $releaseName = date('Ymd-His') . '-' . $sha8;
+        $releaseName = date('Ymd-His') . '-' . $sha8 . '-' . uniqid();
         $releasesDir = $this->basePath . '/releases/';
         $releaseDir  = $releasesDir . $releaseName . '/';
 
-        if (!is_dir($releasesDir) && !@mkdir($releasesDir, 0755, true)) {
-            return ['ok' => false, 'error' => 'internal_error'];
+        if (!is_dir($releasesDir)) {
+            mkdir($releasesDir, 0755, true);
         }
 
-        if (!@mkdir($releaseDir, 0755, true)) {
+        if (!mkdir($releaseDir, 0755, true)) {
             return ['ok' => false, 'error' => 'internal_error'];
         }
 
@@ -120,8 +127,12 @@ class ReleaseActivationService
         $pruned = $this->pruneOldReleases($releasesDir, $releaseName, $this->releasesRetention);
 
         // Clean up the staging artifact
-        @unlink($archivePath);
-        @unlink($checksumPath);
+        if (file_exists($archivePath)) {
+            unlink($archivePath);
+        }
+        if (file_exists($checksumPath)) {
+            unlink($checksumPath);
+        }
 
         return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned];
     }
@@ -138,6 +149,10 @@ class ReleaseActivationService
         $cmd = 'tar -xzf ' . escapeshellarg($archivePath) . ' -C ' . escapeshellarg($releaseDir) . ' 2>&1';
         exec($cmd, $output, $returnCode);
 
+        if ($returnCode !== 0) {
+            log_message('error', 'ReleaseActivationService: Extraction failed: ' . implode("\n", $output));
+        }
+
         return $returnCode === 0;
     }
 
@@ -151,7 +166,7 @@ class ReleaseActivationService
     protected function switchCurrent(string $releaseDir, string $releaseName): void
     {
         // Always write the pointer file so the fallback path in the shim works
-        if (@file_put_contents($this->basePath . '/CURRENT_RELEASE', $releaseName . "\n") === false) {
+        if (file_put_contents($this->basePath . '/CURRENT_RELEASE', $releaseName . "\n") === false) {
             log_message('error', 'ReleaseActivationService: Failed to write CURRENT_RELEASE pointer');
         }
 
@@ -159,10 +174,13 @@ class ReleaseActivationService
         $currentSymlink = $this->basePath . '/current';
         $tmpLink        = $currentSymlink . '.tmp.' . uniqid('', true);
 
-        if (@symlink(rtrim($releaseDir, '/'), $tmpLink)) {
-            if (!@rename($tmpLink, $currentSymlink)) {
-                @unlink($tmpLink);
+        if (symlink(rtrim($releaseDir, '/'), $tmpLink)) {
+            if (!rename($tmpLink, $currentSymlink)) {
+                unlink($tmpLink);
+                throw new \RuntimeException('Failed to atomic rename symlink');
             }
+        } else {
+            throw new \RuntimeException('Failed to create atomic symlink');
         }
     }
 
@@ -268,6 +286,12 @@ class ReleaseActivationService
             return;
         }
 
+        $realDir = realpath($dir);
+        $realBase = realpath($this->basePath . '/releases/');
+        if ($realDir === false || $realBase === false || !str_starts_with($realDir, $realBase)) {
+            return;
+        }
+
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST
@@ -275,12 +299,12 @@ class ReleaseActivationService
 
         foreach ($iterator as $file) {
             if ($file->isLink() || $file->isFile()) {
-                @unlink($file->getPathname());
+                unlink($file->getPathname());
             } else {
-                @rmdir($file->getPathname());
+                rmdir($file->getPathname());
             }
         }
 
-        @rmdir($dir);
+        rmdir($dir);
     }
 }

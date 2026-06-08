@@ -59,8 +59,138 @@ services:
       retries: 20
       start_period: 20s
 
+  phpmyadmin:
+    image: phpmyadmin:5
+    ports:
+      - "127.0.0.1:${KERMESSE_PMA_PORT:-8082}:80"
+    environment:
+      PMA_HOST: db
+      PMA_USER: kermesse_user
+      PMA_PASSWORD: kermesse_password
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Profile: rehearsal — cible de déploiement locale Ouvaton-like
+  # ---------------------------------------------------------------------------
+  # Démarrage: docker compose --profile rehearsal up
+  # Ces services ne démarrent PAS avec docker compose up sans le profil.
+
+  deploy-target:
+    profiles: [rehearsal]
+    image: atmoz/sftp:latest
+    ports:
+      - "127.0.0.1:${DEPLOY_TARGET_SFTP_PORT:-2222}:22"
+    environment:
+      # Identifiants locaux uniquement — utilisateur SFTP: deploy / deploy_rehearsal.
+      SFTP_USERS: "deploy:deploy_rehearsal:1000:1000"
+    volumes:
+      - deploy-target-data:/home/deploy
+      - ./docker/deploy-target/init-dirs.sh:/etc/sftp.d/init-dirs.sh:ro
+      - ./docker/deploy-target/fix-chroot.sh:/etc/sftp.d/fix-chroot.sh:ro
+
+  deploy-web:
+    profiles: [rehearsal]
+    build:
+      context: .
+      args:
+        PHP_VERSION_OUVATON: "8.3"
+    ports:
+      - "127.0.0.1:${DEPLOY_WEB_HTTP_PORT:-8081}:80"
+    environment:
+      CI_ENVIRONMENT: development
+      app.baseURL: "http://localhost:${DEPLOY_WEB_HTTP_PORT:-8081}/"
+      app.appTimezone: "Europe/Paris"
+      app.forceGlobalSecureRequests: "false"
+      app.CSPEnabled: "false"
+      logger.threshold: "4"
+      database.default.hostname: db
+      database.default.database: kermesse
+      database.default.username: kermesse_user
+      database.default.password: kermesse_password
+      database.default.DBDriver: MySQLi
+      database.default.DBPrefix: ""
+      database.default.port: "3306"
+      database.default.charset: utf8mb4
+      database.default.DBCollat: utf8mb4_general_ci
+      # Les données de session vivent sur le volume partagé, pas dans le conteneur app.
+      session.savePath: /srv/deploy-data/shared/writable/session
+      kermesse.publicBaseURL: "http://localhost:${DEPLOY_WEB_HTTP_PORT:-8081}/"
+      kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
+      kermesse.opsMigrationHmacSecret: local_dev_ops_secret_32_bytes_minimum
+      kermesse.opsMigrationProductionOnly: "false"
+      kermesse.opsProbeEnabled: "true"
+      # Pointe le service d'activation vers le volume partagé (et non vers dirname(ROOTPATH)).
+      kermesse.opsActivateBasePath: /srv/deploy-data
+    volumes:
+      - .:/var/www/html
+      - ./docker/app/php.ini:/usr/local/etc/php/conf.d/zz-kermesse.ini:ro
+      - ./docker/deploy-web/000-default.conf:/etc/apache2/sites-available/000-default.conf:ro
+      - ./docker/deploy-web/entrypoint.sh:/usr/local/bin/deploy-web-entrypoint:ro
+      - deploy-target-data:/srv/deploy-data
+      - composer-cache:/tmp/composer
+      - vendor:/var/www/html/vendor
+      - writable:/var/www/html/writable
+    entrypoint: ["deploy-web-entrypoint"]
+    command: ["apache2-foreground"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # deploy-client — client de répétition dockerisé (FR-21)
+  # ---------------------------------------------------------------------------
+  # Exécute packaging + transfert + ops À L'INTÉRIEUR du réseau Docker : l'hôte
+  # n'a plus besoin que de Docker. scripts/deploy-rehearsal.sh (côté hôte) relance
+  # automatiquement la vraie orchestration ici via `docker compose run --rm`.
+  # Lancement implicite par le passe-plat ; usage direct possible :
+  #   docker compose --profile rehearsal run --rm deploy-client bash scripts/deploy-rehearsal.sh
+  deploy-client:
+    profiles: [rehearsal]
+    build:
+      context: .
+      dockerfile: docker/deploy-client/Dockerfile
+      args:
+        PHP_VERSION_OUVATON: "8.3"
+    environment:
+      # Marqueur lu par deploy-rehearsal.sh : « je tourne déjà dans le conteneur,
+      # ne pas re-déléguer à Docker ».
+      KERMESSE_REHEARSAL_CONTAINER: "1"
+      # Cibles résolues par NOM DE SERVICE sur le réseau Docker (plus de 127.0.0.1/::1
+      # ni de ports publiés sur l'hôte) : SFTP sur deploy-target:22, HTTP sur deploy-web:80.
+      TARGET_HOST: deploy-target
+      TARGET_PORT: "22"
+      TARGET_PROTO: sftp
+      TARGET_USER: deploy
+      TARGET_PASS: deploy_rehearsal
+      TARGET_SFTP_SKIP_HOST_CHECK: "true"
+      REMOTE_STAGING: staging
+      BASE_URL: "http://deploy-web"
+      OPS_HMAC_SECRET: local_dev_ops_secret_32_bytes_minimum
+      # --reset : la purge fichiers se fait sur le volume partagé monté ci-dessous,
+      # et le DROP des tables techniques via le client mysql vers le service db.
+      DB_RESET_HOST: db
+      DB_RESET_USER: root
+      DB_RESET_PASS: root_password
+      DB_RESET_NAME: kermesse
+    volumes:
+      # Le dépôt complet : les scripts/*.sh exécutés sont ceux du dépôt (aucun fork —
+      # FR-18) ; build/ et database/migrations_sql/ (--inject) sont sur le bind de l'hôte.
+      - .:/workspace
+      # Volume partagé avec deploy-target/deploy-web : purge directe de staging/releases
+      # au --reset, sans `docker compose exec` (indisponible depuis le conteneur).
+      - deploy-target-data:/srv/deploy-data
+      - composer-cache:/tmp/composer
+    working_dir: /workspace
+    depends_on:
+      - deploy-target
+      - deploy-web
+      - db
+
 volumes:
   composer-cache:
   mariadb-data:
   vendor:
   writable:
+  deploy-target-data:
