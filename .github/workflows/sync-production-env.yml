@@ -155,9 +155,16 @@ jobs:
 
           # Validation des formats numériques.
           smtp_port="${KERMESSE_EMAIL_SMTP_PORT:-587}"
-          if [[ -n "${KERMESSE_EMAIL_SMTP_PORT:-}" ]] && [[ ! "${KERMESSE_EMAIL_SMTP_PORT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::KERMESSE_EMAIL_SMTP_PORT must contain digits only"
-            exit 1
+          if [[ -n "${KERMESSE_EMAIL_SMTP_PORT:-}" ]]; then
+            # Valider une vraie plage de port TCP (1-65535), pas seulement « des chiffres ».
+            # La comparaison arithmétique n'est atteinte qu'après le test ^[0-9]+$ (short-circuit) :
+            # une valeur non numérique est rejetée d'abord, sans évaluer -lt/-gt.
+            if [[ ! "${KERMESSE_EMAIL_SMTP_PORT}" =~ ^[0-9]+$ ]] \
+               || [ "${KERMESSE_EMAIL_SMTP_PORT}" -lt 1 ] \
+               || [ "${KERMESSE_EMAIL_SMTP_PORT}" -gt 65535 ]; then
+              echo "::error::KERMESSE_EMAIL_SMTP_PORT must be an integer between 1 and 65535"
+              exit 1
+            fi
           fi
 
           # Validation de la longueur minimale des clés cryptographiques.
@@ -335,13 +342,16 @@ jobs:
           }
 
           # Paramètres lftp communs : SFTP port 115, StrictHostKeyChecking activé.
+          # GlobalKnownHostsFile=/dev/null : seul le known_hosts épinglé (UserKnownHostsFile)
+          # fait autorité ; on neutralise /etc/ssh/ssh_known_hosts pour éviter toute
+          # interférence d'une entrée globale du runner sur la vérification de la clé hôte.
           lftp_settings() {
             printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 2\n'
             printf 'set net:timeout 30\n'
             printf 'set ssl:verify-certificate yes\n'
             printf 'set sftp:connect-program %s\n' \
-              "$(lftp_quote "ssh -a -x -o BatchMode=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${known_hosts_file}")"
+              "$(lftp_quote "ssh -a -x -o BatchMode=no -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=${known_hosts_file}")"
           }
 
           # run_lftp : ouvre une session SFTP dans shared/ et exécute les commandes passées.
@@ -411,7 +421,13 @@ jobs:
               echo "Attempting rollback of shared/.env."
               if ! run_lftp "mv ${remote_previous} .env"; then
                 echo "Remote rollback failed — restoring from local backup."
-                run_lftp "put $(lftp_quote "${local_backup}") -o .env"
+                # Dernier recours : si même ce put échoue, ne pas laisser set -e avorter
+                # silencieusement — émettre une consigne de récupération manuelle explicite.
+                # Les copies serveur subsistent : shared/${remote_previous} et shared/${remote_backup}.
+                if ! run_lftp "put $(lftp_quote "${local_backup}") -o .env"; then
+                  echo "::error::CRITIQUE : restauration automatique de shared/.env impossible en production."
+                  echo "::error::Récupération manuelle requise sur Ouvaton ${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/ : renommer ${remote_previous} (ou ${remote_backup}) en .env."
+                fi
               fi
             fi
 

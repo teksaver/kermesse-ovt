@@ -12,6 +12,9 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Nom d'artefact : source de vérité unique partagée avec package-deploy-artifact.sh.
 # shellcheck source=lib/artifact.sh
 source "${SCRIPT_DIR}/lib/artifact.sh"
+# Échappement lftp single-quote : source de vérité unique partagée avec deploy-rehearsal.sh.
+# shellcheck source=lib/lftp-escape.sh
+source "${SCRIPT_DIR}/lib/lftp-escape.sh"
 
 ARCHIVE="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}"
 CHECKSUM="${ARCHIVE}.sha256"
@@ -80,9 +83,7 @@ echo "Archive      : $(basename "${ARCHIVE}")"
 # Les commandes sont passées via substitution de processus pour éviter d'exposer
 # le mot de passe sur le disque ou dans la liste des processus. Le bloc case est
 # résolu AVANT le <(...), qui ne fait alors qu'écho.
-_PASS="${TARGET_PASS:-}"
-_PASS="${_PASS//\\/\\\\}"
-ESCAPED_PASS="${_PASS//\'/\\\'}"
+ESCAPED_PASS="$(lftp_squote "${TARGET_PASS:-}")"
 
 PROTO_SETTINGS=""
 case "${TARGET_PROTO}" in
@@ -114,9 +115,7 @@ lftp -f <(
   echo "set net:max-retries 3;"
   echo "set net:timeout 60;"
   [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
-  _USER="${TARGET_USER//\\/\\\\}"
-  _USER="${_USER//\'/\\\'}"
-  echo "open -u '${_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
+  echo "open -u '$(lftp_squote "${TARGET_USER}")','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
   # Disable fail-exit for mkdir: the directory may already exist (idempotent).
   # The "mkdir: Failure" message is harmless when the directory already exists.
   echo "set cmd:fail-exit false; mkdir -p \"${REMOTE_STAGING}\"; set cmd:fail-exit true;"
