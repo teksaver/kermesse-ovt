@@ -11,6 +11,23 @@ Options -Indexes
 	Options +FollowSymlinks
 	RewriteEngine On
 
+	# Propagate HTTPS from Ouvaton's SSL proxy to PHP.
+	# Ouvaton terminates SSL before Apache and does not set $_SERVER['HTTPS'];
+	# these rules map the common proxy HTTPS signals to that variable so
+	# CodeIgniter's isSecure() returns true and the forcehttps filter does
+	# not redirect infinitely. Each RewriteCond/RewriteRule pair is independent.
+	RewriteCond %{HTTP:X-Forwarded-Proto} ^https$ [NC]
+	RewriteRule ^ - [E=HTTPS:on]
+
+	RewriteCond %{HTTP:X-Forwarded-SSL} ^on$ [NC]
+	RewriteRule ^ - [E=HTTPS:on]
+
+	RewriteCond %{HTTP:X-Forwarded-Scheme} ^https$ [NC]
+	RewriteRule ^ - [E=HTTPS:on]
+
+	RewriteCond %{HTTP:Front-End-Https} ^on$ [NC]
+	RewriteRule ^ - [E=HTTPS:on]
+
 	# If you installed CodeIgniter in a subfolder, you will need to
 	# change the following line to match the subfolder you need.
 	# http://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritebase

@@ -40,6 +40,9 @@ jobs:
       KERMESSE_EMAIL_FROM_NAME: ${{ vars.KERMESSE_EMAIL_FROM_NAME }}
       KERMESSE_EMAIL_SMTP_PORT: ${{ vars.KERMESSE_EMAIL_SMTP_PORT }}
       KERMESSE_EMAIL_SMTP_CRYPTO: ${{ vars.KERMESSE_EMAIL_SMTP_CRYPTO }}
+      # Probe runtime — activer temporairement pour lire ssl_context via POST /ops/probe.
+      # Valeur : true | false (défaut false si absent). Ne pas laisser true en permanence.
+      KERMESSE_OPS_PROBE_ENABLED: ${{ vars.KERMESSE_OPS_PROBE_ENABLED }}
       # --- Credentials sensibles (GitHub environment secrets) ---
       # Ces valeurs sont masquées dans tous les logs GitHub Actions.
       OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
@@ -115,6 +118,7 @@ jobs:
             KERMESSE_EMAIL_FROM_NAME
             KERMESSE_EMAIL_SMTP_PORT
             KERMESSE_EMAIL_SMTP_CRYPTO
+            KERMESSE_OPS_PROBE_ENABLED
           )
           for var_name in "${required_vars[@]}" "${optional_vars[@]}"; do
             reject_multiline "${var_name}"
@@ -269,6 +273,14 @@ jobs:
             write_raw kermesse.opsActivateBasePath ''
             write_quoted kermesse.opsActivateLockName kermesse_ops_activate_lock
             write_raw kermesse.releasesRetention 3
+
+            # Probe : false par défaut, true si la variable GitHub KERMESSE_OPS_PROBE_ENABLED=true.
+            # N'écrire que si la valeur est explicitement "true" pour éviter toute activation accidentelle.
+            if [[ "${KERMESSE_OPS_PROBE_ENABLED:-}" == "true" ]]; then
+              write_raw kermesse.opsProbeEnabled true
+            else
+              write_raw kermesse.opsProbeEnabled false
+            fi
 
             printf '\n'
             write_quoted kermesse.deployTarget ouvaton
