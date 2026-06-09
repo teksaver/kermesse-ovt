@@ -2,12 +2,6 @@ name: Sync production .env to Ouvaton
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm_first_install_env:
-        description: "Confirmer qu'aucun .env de production n'existe encore dans shared/ sur Ouvaton."
-        required: false
-        type: boolean
-        default: false
 
 concurrency:
   group: production-env-sync
@@ -52,7 +46,6 @@ jobs:
       KERMESSE_EMAIL_SMTP_PASS: ${{ secrets.KERMESSE_EMAIL_SMTP_PASS }}
       KERMESSE_TOKEN_SECRET: ${{ secrets.KERMESSE_TOKEN_SECRET }}
       OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
-      CONFIRM_FIRST_INSTALL_ENV: ${{ inputs.confirm_first_install_env }}
 
     steps:
       - name: Install transfer client
@@ -302,7 +295,7 @@ jobs:
 
       - name: Upload .env.next to shared/, backup and activate atomically
         # AC-1 : génère .env.next, sauvegarde shared/.env, remplace atomiquement.
-        # AC-4 : première installation sans backup (confirm_first_install_env=true).
+        # AC-4 : première installation sans backup (détection automatique).
         # Aucune valeur secrète n'apparaît dans les logs.
         shell: bash
         run: |
@@ -369,19 +362,25 @@ jobs:
             } | lftp
           }
 
-          # Créer shared/ si elle n'existe pas encore (première installation).
-          # cmd:fail-exit désactivé pour cette commande seulement (idempotent).
-          {
-            lftp_settings
-            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
-            printf 'user %s %s\n' \
-              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
-              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-            printf 'set cmd:fail-exit no\n'
-            printf 'mkdir -p %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}/shared")"
-            printf 'bye\n'
-          } | lftp
-          echo "Ensured ${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/ exists on Ouvaton."
+          # 0. S'assurer que le dossier shared/ existe sans déclencher l'erreur "File already exists" de lftp.
+          # Si `run_lftp` réussit (le `cd` interne fonctionne), le dossier existe.
+          # Sinon, on crée le dossier. Si l'échec initial était une vraie erreur réseau, ce bloc échouera aussi,
+          # propageant l'erreur correctement grâce au set -e de bash.
+          if ! run_lftp "pwd" >/dev/null 2>&1; then
+            echo "Directory shared/ does not exist (or connection failed). Creating it..."
+            {
+              lftp_settings
+              printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
+              printf 'user %s %s\n' \
+                "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+                "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
+              printf 'cd %s\n' "$(lftp_quote "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
+              printf 'mkdir shared\n'
+              printf 'bye\n'
+            } | lftp
+          else
+            echo "Directory ${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/ already exists on Ouvaton."
+          fi
 
           # 1. Upload .env.next dans shared/.
           run_lftp "put $(lftp_quote "${env_next}") -o .env.next"
@@ -389,17 +388,15 @@ jobs:
           echo "Uploaded .env.next to Ouvaton shared/."
 
           # 2. Sauvegarder l'ancien shared/.env s'il existe.
-          if run_lftp "cls -1 .env" >/dev/null 2>&1; then
+          # On liste le contenu du dossier pour éviter les faux positifs d'erreur (timeout réseau masqué en "No such file").
+          shared_ls=$(run_lftp "cls -1")
+          if echo "${shared_ls}" | grep -qE "^\.env\r?$"; then
             run_lftp "get .env -o $(lftp_quote "${local_backup}")"
             run_lftp "put $(lftp_quote "${local_backup}") -o ${remote_backup}"
             echo "Backed up current shared/.env as shared/${remote_backup}."
             backup_exists=1
           else
-            if [ "${CONFIRM_FIRST_INSTALL_ENV}" != "true" ]; then
-              echo "::error::No shared/.env found. Re-run with confirm_first_install_env=true for first installation only."
-              exit 1
-            fi
-            echo "No previous shared/.env found; first installation explicitly confirmed — no backup created."
+            echo "No previous shared/.env found; treating as first installation — no backup created."
             backup_exists=0
           fi
 
