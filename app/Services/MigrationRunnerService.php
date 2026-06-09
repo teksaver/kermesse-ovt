@@ -177,20 +177,28 @@ class MigrationRunnerService
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             SQL;
 
+        // Use the same cross-database DDL as OpsAuthFilter::bootstrapNonceTable().
+        // The old schema with AUTO_INCREMENT `id` has been superseded by migration
+        // 20260607183000_update_ops_nonces_schema.sql. Keeping this DDL aligned avoids
+        // an unnecessary DROP+CREATE on fresh installs where bootstrapTechnicalTables()
+        // runs before the migration. nonce_hash is the natural key and the PRIMARY KEY
+        // used for duplicate-INSERT replay detection.
         $nonceSql = <<<'SQL'
-            CREATE TABLE IF NOT EXISTS `ops_nonces` (
-                `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `nonce_hash`   VARCHAR(64)     NOT NULL,
-                `expires_at`   DATETIME        NOT NULL,
-                `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`id`),
-                UNIQUE KEY `uq_ops_nonces_hash` (`nonce_hash`),
-                KEY `idx_ops_nonces_expires` (`expires_at`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            CREATE TABLE IF NOT EXISTS ops_nonces (
+                nonce_hash   VARCHAR(64)  NOT NULL,
+                expires_at   DATETIME     NOT NULL,
+                created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (nonce_hash)
+            )
             SQL;
 
         $this->db->query($bootstrapSql);
         $this->db->query($nonceSql);
+
+        $indexExists = $this->db->query("SHOW INDEX FROM ops_nonces WHERE Key_name = 'idx_ops_nonces_expires'")->getNumRows() > 0;
+        if (!$indexExists) {
+            $this->db->query('CREATE INDEX idx_ops_nonces_expires ON ops_nonces (expires_at)');
+        }
     }
 
     /**

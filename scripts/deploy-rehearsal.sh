@@ -260,26 +260,15 @@ on_error() {
 trap 'on_error' ERR
 trap 'cleanup' EXIT INT TERM
 
-# ── Génération de signature HMAC-SHA256 ──────────────────────────────────────
-# Payload (conforme à OpsAuthFilter) : timestamp\nnonce\nPOST\nroutePath\nsha256(body)
-# Expose les variables globales SIGN_TS, SIGN_NONCE, SIGN_SIG.
-hmac_sign() {
-    local route="$1"
-    # NE PAS écrire `${2:-{}}` : bash (3.2 ET 5.x) referme l'expansion sur le 1er `}` de
-    # la valeur par défaut, puis ajoute un `}` littéral. Quand $2 est défini (cas activation),
-    # un `}` parasite est concaténé au body → le sha256 signé diffère du body réellement
-    # envoyé par curl → signature rejetée (ops_unauthorized). Variable intermédiaire = sûr.
-    local _body_default='{}'
-    local body="${2:-${_body_default}}"
-
-    SIGN_TS="$(date +%s)"
-    SIGN_NONCE="$(openssl rand -hex 16)"
-    local body_hash
-    body_hash="$(printf '%s' "${body}" | openssl dgst -sha256 | awk '{print $NF}')"
-    local payload
-    payload="$(printf '%s\n%s\nPOST\n%s\n%s' "${SIGN_TS}" "${SIGN_NONCE}" "${route}" "${body_hash}")"
-    SIGN_SIG="$(printf '%s' "${payload}" | openssl dgst -sha256 -hmac "${OPS_HMAC_SECRET}" | awk '{print $NF}')"
-}
+# ── Helpers partagés : signature ops + nom d'artefact ────────────────────────
+# Sourcés depuis scripts/lib/ : MÊME fonction de signature (ops_sign) qu'en CI/prod
+# (deploy-ouvaton.yml) pour empêcher toute dérive (FR-18). Le format de payload
+# (timestamp\nnonce\nPOST\nroutePath\nsha256(body)) est défini une seule fois dans
+# ops-sign.sh. ops_sign lit OPS_HMAC_SECRET (résolu plus haut, même shell que le source).
+# shellcheck source=lib/ops-sign.sh
+source "${SCRIPT_DIR}/lib/ops-sign.sh"
+# shellcheck source=lib/artifact.sh
+source "${SCRIPT_DIR}/lib/artifact.sh"
 
 # ── Transfert d'un fichier local vers le staging de la cible ─────────────────
 # Utilisé uniquement par les modes d'injection post-transfert : doit viser le MÊME
@@ -363,7 +352,7 @@ if [[ "${INJECT_MODE}" == "truncated-transfer" ]]; then
     echo "[INJECT] Troncature de l'archive sur la cible (1 024 octets)..."
     INJECT_TMP_TRUNCATED="$(mktemp)"
     dd if=/dev/zero of="${INJECT_TMP_TRUNCATED}" bs=1024 count=1 2>/dev/null
-    inject_remote_file "${INJECT_TMP_TRUNCATED}" "kermesse-deploy.tar.gz"
+    inject_remote_file "${INJECT_TMP_TRUNCATED}" "${KERMESSE_ARTIFACT_NAME}"
     echo "[INJECT] Archive tronquée sur la cible."
 
 elif [[ "${INJECT_MODE}" == "bad-checksum" ]]; then
@@ -371,7 +360,7 @@ elif [[ "${INJECT_MODE}" == "bad-checksum" ]]; then
     echo ""
     echo "[INJECT] Altération du checksum sur la cible..."
     INJECT_TMP_CHECKSUM="$(mktemp)"
-    printf '0000000000000000000000000000000000000000000000000000000000000000  kermesse-deploy.tar.gz\n' \
+    printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "${KERMESSE_ARTIFACT_NAME}" \
         > "${INJECT_TMP_CHECKSUM}"
     inject_remote_file "${INJECT_TMP_CHECKSUM}" "kermesse-deploy.tar.gz.sha256"
     echo "[INJECT] Checksum altéré sur la cible."
@@ -381,9 +370,10 @@ fi
 CURRENT_STEP="activation"
 echo ""
 echo "-- Étape 3/5 : Activation atomique"
-ACTIVATE_BODY='{"archive":"kermesse-deploy.tar.gz"}'
-hmac_sign "ops/activate" "${ACTIVATE_BODY}"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/ops/activate" \
+ACTIVATE_ROUTE="ops/activate"
+ACTIVATE_BODY="{\"archive\":\"${KERMESSE_ARTIFACT_NAME}\"}"
+ops_sign "${ACTIVATE_ROUTE}" "${ACTIVATE_BODY}"
+curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${ACTIVATE_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
@@ -395,8 +385,9 @@ echo ""
 CURRENT_STEP="migration"
 echo ""
 echo "-- Étape 4/5 : Migration de la base de données"
-hmac_sign "ops/migrate"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/ops/migrate" \
+MIGRATE_ROUTE="ops/migrate"
+ops_sign "${MIGRATE_ROUTE}"
+curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${MIGRATE_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
@@ -408,8 +399,9 @@ echo ""
 CURRENT_STEP="verification-etat"
 echo ""
 echo "-- Étape 5/5 : Vérification de l'état des migrations"
-hmac_sign "ops/migrate/status"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/ops/migrate/status" \
+STATUS_ROUTE="ops/migrate/status"
+ops_sign "${STATUS_ROUTE}"
+curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${STATUS_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \

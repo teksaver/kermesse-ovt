@@ -146,9 +146,52 @@ jobs:
           kermesse.opsMigrationLockName: kermesse_ci_migration_lock
         run: vendor/bin/phpunit --testsuite App --group mariadb
 
-  package-artifact:
+  deploy-rehearsal:
     runs-on: ubuntu-latest
     needs: [validate-and-test, validate-mariadb]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start rehearsal environment
+        run: docker compose --profile rehearsal up -d
+
+      - name: Wait for deploy-web to be ready
+        run: |
+          timeout 300 bash -c '
+            while true; do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8081/ 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then break; fi
+              echo "deploy-web not ready (HTTP_CODE=$HTTP_CODE), retrying..."
+              sleep 5
+            done
+          '
+
+      - name: Run deploy rehearsal
+        env:
+          TARGET_HOST: deploy-target
+          TARGET_PORT: "22"
+          TARGET_PROTO: sftp
+          TARGET_USER: deploy
+          TARGET_PASS: deploy_rehearsal
+          REMOTE_STAGING: staging
+          BASE_URL: "http://deploy-web"
+          OPS_HMAC_SECRET: local_dev_ops_secret_32_bytes_minimum
+          TARGET_SFTP_SKIP_HOST_CHECK: "true"
+        run: bash scripts/deploy-rehearsal.sh
+
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose --profile rehearsal logs --no-color 2>&1 || true
+
+      - name: Teardown environment
+        if: always()
+        run: docker compose --profile rehearsal down --volumes 2>&1 || true
+
+  package-artifact:
+    runs-on: ubuntu-latest
+    needs: [validate-and-test, validate-mariadb, deploy-rehearsal]
     if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
 
     env:

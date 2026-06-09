@@ -1,3 +1,22 @@
+# Identifiants de la base locale (dev / rehearsal uniquement) — SOURCE DE VÉRITÉ UNIQUE.
+# Référencés par ancres YAML dans tous les services pour empêcher la dérive (Story 5.6).
+# Jamais présents dans l'artefact de déploiement ni en production.
+x-db-name: &db-name kermesse
+x-db-user: &db-user kermesse_user
+x-db-pass: &db-pass kermesse_password
+
+# Bloc de connexion CodeIgniter partagé à l'identique par les services applicatifs (app, deploy-web).
+x-ci-db-env: &ci-db-env
+  database.default.hostname: db
+  database.default.database: *db-name
+  database.default.username: *db-user
+  database.default.password: *db-pass
+  database.default.DBDriver: MySQLi
+  database.default.DBPrefix: ""
+  database.default.port: "3306"
+  database.default.charset: utf8mb4
+  database.default.DBCollat: utf8mb4_general_ci
+
 services:
   app:
     build:
@@ -14,15 +33,7 @@ services:
       app.forceGlobalSecureRequests: "false"
       app.CSPEnabled: "false"
       logger.threshold: "4"
-      database.default.hostname: db
-      database.default.database: kermesse
-      database.default.username: kermesse_user
-      database.default.password: kermesse_password
-      database.default.DBDriver: MySQLi
-      database.default.DBPrefix: ""
-      database.default.port: "3306"
-      database.default.charset: utf8mb4
-      database.default.DBCollat: utf8mb4_general_ci
+      <<: *ci-db-env
       session.savePath: /var/www/html/writable/session
       kermesse.publicBaseURL: "http://localhost:${KERMESSE_HTTP_PORT:-8080}/"
       kermesse.tokenSecret: local_dev_token_secret_32_bytes_minimum
@@ -45,9 +56,9 @@ services:
     image: mariadb:10.11
     environment:
       MARIADB_ROOT_PASSWORD: root_password
-      MARIADB_DATABASE: kermesse
-      MARIADB_USER: kermesse_user
-      MARIADB_PASSWORD: kermesse_password
+      MARIADB_DATABASE: *db-name
+      MARIADB_USER: *db-user
+      MARIADB_PASSWORD: *db-pass
     ports:
       - "127.0.0.1:${KERMESSE_DB_PORT:-3307}:3306"
     volumes:
@@ -65,8 +76,8 @@ services:
       - "127.0.0.1:${KERMESSE_PMA_PORT:-8082}:80"
     environment:
       PMA_HOST: db
-      PMA_USER: kermesse_user
-      PMA_PASSWORD: kermesse_password
+      PMA_USER: *db-user
+      PMA_PASSWORD: *db-pass
     depends_on:
       db:
         condition: service_healthy
@@ -105,15 +116,7 @@ services:
       app.forceGlobalSecureRequests: "false"
       app.CSPEnabled: "false"
       logger.threshold: "4"
-      database.default.hostname: db
-      database.default.database: kermesse
-      database.default.username: kermesse_user
-      database.default.password: kermesse_password
-      database.default.DBDriver: MySQLi
-      database.default.DBPrefix: ""
-      database.default.port: "3306"
-      database.default.charset: utf8mb4
-      database.default.DBCollat: utf8mb4_general_ci
+      <<: *ci-db-env
       # Les données de session vivent sur le volume partagé, pas dans le conteneur app.
       session.savePath: /srv/deploy-data/shared/writable/session
       kermesse.publicBaseURL: "http://localhost:${DEPLOY_WEB_HTTP_PORT:-8081}/"
@@ -173,7 +176,7 @@ services:
       DB_RESET_HOST: db
       DB_RESET_USER: root
       DB_RESET_PASS: root_password
-      DB_RESET_NAME: kermesse
+      DB_RESET_NAME: *db-name
     volumes:
       # Le dépôt complet : les scripts/*.sh exécutés sont ceux du dépôt (aucun fork —
       # FR-18) ; build/ et database/migrations_sql/ (--inject) sont sur le bind de l'hôte.

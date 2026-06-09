@@ -10,20 +10,21 @@ mkdir -p \
   writable/session \
   writable/uploads
 
-installed_dependencies=0
+# app et deploy-web partagent le même volume vendor:/var/www/html/vendor.
+# Sans verrou, les deux conteneurs lancent composer install simultanément
+# sur le même répertoire et corrompent mutuellement les archives zip.
+# flock sur le volume composer-cache (lui aussi partagé) sérialise l'install.
+mkdir -p /tmp/composer
+(
+  flock -w 300 9
+  if [ ! -f vendor/autoload.php ] \
+    || [ composer.json -nt vendor/autoload.php ] \
+    || [ composer.lock -nt vendor/autoload.php ]; then
+    echo "Installing Composer dependencies in the container..."
+    composer install --prefer-dist --no-interaction
+  fi
+) 9>/tmp/composer/.install.lock
 
-if [ ! -f vendor/autoload.php ] \
-  || [ composer.json -nt vendor/autoload.php ] \
-  || [ composer.lock -nt vendor/autoload.php ]; then
-  echo "Installing Composer dependencies in the container..."
-  composer install --prefer-dist --no-interaction
-  installed_dependencies=1
-fi
-
-chown -R www-data:www-data writable
-
-if [ "${installed_dependencies}" -eq 1 ]; then
-  chown -R www-data:www-data vendor
-fi
+chown -R www-data:www-data writable vendor
 
 exec "$@"

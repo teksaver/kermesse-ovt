@@ -9,29 +9,38 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-ARCHIVE="${PROJECT_ROOT}/build/kermesse-deploy.tar.gz"
+# Nom d'artefact : source de vérité unique partagée avec package-deploy-artifact.sh.
+# shellcheck source=lib/artifact.sh
+source "${SCRIPT_DIR}/lib/artifact.sh"
+
+ARCHIVE="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}"
 CHECKSUM="${ARCHIVE}.sha256"
-# Relative path from the SFTP root — must match the staging dir the activation service
-# reads (opsActivateBasePath + /staging/).
-# Production (Ouvaton): the application folder is a SUBDIR of the SFTP home, so the archive
-# must land in kermesse/staging/ (see docs/deployment-ouvaton.md §"Écarts profil rehearsal").
-# Local rehearsal: the deploy base is mounted directly at the SFTP root, so deploy-rehearsal.sh
-# overrides this to REMOTE_STAGING=staging. Keep the production-correct default here.
-REMOTE_STAGING="${REMOTE_STAGING:-kermesse/staging}"
+# Relative path from the SFTP root — must be set explicitly by the caller.
+# No hardcoded default: the correct value depends on the deployment context.
+#   Production (Ouvaton) :  REMOTE_STAGING=kermesse/staging
+#     (kermesse = OUVATON_DEPLOY_REMOTE_FOLDER, app folder is a sub-dir of the SFTP home)
+#   Local rehearsal        :  REMOTE_STAGING=staging
+#     (deploy base mounted directly at the SFTP root, set by deploy-rehearsal.sh)
+# See docs/deployment-ouvaton.md §"Écarts profil rehearsal".
+REMOTE_STAGING="${REMOTE_STAGING:-}"
 
 echo "=== Transfert de l'archive vers le staging ==="
 
 # 1. Vérification des variables d'environnement obligatoires
-required_vars=(TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS)
+required_vars=(TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMOTE_STAGING)
 missing=0
 for var in "${required_vars[@]}"; do
   if [[ -z "${!var:-}" ]]; then
+    if [[ "${var}" == "TARGET_PASS" && -n "${TARGET_KEY:-}" ]]; then
+      continue
+    fi
     echo "ERREUR : variable d'environnement manquante : ${var}" >&2
     missing=1
   fi
 done
 if [[ ${missing} -eq 1 ]]; then
-  echo "Variables requises : TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS" >&2
+  echo "Variables requises : TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMOTE_STAGING" >&2
+  echo "  REMOTE_STAGING exemples : 'staging' (rehearsal local) ou 'kermesse/staging' (Ouvaton prod)" >&2
   echo "Variable optionnelle : TARGET_KEY (chemin vers la clé SSH, pour SFTP sans mot de passe)" >&2
   exit 1
 fi
@@ -71,7 +80,9 @@ echo "Archive      : $(basename "${ARCHIVE}")"
 # Les commandes sont passées via substitution de processus pour éviter d'exposer
 # le mot de passe sur le disque ou dans la liste des processus. Le bloc case est
 # résolu AVANT le <(...), qui ne fait alors qu'écho.
-ESCAPED_PASS="${TARGET_PASS//\'/\\\'}"
+_PASS="${TARGET_PASS:-}"
+_PASS="${_PASS//\\/\\\\}"
+ESCAPED_PASS="${_PASS//\'/\\\'}"
 
 PROTO_SETTINGS=""
 case "${TARGET_PROTO}" in
@@ -87,7 +98,7 @@ case "${TARGET_PROTO}" in
       PROTO_SETTINGS="set sftp:auto-confirm yes;"
     elif [[ -n "${TARGET_KEY:-}" ]]; then
       # Production with key-based auth: delegate to external SSH.
-      _escaped_key="${TARGET_KEY//\'/\\\'}"
+      _escaped_key="${TARGET_KEY//\'/\'\\\'\'}"
       PROTO_SETTINGS="set sftp:connect-program \"ssh -a -x -i '${_escaped_key}'\";"
     fi
     ;;
@@ -98,11 +109,17 @@ esac
 
 lftp -f <(
   echo "set cmd:fail-exit true;"
+  # Robustesse réseau (reprise sur coupure transitoire) — alignée sur l'ancien
+  # bloc inline du workflow de production, désormais factorisé ici.
+  echo "set net:max-retries 3;"
+  echo "set net:timeout 60;"
   [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
-  echo "open -u '${TARGET_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
+  _USER="${TARGET_USER//\\/\\\\}"
+  _USER="${_USER//\'/\\\'}"
+  echo "open -u '${_USER}','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
   # Disable fail-exit for mkdir: the directory may already exist (idempotent).
   # The "mkdir: Failure" message is harmless when the directory already exists.
-  echo "set cmd:fail-exit false; mkdir -p ${REMOTE_STAGING}; set cmd:fail-exit true;"
+  echo "set cmd:fail-exit false; mkdir -p \"${REMOTE_STAGING}\"; set cmd:fail-exit true;"
   echo "put \"${ARCHIVE}\" -o \"${REMOTE_STAGING}/$(basename "${ARCHIVE}")\";"
   echo "put \"${CHECKSUM}\" -o \"${REMOTE_STAGING}/$(basename "${CHECKSUM}")\";"
   echo "bye"

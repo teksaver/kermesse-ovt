@@ -33,7 +33,7 @@ Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement
 4. Transfert vers Ouvaton via le protocole confirmé (**code applicatif uniquement — jamais le `.env`**)
 5. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
 
-> **Règle absolue (NFR-2) :** le déploiement de routine **ne génère ni ne transfère jamais** le `.env` de production. La configuration de production (`shared/.env`) est gérée par une opération séparée et manuelle — voir « Déploiement du `.env` de production » plus bas. _(Alignement de l'implémentation du pipeline suivi par la Story 5.4.)_
+> **Règle absolue (NFR-2) :** le déploiement de routine **ne génère ni ne transfère jamais** le `.env` de production. La configuration de production (`shared/.env`) est gérée par une opération séparée et manuelle — voir « Déploiement du `.env` de production » plus bas. _(Implémenté par la Story 5.4.)_
 
 Ce workflow ne déclare pas de service MariaDB Docker : la production Ouvaton utilise la base MariaDB managée déjà fournie par l'hébergeur.
 
@@ -113,12 +113,13 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | Secret | Description |
 |--------|-------------|
 | `OUVATON_DEPLOY_PASSWORD` | Mot de passe du compte Ouvaton |
+| `OUVATON_SFTP_KNOWN_HOST` | Entrée known_hosts SSH Ouvaton — générer avec `ssh-keyscan -p 115 <OUVATON_DEPLOY_HOST>` |
 | `KERMESSE_DATABASE_PASSWORD` | Mot de passe MariaDB |
 | `KERMESSE_EMAIL_SMTP_PASS` | Mot de passe SMTP |
 | `KERMESSE_TOKEN_SECRET` | Clé applicative — générer avec `openssl rand -hex 32` |
 | `OPS_MIGRATION_HMAC_SECRET` | Clé HMAC ops — générer avec `openssl rand -hex 32` |
 
-Valeurs fixées par le workflow (rien à configurer) : protocole FTPS, port MariaDB `3306`, nom expéditeur `Kermesse`.
+Valeurs fixées par le workflow (rien à configurer) : protocole SFTP port 115, port MariaDB `3306`, nom expéditeur `Kermesse`.
 
 ## Configurer les secrets GitHub — guide pas-à-pas
 
@@ -153,10 +154,11 @@ Variable de secours temporaire : `KERMESSE_ALLOW_INSECURE_TLS=true` permet au wo
 | # | Secret | Comment |
 |---|--------|---------|
 | 1 | `OUVATON_DEPLOY_PASSWORD` | mot de passe SFTP Ouvaton |
-| 2 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
-| 3 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
-| 4 | `KERMESSE_TOKEN_SECRET` | `openssl rand -hex 32` |
-| 5 | `OPS_MIGRATION_HMAC_SECRET` | `openssl rand -hex 32` |
+| 2 | `OUVATON_SFTP_KNOWN_HOST` | `ssh-keyscan -p 115 <OUVATON_DEPLOY_HOST>` (copier la ligne complète) |
+| 3 | `KERMESSE_DATABASE_PASSWORD` | mot de passe MariaDB Ouvaton |
+| 4 | `KERMESSE_EMAIL_SMTP_PASS` | mot de passe SMTP |
+| 5 | `KERMESSE_TOKEN_SECRET` | `openssl rand -hex 32` |
+| 6 | `OPS_MIGRATION_HMAC_SECRET` | `openssl rand -hex 32` |
 
 ```bash
 # Générer les deux clés cryptographiques
@@ -164,9 +166,9 @@ echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 5 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 6 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
 
-Déclencher ensuite `.github/workflows/deploy-ouvaton.yml` en cochant `confirm_first_install_env` pour la première installation.
+Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
 
 ## Variables `.env` de production
 
@@ -202,7 +204,7 @@ La configuration de production est gérée par une **opération explicite et sé
 - L'artefact (`package-deploy-artifact.sh`) refuse tout `.env` / `.env.next` / secret (FR-7, NFR-1).
 - **Première installation :** exécuter `sync-production-env.yml` une fois (sans backup possible) pour amorcer `shared/.env`.
 
-> Cette séparation restaure l'intention de la spec gelée `spec-github-actions-production-env-ouvaton.md` et de l'ADR, après la régression du commit `a8238d6` (qui avait fondu la génération du `.env` dans chaque déploiement). L'alignement du pipeline est suivi par la **Story 5.4**.
+> Cette séparation est conforme à la spec gelée `spec-github-actions-production-env-ouvaton.md` et à l'ADR. Elle a été restaurée par la **Story 5.4** après la régression du commit `a8238d6` (qui avait fondu la génération du `.env` dans chaque déploiement).
 
 ### Configuration `.env` en local
 
