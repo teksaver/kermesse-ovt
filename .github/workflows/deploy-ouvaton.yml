@@ -121,6 +121,11 @@ jobs:
       # attendu par scripts/lib/ops-sign.sh), pas au niveau du job.
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Install transfer client
         run: sudo apt-get update && sudo apt-get install -y lftp
 
