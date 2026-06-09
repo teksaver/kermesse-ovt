@@ -44,6 +44,7 @@ services:
       email.protocol: "smtp"
       email.SMTPHost: "mailpit"
       email.SMTPPort: "1025"
+      email.SMTPCrypto: ""
     volumes:
       - .:/var/www/html
       # Limites runtime Ouvaton chargées en dernier (préfixe zz-) pour écraser les défauts.
@@ -139,6 +140,7 @@ services:
       email.protocol: "smtp"
       email.SMTPHost: "mailpit"
       email.SMTPPort: "1025"
+      email.SMTPCrypto: ""
     volumes:
       - .:/var/www/html
       - ./docker/app/php.ini:/usr/local/etc/php/conf.d/zz-kermesse.ini:ro
