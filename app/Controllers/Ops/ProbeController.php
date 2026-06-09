@@ -14,7 +14,8 @@ use Config\Kermesse;
  * the local environment can be calibrated against it (infra parity).
  *
  * Returns runtime facts only — never .env values, credentials, secrets,
- * server paths, phpinfo() output or request headers.
+ * server paths, or phpinfo() output. HTTPS-related server variables set by
+ * the proxy infrastructure are included so SSL parity can be verified.
  */
 class ProbeController extends BaseController
 {
@@ -43,6 +44,19 @@ class ProbeController extends BaseController
             $row            = db_connect()->query('SELECT VERSION() AS version')->getRowArray();
             $mariadbVersion = $row['version'] ?? '';
 
+            // Capture only the server variables relevant to HTTPS detection.
+            // These are set by the proxy infrastructure (not application secrets).
+            // Null means the variable is absent; presence and value determine
+            // which .htaccess rule to condition on for the SSL proxy fix.
+            $sslContext = [
+                'HTTPS'                   => $_SERVER['HTTPS'] ?? null,
+                'HTTP_X_FORWARDED_PROTO'  => $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? null,
+                'HTTP_X_FORWARDED_SSL'    => $_SERVER['HTTP_X_FORWARDED_SSL'] ?? null,
+                'HTTP_X_FORWARDED_SCHEME' => $_SERVER['HTTP_X_FORWARDED_SCHEME'] ?? null,
+                'HTTP_FRONT_END_HTTPS'    => $_SERVER['HTTP_FRONT_END_HTTPS'] ?? null,
+                'SERVER_PORT'             => $_SERVER['SERVER_PORT'] ?? null,
+            ];
+
             return $this->response
                 ->setStatusCode(200)
                 ->setJSON([
@@ -53,6 +67,7 @@ class ProbeController extends BaseController
                     'upload_max_filesize' => ini_get('upload_max_filesize'),
                     'extensions'          => $extensions,
                     'mariadb_version'     => $mariadbVersion,
+                    'ssl_context'         => $sslContext,
                 ]);
         } catch (\Throwable $e) {
             // Log server-side only; never leak SQL, stack traces, paths or secrets.

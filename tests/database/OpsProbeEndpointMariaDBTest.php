@@ -90,7 +90,7 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         $json = json_decode($result->response()->getBody(), true);
 
         $this->assertSame(
-            ['php_version', 'memory_limit', 'max_execution_time', 'post_max_size', 'upload_max_filesize', 'extensions', 'mariadb_version'],
+            ['php_version', 'memory_limit', 'max_execution_time', 'post_max_size', 'upload_max_filesize', 'extensions', 'mariadb_version', 'ssl_context'],
             array_keys($json),
         );
         $this->assertIsArray($json['extensions']);
@@ -103,6 +103,13 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         $this->assertIsString($json['post_max_size']);
         $this->assertIsString($json['upload_max_filesize']);
         $this->assertIsString($json['mariadb_version']);
+
+        // ssl_context: array of HTTPS-detection server variables (null when absent from $_SERVER).
+        $this->assertIsArray($json['ssl_context']);
+        $this->assertSame(
+            ['HTTPS', 'HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_SSL', 'HTTP_X_FORWARDED_SCHEME', 'HTTP_FRONT_END_HTTPS', 'SERVER_PORT'],
+            array_keys($json['ssl_context']),
+        );
 
         // No secret, credential or technical detail must leak.
         $body = $result->response()->getBody();
