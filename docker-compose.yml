@@ -47,6 +47,8 @@ services:
       email.SMTPCrypto: ""
       email.SMTPUser: ""
       email.SMTPPass: ""
+      email.fromEmail: "no-reply@kermesse.local"
+      email.fromName: "Kermesse Locale"
     volumes:
       - .:/var/www/html
       # Limites runtime Ouvaton chargées en dernier (préfixe zz-) pour écraser les défauts.
@@ -145,6 +147,8 @@ services:
       email.SMTPCrypto: ""
       email.SMTPUser: ""
       email.SMTPPass: ""
+      email.fromEmail: "no-reply@kermesse.local"
+      email.fromName: "Kermesse Locale"
     volumes:
       - .:/var/www/html
       - ./docker/app/php.ini:/usr/local/etc/php/conf.d/zz-kermesse.ini:ro
