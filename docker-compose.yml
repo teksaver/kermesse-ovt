@@ -41,6 +41,9 @@ services:
       kermesse.opsMigrationProductionOnly: "false"
       # Local-only: enable the runtime probe to measure the container runtime.
       kermesse.opsProbeEnabled: "true"
+      email.protocol: "smtp"
+      email.SMTPHost: "mailpit"
+      email.SMTPPort: "1025"
     volumes:
       - .:/var/www/html
       # Limites runtime Ouvaton chargées en dernier (préfixe zz-) pour écraser les défauts.
@@ -81,6 +84,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:${KERMESSE_MAIL_PORT:-8025}:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
 
   # ---------------------------------------------------------------------------
   # Profile: rehearsal — cible de déploiement locale Ouvaton-like
@@ -126,6 +136,9 @@ services:
       kermesse.opsProbeEnabled: "true"
       # Pointe le service d'activation vers le volume partagé (et non vers dirname(ROOTPATH)).
       kermesse.opsActivateBasePath: /srv/deploy-data
+      email.protocol: "smtp"
+      email.SMTPHost: "mailpit"
+      email.SMTPPort: "1025"
     volumes:
       - .:/var/www/html
       - ./docker/app/php.ini:/usr/local/etc/php/conf.d/zz-kermesse.ini:ro
