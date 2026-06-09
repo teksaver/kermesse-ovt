@@ -269,6 +269,8 @@ trap 'cleanup' EXIT INT TERM
 source "${SCRIPT_DIR}/lib/ops-sign.sh"
 # shellcheck source=lib/artifact.sh
 source "${SCRIPT_DIR}/lib/artifact.sh"
+# shellcheck source=lib/lftp-escape.sh
+source "${SCRIPT_DIR}/lib/lftp-escape.sh"
 
 # ── Transfert d'un fichier local vers le staging de la cible ─────────────────
 # Utilisé uniquement par les modes d'injection post-transfert : doit viser le MÊME
@@ -278,8 +280,9 @@ inject_remote_file() {
     local remote_name="$2"
     local remote_staging="${REMOTE_STAGING}"
 
-    local escaped_user="${TARGET_USER//\'/\\\'}"
-    local escaped_pass="${TARGET_PASS//\'/\\\'}"
+    local escaped_user escaped_pass
+    escaped_user="$(lftp_squote "${TARGET_USER}")"
+    escaped_pass="$(lftp_squote "${TARGET_PASS}")"
     local proto_settings=""
     case "${TARGET_PROTO}" in
         sftp)

@@ -384,4 +384,25 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $this->assertEquals(1, $lockResult['acquired'], 'Lock should be available after failed migration');
         $db->query('SELECT RELEASE_LOCK(?)', [$lockName]);
     }
+
+    public function testBootstrapCreatesNonceExpiryIndexIdempotently(): void
+    {
+        // No migration files in the temp dir: run() only bootstraps the technical tables.
+        $runner = $this->createRunner();
+
+        $result1 = $runner->run();
+        $this->assertTrue($result1['ok']);
+
+        $db = db_connect('tests');
+        $index = $db->query('SHOW INDEX FROM `ops_nonces` WHERE `Key_name` = "idx_ops_nonces_expires"')->getResultArray();
+        $this->assertNotEmpty($index, 'Bootstrap should create the ops_nonces expiry index');
+
+        // Second run exercises CREATE INDEX IF NOT EXISTS on the already-present index:
+        // it must be a no-op, not a duplicate-key error.
+        $result2 = $runner->run();
+        $this->assertTrue($result2['ok'], 'Re-running bootstrap must not fail on the existing index');
+
+        $indexAfter = $db->query('SHOW INDEX FROM `ops_nonces` WHERE `Key_name` = "idx_ops_nonces_expires"')->getResultArray();
+        $this->assertNotEmpty($indexAfter, 'Expiry index should still exist after a second bootstrap');
+    }
 }

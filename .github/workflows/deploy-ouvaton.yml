@@ -271,9 +271,10 @@ jobs:
             CURL_TLS_ARGS+=(--insecure)
           fi
 
-          # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
+          # curl --fail-with-body : échoue sur HTTP 4xx/5xx ET affiche le corps de la réponse
+          # (ex. {"error":"checksum_mismatch"}) — indispensable au debug ; -s silencieux, -S montre les erreurs réseau.
           # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+          curl --max-time 60 --retry 3 --fail-with-body -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
             -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
@@ -309,8 +310,9 @@ jobs:
             CURL_TLS_ARGS+=(--insecure)
           fi
 
-          # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
-          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+          # curl --fail-with-body : échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge)
+          # et affiche le corps de l'erreur de migration pour le debug.
+          curl --max-time 300 --retry 3 --fail-with-body -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
             -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
