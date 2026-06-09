@@ -195,10 +195,10 @@ class MigrationRunnerService
         $this->db->query($bootstrapSql);
         $this->db->query($nonceSql);
 
-        // CREATE INDEX IF NOT EXISTS (MariaDB 10.5+ ; Ouvaton tourne en 10.11) rend l'ajout
-        // d'index idempotent sans sonder via SHOW INDEX — évite un éventuel ->getNumRows()
-        // sur un faux retour et reste cohérent avec la migration ops_nonces (index inline).
-        $this->db->query('CREATE INDEX IF NOT EXISTS idx_ops_nonces_expires ON ops_nonces (expires_at)');
+        $indexExists = $this->db->query("SHOW INDEX FROM ops_nonces WHERE Key_name = 'idx_ops_nonces_expires'")->getNumRows() > 0;
+        if (!$indexExists) {
+            $this->db->query('CREATE INDEX idx_ops_nonces_expires ON ops_nonces (expires_at)');
+        }
     }
 
     /**

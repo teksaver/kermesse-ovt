@@ -11,7 +11,7 @@ source "${PROJECT_ROOT}/scripts/lib/lftp-escape.sh"
 
 fail=0
 assert_eq() {
-  local label="$1" expected="$2" actual="$3"
+  local label="${1:-}" expected="${2:-}" actual="${3:-}"
   if [ "${expected}" != "${actual}" ]; then
     printf 'FAIL %s\n  attendu : %q\n  obtenu  : %q\n' "${label}" "${expected}" "${actual}" >&2
     fail=1

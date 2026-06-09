@@ -25,7 +25,7 @@
 # tourne en bash 5 (conteneur/runner) mais deploy-rehearsal.sh est lancé depuis l'hôte
 # macOS en bash 3.2 : la boucle garantit un échappement identique partout.
 lftp_squote() {
-  local value="$1" out="" i char
+  local value="${1:-}" out="" i char
   for (( i = 0; i < ${#value}; i++ )); do
     char="${value:i:1}"
     case "${char}" in
