@@ -37,7 +37,7 @@ class SlotModel extends Model
         $table = $db->prefixTable('slots');
 
         $result = $db->query(
-            "SELECT id, capacity, status, starts_at, ends_at FROM {$table} WHERE id = ?" . $this->forUpdateSuffix($db),
+            "SELECT id, stand_id, capacity, status, starts_at, ends_at FROM {$table} WHERE id = ?" . $this->forUpdateSuffix($db),
             [$slotId],
         );
 

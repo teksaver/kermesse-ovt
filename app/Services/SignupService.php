@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\KermesseModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
+use App\Models\StandModel;
 use App\Models\VolunteerModel;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
@@ -35,6 +36,8 @@ class SignupService
         private readonly ?KermesseModel       $kermesseModel = null,
         private readonly ?SlotModel           $slotModel = null,
         private readonly ?ConnectionInterface $db = null,
+        private readonly ?EmailService        $emailService = null,
+        private readonly ?StandModel          $standModel = null,
     ) {}
 
     /**
@@ -93,7 +96,15 @@ class SignupService
             return SignupResult::failure('transaction_failed');
         }
 
-        return $result;
+        // Post-commit only: the signup is recorded no matter what happens to the
+        // email — a delivery failure must never roll back or fail the inscription
+        // (story 3.5 AC4). The slot row travels in the internal result context.
+        $slot      = $result->context['slot'] ?? null;
+        $emailSent = is_array($slot)
+            ? $this->sendConfirmationEmailSafely($kermesse, $slot, $email, $fields)
+            : false;
+
+        return SignupResult::success((int) $result->signupId, (int) $result->volunteerId, $emailSent);
     }
 
     /**
@@ -165,7 +176,40 @@ class SignupService
             return SignupResult::failure('signup_insert_failed');
         }
 
-        return SignupResult::success((int) $signupId, $volunteerId);
+        // Internal result: the slot row rides in context so the caller can build
+        // the confirmation email after commit; signup() rebuilds the public result.
+        return new SignupResult(true, (int) $signupId, $volunteerId, null, ['slot' => $slot]);
+    }
+
+    /**
+     * Send the confirmation email for a committed signup. Every failure mode —
+     * send() returning false, view errors, SMTP exceptions — is absorbed here:
+     * the caller only learns whether the email left (story 3.5 AC4).
+     *
+     * @param array<string, mixed> $kermesse
+     * @param array<string, mixed> $slot
+     * @param array<string, mixed> $fields
+     */
+    private function sendConfirmationEmailSafely(array $kermesse, array $slot, string $email, array $fields): bool
+    {
+        try {
+            $stand = ($this->standModel ?? model(StandModel::class))->find((int) ($slot['stand_id'] ?? 0));
+
+            $delivery = ($this->emailService ?? new EmailService())->sendSignupConfirmationEmail(
+                $email,
+                (string) ($fields['first_name'] ?? ''),
+                (string) ($kermesse['name'] ?? ''),
+                (string) ($stand['name'] ?? ''),
+                (string) ($slot['starts_at'] ?? ''),
+                (string) ($slot['ends_at'] ?? ''),
+            );
+
+            return $delivery->sent;
+        } catch (\Throwable $e) {
+            log_message('error', 'SignupService: confirmation email failed: ' . $e->getMessage());
+
+            return false;
+        }
     }
 
     /**

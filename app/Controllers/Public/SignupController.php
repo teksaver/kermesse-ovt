@@ -107,6 +107,7 @@ class SignupController extends BaseController
             'slug'         => $publicSlug,
             'slotId'       => (int) $slotId,
             'kermesseName' => (string) $summary['kermesseName'],
+            'emailSent'    => $result->emailSent,
         ]);
 
         return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
@@ -128,6 +129,7 @@ class SignupController extends BaseController
         return view('public/signup_confirmation', [
             'kermesseName' => (string) ($flash['kermesseName'] ?? ''),
             'publicSlug'   => $publicSlug,
+            'emailSent'    => $flash['emailSent'] ?? null,
         ]);
     }
 

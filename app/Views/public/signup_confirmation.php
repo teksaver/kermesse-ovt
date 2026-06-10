@@ -18,10 +18,18 @@
             <p class="confirmation-message">
                 Votre inscription à <strong><?= esc($kermesseName) ?></strong> est bien enregistrée.
             </p>
+            <?php if (($emailSent ?? null) === false): ?>
             <p class="confirmation-email-notice">
-                Un email de confirmation avec votre lien de gestion vous a été envoyé.
-                Si vous ne le recevez pas, vérifiez vos courriers indésirables.
+                Votre inscription est bien enregistrée, mais l'email de confirmation
+                n'a pas pu être envoyé. Notez bien votre créneau&nbsp;; en cas de doute,
+                contactez l'organisateur de la kermesse.
             </p>
+            <?php else: ?>
+            <p class="confirmation-email-notice">
+                Un email de confirmation vous a été envoyé. Si vous ne le recevez pas
+                d'ici quelques minutes, vérifiez vos courriers indésirables.
+            </p>
+            <?php endif; ?>
         </div>
 
         <div class="signup-back">

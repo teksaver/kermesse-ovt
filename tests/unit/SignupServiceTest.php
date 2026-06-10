@@ -5,6 +5,9 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
+use App\Models\StandModel;
+use App\Services\EmailDeliveryResult;
+use App\Services\EmailService;
 use App\Services\SignupService;
 use App\Services\SignupResult;
 use App\Models\VolunteerModel;
@@ -28,6 +31,8 @@ final class SignupServiceTest extends CIUnitTestCase
         ?KermesseModel  $kermesseModel  = null,
         ?SlotModel      $slotModel      = null,
         ?BaseConnection $db             = null,
+        ?EmailService   $emailService   = null,
+        ?StandModel     $standModel     = null,
     ): SignupService {
         return new SignupService(
             $volunteerModel ?? $this->buildMockVolunteerModel(),
@@ -35,7 +40,27 @@ final class SignupServiceTest extends CIUnitTestCase
             $kermesseModel  ?? $this->buildMockKermesseModel(),
             $slotModel      ?? $this->buildMockSlotModel(),
             $db             ?? $this->buildMockConnection(),
+            $emailService   ?? $this->buildMockEmailService(),
+            $standModel     ?? $this->buildMockStandModel(),
         );
+    }
+
+    private function buildMockEmailService(bool $sent = true): EmailService
+    {
+        $mock = $this->createMock(EmailService::class);
+        $mock->method('sendSignupConfirmationEmail')
+            ->willReturn(new EmailDeliveryResult($sent, $sent ? null : 'No SMTP in tests'));
+        return $mock;
+    }
+
+    private function buildMockStandModel(string $name = 'Buvette'): StandModel
+    {
+        $mock = $this->getMockBuilder(StandModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['find'])
+            ->getMock();
+        $mock->method('find')->willReturn(['id' => 5, 'name' => $name, 'status' => 'active']);
+        return $mock;
     }
 
     /**
@@ -86,7 +111,7 @@ final class SignupServiceTest extends CIUnitTestCase
             ->disableOriginalConstructor()
             ->onlyMethods(['find'])
             ->getMock();
-        $mock->method('find')->willReturn(['id' => 10, 'status' => $status]);
+        $mock->method('find')->willReturn(['id' => 10, 'name' => 'Kermesse de test', 'status' => $status]);
         return $mock;
     }
 
@@ -101,6 +126,7 @@ final class SignupServiceTest extends CIUnitTestCase
             ->getMock();
         $mock->method('findForCapacityCheck')->willReturn([
             'id'         => 1,
+            'stand_id'   => 5,
             'capacity'   => $capacity,
             'status'     => $status,
             'starts_at'  => '2026-09-12 09:00:00',
@@ -468,5 +494,71 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $this->assertTrue($result->success);
         $this->assertSame(7, $result->volunteerId);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.5 — confirmation email sent after commit, never blocking
+    // ------------------------------------------------------------------
+
+    public function testSuccessfulSignupSendsConfirmationEmailWithSlotDetails(): void
+    {
+        $capturedArgs = null;
+
+        $emailMock = $this->createMock(EmailService::class);
+        $emailMock->expects($this->once())
+            ->method('sendSignupConfirmationEmail')
+            ->willReturnCallback(function (...$args) use (&$capturedArgs) {
+                $capturedArgs = $args;
+                return new EmailDeliveryResult(true, null);
+            });
+
+        $result = $this->buildService(emailService: $emailMock)
+            ->signup(1, 10, array_merge($this->validFields(), ['email' => ' Marie@Exemple.FR ']));
+
+        $this->assertTrue($result->success);
+        $this->assertTrue($result->emailSent);
+        // recipient (normalized), firstName, kermesseName, standName, startsAt, endsAt
+        $this->assertSame('marie@exemple.fr', $capturedArgs[0]);
+        $this->assertSame('Marie', $capturedArgs[1]);
+        $this->assertSame('Kermesse de test', $capturedArgs[2]);
+        $this->assertSame('Buvette', $capturedArgs[3]);
+        $this->assertSame('2026-09-12 09:00:00', $capturedArgs[4]);
+        $this->assertSame('2026-09-12 10:30:00', $capturedArgs[5]);
+    }
+
+    public function testRefusedSignupSendsNoEmail(): void
+    {
+        $emailMock = $this->createMock(EmailService::class);
+        $emailMock->expects($this->never())->method('sendSignupConfirmationEmail');
+
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('findActiveByVolunteerAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+
+        $result = $this->buildService(signupModel: $signupMock, emailService: $emailMock)
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertNull($result->emailSent);
+    }
+
+    public function testEmailSendFailureDoesNotFailSignup(): void
+    {
+        $result = $this->buildService(emailService: $this->buildMockEmailService(sent: false))
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success, 'Signup must stay confirmed when the email fails (AC4)');
+        $this->assertFalse($result->emailSent);
+    }
+
+    public function testEmailExceptionDoesNotFailSignup(): void
+    {
+        $emailMock = $this->createMock(EmailService::class);
+        $emailMock->method('sendSignupConfirmationEmail')
+            ->willThrowException(new \RuntimeException('SMTP exploded'));
+
+        $result = $this->buildService(emailService: $emailMock)->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success, 'Signup must stay confirmed when the email throws (AC4)');
+        $this->assertFalse($result->emailSent);
     }
 }

@@ -94,6 +94,19 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_email_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT \'sent\',
+                recipient_email TEXT NOT NULL,
+                recipient_hash TEXT NOT NULL,
+                error_message TEXT,
+                metadata TEXT,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     protected function tearDown(): void
@@ -105,6 +118,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_owners');
+        $db->query('DELETE FROM db_email_events');
         parent::tearDown();
     }
 
@@ -538,10 +552,19 @@ final class PublicSignupFormTest extends CIUnitTestCase
      * internal flash format. testSuccessfulSubmitStoresScopedConfirmationFlash
      * asserts that submit() really writes this exact payload shape.
      */
-    private function confirmationFlash(string $slug, int $slotId, string $kermesseName = 'Kermesse de test'): array
-    {
+    private function confirmationFlash(
+        string $slug,
+        int $slotId,
+        string $kermesseName = 'Kermesse de test',
+        ?bool $emailSent = true,
+    ): array {
         return [
-            'signup_success' => ['slug' => $slug, 'slotId' => $slotId, 'kermesseName' => $kermesseName],
+            'signup_success' => [
+                'slug'         => $slug,
+                'slotId'       => $slotId,
+                'kermesseName' => $kermesseName,
+                'emailSent'    => $emailSent,
+            ],
             '__ci_vars'      => ['signup_success' => 'new'],
         ];
     }
@@ -640,6 +663,104 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $result->assertOK();
         $this->assertStringContainsString('confirmée', $result->response()->getBody());
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.5 — confirmation email per signup, traced in email_events
+    // ------------------------------------------------------------------
+
+    public function testValidSubmitRecordsSignupConfirmationEmailEvent(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-email-event');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-email-event/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'Marie@Event.FR',
+            'phone'      => '',
+        ]);
+
+        // AC3: success or failure, the attempt must be traced with the normalized recipient
+        $row = db_connect()->query(
+            "SELECT recipient_email, status FROM db_email_events WHERE event_type = 'signup_confirmation'"
+        )->getRowArray();
+
+        $this->assertNotNull($row, 'A signup_confirmation email_event must be recorded');
+        $this->assertSame('marie@event.fr', $row['recipient_email']);
+        $this->assertContains($row['status'], ['sent', 'failed']);
+    }
+
+    public function testEachSignupSendsDistinctConfirmationEmail(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-email-multi');
+        $standId    = $this->insertStand($kermesseId);
+        $slotA      = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:30:00');
+        $slotB      = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:30:00');
+
+        $fields = ['first_name' => 'Marie', 'last_name' => 'Dupont', 'email' => 'multi@event.fr', 'phone' => ''];
+        $this->csrfPost("k/ecole-email-multi/slots/{$slotA}/signup", $fields);
+        $this->csrfPost("k/ecole-email-multi/slots/{$slotB}/signup", $fields);
+
+        // AC2: one distinct confirmation email attempt per accepted signup
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_email_events WHERE event_type = 'signup_confirmation'"
+        )->getRow()->cnt;
+
+        $this->assertSame(2, $count);
+    }
+
+    public function testRefusedSignupRecordsNoEmailEvent(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-email-refused', 'closed');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-email-refused/slots/{$slotId}/signup", [
+            'first_name' => 'Bob',
+            'last_name'  => 'Dupont',
+            'email'      => 'refused@event.fr',
+            'phone'      => '',
+        ]);
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_email_events WHERE event_type = 'signup_confirmation'"
+        )->getRow()->cnt;
+
+        $this->assertSame(0, $count, 'A refused signup must not trigger any confirmation email');
+    }
+
+    public function testConfirmationPageShowsEmailFailureNotice(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-email-fail');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession($this->confirmationFlash('ecole-email-fail', $slotId, emailSent: false))
+            ->get("k/ecole-email-fail/slots/{$slotId}/signup/confirmation");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        // AC4: the signup stays confirmed and the page says what to do
+        $this->assertStringContainsString('confirmée', $body);
+        $this->assertStringContainsString('a pas pu être envoyé', $body);
+        $this->assertStringContainsString('organisateur', $body);
+    }
+
+    public function testConfirmationPageDoesNotMentionManagementLink(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-email-nolink');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession($this->confirmationFlash('ecole-email-nolink', $slotId))
+            ->get("k/ecole-email-nolink/slots/{$slotId}/signup/confirmation");
+
+        // Écart acté 2026-06-10 : aucun lien de gestion promis tant que le modèle
+        // d'identité (lien de gestion vs Magic Link) n'est pas tranché.
+        $this->assertStringNotContainsString('lien de gestion', $result->response()->getBody());
     }
 
     // ------------------------------------------------------------------
