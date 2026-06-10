@@ -3,17 +3,23 @@
 namespace App\Controllers\Public;
 
 use App\Controllers\BaseController;
+use App\Models\KermesseModel;
+use App\Models\SignupModel;
+use App\Models\SlotModel;
+use App\Models\VolunteerModel;
 use App\Services\PublicVolunteerPageService;
+use App\Services\SignupResult;
+use App\Services\SignupService;
 
 /**
  * Public signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
  *
- * Displays and validates the volunteer signup form. Does NOT create an inscription —
- * that is handled by SignupService in Story 3.3. Returns neutral 404 for any slug/slot
- * mismatch or non-open kermesse, without revealing internal state.
+ * Displays and validates the volunteer signup form, then delegates inscription
+ * creation to SignupService (find-or-create volunteer + transactional signup insert).
+ * Returns neutral 404 for any slug/slot mismatch or non-open kermesse.
  *
  * PRIVACY: only slot summary data (kermesse name, stand name, time, availability) is
- * passed to the view. No volunteer data, owner/admin fields, or management links.
+ * passed to views. No volunteer data, owner/admin fields, or management links.
  */
 class SignupController extends BaseController
 {
@@ -23,6 +29,10 @@ class SignupController extends BaseController
 
         if ($summary === null) {
             return $this->neutral404();
+        }
+
+        if ($summary['kermesseStatus'] === KermesseModel::STATUS_CLOSED) {
+            return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
         if ($summary['isFull']) {
@@ -42,10 +52,6 @@ class SignupController extends BaseController
 
         if ($summary === null) {
             return $this->neutral404();
-        }
-
-        if ($summary['isFull']) {
-            return redirect()->to(site_url("k/{$publicSlug}"))->with('error', 'Ce créneau est complet.');
         }
 
         $getPostString = function(string $key): string {
@@ -76,9 +82,83 @@ class SignupController extends BaseController
             ]);
         }
 
-        // Validated fields are ready for SignupService (Story 3.3).
-        // Until then, redirect back to the volunteer page without creating an inscription.
-        return redirect()->to(site_url("k/{$publicSlug}"))->with('success', 'Votre inscription a bien été prise en compte.');
+        $result = (new SignupService(
+            new VolunteerModel(),
+            new SignupModel(),
+            new KermesseModel(),
+            new SlotModel(),
+        ))->signup(
+            slotId:      (int) $slotId,
+            kermesseId:  (int) $summary['kermesseId'],
+            fields:      $validation->getValidated(),
+        );
+
+        if (! $result->success) {
+            return view('public/signup_form', [
+                'summary' => $summary,
+                'fields'  => $raw,
+                'errors'  => ['_service' => $this->serviceErrorMessage($result)],
+            ]);
+        }
+
+        // Scoped to the exact slot signed up: confirm() must not render a confirmation
+        // for any other slug/slot that happens to share the session.
+        session()->setFlashdata('signup_success', [
+            'slug'         => $publicSlug,
+            'slotId'       => (int) $slotId,
+            'kermesseName' => (string) $summary['kermesseName'],
+            'emailSent'    => $result->emailSent,
+        ]);
+
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
+    }
+
+    public function confirm(string $publicSlug, string $slotId): mixed
+    {
+        $flash = session()->getFlashdata('signup_success');
+
+        if (! is_array($flash)
+            || ($flash['slug'] ?? null) !== $publicSlug
+            || ($flash['slotId'] ?? null) !== (int) $slotId) {
+            return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
+        // Rendered from the flash captured at submit time: the signup is already
+        // recorded, so the confirmation must survive the slot ending or the kermesse
+        // closing between the POST and this redirect.
+        return view('public/signup_confirmation', [
+            'kermesseName' => (string) ($flash['kermesseName'] ?? ''),
+            'publicSlug'   => $publicSlug,
+            'emailSent'    => $flash['emailSent'] ?? null,
+        ]);
+    }
+
+    private function serviceErrorMessage(SignupResult $result): string
+    {
+        if ($result->errorCode === 'slot_full') {
+            return 'Ce créneau vient d\'être rempli. Choisissez un autre créneau.';
+        }
+
+        if ($result->errorCode === 'duplicate_signup') {
+            return 'Vous avez déjà une inscription active sur ce créneau avec cette adresse email.';
+        }
+
+        if ($result->errorCode === 'overlap_conflict') {
+            $start = $result->context['conflicting_starts_at'] ?? null;
+            $end   = $result->context['conflicting_ends_at']   ?? null;
+            $tsStart = $start ? strtotime((string) $start) : false;
+            $tsEnd   = $end ? strtotime((string) $end) : false;
+            $time  = ($tsStart !== false && $tsEnd !== false)
+                ? ' (' . date('H:i', $tsStart) . '–' . date('H:i', $tsEnd) . ')'
+                : '';
+            return 'Vous avez déjà une inscription sur un créneau qui se chevauche' . $time . '.';
+        }
+
+        if ($result->errorCode === 'signups_not_open') {
+            return 'Les inscriptions ne sont pas ouvertes pour cette kermesse.';
+        }
+
+        return 'Votre inscription n\'a pas pu être enregistrée. Veuillez réessayer.';
     }
 
     private function neutral404(): mixed

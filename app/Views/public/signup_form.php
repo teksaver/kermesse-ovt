@@ -38,6 +38,12 @@
 
 
 
+        <?php if (isset($errors['_service'])): ?>
+        <div class="form-service-error" role="alert">
+            <?= esc($errors['_service']) ?>
+        </div>
+        <?php endif; ?>
+
         <form method="post"
             action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>"
             novalidate>

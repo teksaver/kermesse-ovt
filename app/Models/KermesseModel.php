@@ -6,6 +6,10 @@ use CodeIgniter\Model;
 
 class KermesseModel extends Model
 {
+    public const STATUS_PREPARATION = 'preparation';
+    public const STATUS_OPEN        = 'open';
+    public const STATUS_CLOSED      = 'closed';
+
     protected $table         = 'kermesses';
     protected $primaryKey    = 'id';
     protected $useAutoIncrement = true;

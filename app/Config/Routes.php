@@ -25,9 +25,10 @@ $routes->post('owner/login/(:segment)', '\App\Controllers\Owner\LoginController:
 // Public volunteer page — privacy-safe, no auth. Slug comes from the public link.
 $routes->get('k/(:segment)', '\App\Controllers\Public\VolunteerPageController::index/$1');
 
-// Public signup form — GET shows form, POST validates fields (no signup created until Story 3.3).
+// Public signup form — GET shows form, POST creates inscription (Story 3.3).
 $routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Public\SignupController::show/$1/$2');
 $routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Public\SignupController::submit/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Public\SignupController::confirm/$1/$2');
 
 // Admin minimal — protected by session-based checks in DashboardController
 $routes->get('admin/kermesses/(:num)', '\App\Controllers\Admin\DashboardController::show/$1');

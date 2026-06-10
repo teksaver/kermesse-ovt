@@ -37,9 +37,18 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
             $this->markTestSkipped('These tests require a MariaDB/MySQL connection (database.tests.DBDriver=MySQLi).');
         }
 
-        // Ensure we start clean — drop tables if they exist
+        // Ensure we start clean — drop tables if they exist.
+        // Test-artifact tables (no FK constraints, order-free):
         $db->query('DROP TABLE IF EXISTS `quoted_table`');
         $db->query('DROP TABLE IF EXISTS `second_table`');
+        $db->query('DROP TABLE IF EXISTS `test_table`');
+
+        // Schema tables: drop order must be reverse-FK order for the whole schema
+        // (signups → slots/volunteers, volunteers → kermesses, slots → stands,
+        // stands → kermesses, access_tokens → owners/kermesses, kermesses → owners).
+        // Update this list whenever a migration adds a table — see database/migrations_sql/.
+        $db->query('DROP TABLE IF EXISTS `signups`');
+        $db->query('DROP TABLE IF EXISTS `volunteers`');
         $db->query('DROP TABLE IF EXISTS `slots`');
         $db->query('DROP TABLE IF EXISTS `stands`');
         $db->query('DROP TABLE IF EXISTS `email_events`');
@@ -48,7 +57,6 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $db->query('DROP TABLE IF EXISTS `owners`');
         $db->query('DROP TABLE IF EXISTS `ops_nonces`');
         $db->query('DROP TABLE IF EXISTS `schema_versions`');
-        $db->query('DROP TABLE IF EXISTS `test_table`');
 
         // Set up temp migrations directory
         $this->tempMigrationsDir = sys_get_temp_dir() . '/kermesse_test_migrations_' . uniqid();
