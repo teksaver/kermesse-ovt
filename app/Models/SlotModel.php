@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Model;
 
 class SlotModel extends Model
@@ -18,6 +19,26 @@ class SlotModel extends Model
         'capacity',
         'status',
     ];
+
+    /**
+     * Return the slot row locked for update (FOR UPDATE serializes concurrent capacity checks
+     * in MariaDB InnoDB). SQLite does not support locking reads, so FOR UPDATE is omitted on
+     * that driver — the transaction still provides isolation in the test environment.
+     *
+     * Must be called inside an open transaction so the lock is held until commit/rollback.
+     */
+    public function findForCapacityCheck(int $slotId, ConnectionInterface $db): ?array
+    {
+        $table = $db->prefixTable('slots');
+        $lock  = (property_exists($db, 'DBDriver') && $db->DBDriver === 'MySQLi') ? ' FOR UPDATE' : '';
+
+        $result = $db->query(
+            "SELECT id, capacity, starts_at, ends_at FROM {$table} WHERE id = ?{$lock}",
+            [$slotId],
+        );
+
+        return ($result ? $result->getRowArray() : null) ?: null;
+    }
 
     /**
      * Return active slots for a list of stand IDs, sorted by stand then start time.

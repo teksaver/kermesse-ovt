@@ -581,4 +581,182 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertStringNotContainsString('/admin/', $body);
         $this->assertStringNotContainsString('management', $body);
     }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 helpers
+    // ------------------------------------------------------------------
+
+    private function insertSlotWithTimes(
+        int    $standId,
+        string $startsAt,
+        string $endsAt,
+        int    $capacity = 5,
+    ): int {
+        $db = db_connect();
+        $db->query("INSERT INTO db_slots (stand_id, starts_at, ends_at, capacity, status, created_at, updated_at)
+            VALUES ({$standId}, '{$startsAt}', '{$endsAt}', {$capacity}, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        return (int) $db->insertID();
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC1: Slot capacity enforcement
+    //
+    // When a slot is at full capacity, the controller detects it early (via the
+    // PublicVolunteerPageService summary check) and redirects to the kermesse
+    // page.  The service-level slot_full guard (FOR UPDATE + count) is the
+    // race-condition safety net — it is exercised in unit tests
+    // (SignupServiceTest::testSignupRefusedWhenSlotFull) rather than here.
+    // ------------------------------------------------------------------
+
+    public function testPostToFullSlotShowsFullMessage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-slot-full');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId, 1); // capacity = 1
+
+        // Pre-fill the single spot with an existing active signup
+        $db = db_connect();
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Alice', 'Martin', 'alice@full.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $aliceId = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $result = $this->csrfPost("k/ecole-slot-full/slots/{$slotId}/signup", [
+            'first_name' => 'Bob',
+            'last_name'  => 'Dupont',
+            'email'      => 'bob@new.fr',
+            'phone'      => '',
+        ]);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('vient d&#039;être rempli', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC4: Closed kermesse shows service message on POST
+    // ------------------------------------------------------------------
+
+    public function testPostToClosedKermesseShowsNotOpenMessage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-closed-post', 'closed');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->csrfPost("k/ecole-closed-post/slots/{$slotId}/signup", [
+            'first_name' => 'Bob',
+            'last_name'  => 'Dupont',
+            'email'      => 'bob@closed.fr',
+            'phone'      => '',
+        ]);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Les inscriptions ne sont pas ouvertes pour cette kermesse.', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC2: Duplicate signup detection (service-level message)
+    // ------------------------------------------------------------------
+
+    public function testPostWithDuplicateSignupShowsDuplicateMessage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-dup-signup');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId, 5);
+
+        // Pre-register Marie on this slot
+        $db = db_connect();
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'marie@dup.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $marieId = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        // Same email tries to sign up for the same slot again
+        $result = $this->csrfPost("k/ecole-dup-signup/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@dup.fr',
+            'phone'      => '',
+        ]);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('déjà', $body, 'Le message duplicate_signup doit indiquer une inscription existante');
+        $this->assertStringContainsString('inscription', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC3: Overlap detection with conflicting hours shown
+    // ------------------------------------------------------------------
+
+    public function testPostWithOverlappingSignupShowsOverlapMessage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-overlap');
+        $standId    = $this->insertStand($kermesseId);
+
+        // Slot A: 09:00–10:30 (already signed up)
+        $slotA = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:30:00', 5);
+        // Slot B: 10:00–11:30 (overlaps with A)
+        $slotB = $this->insertSlotWithTimes($standId, '2026-09-12 10:00:00', '2026-09-12 11:30:00', 5);
+
+        // Pre-register Marie on slot A
+        $db = db_connect();
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'marie@overlap.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $marieId = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotA}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        // Same email tries to sign up for slot B (overlapping)
+        $result = $this->csrfPost("k/ecole-overlap/slots/{$slotB}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@overlap.fr',
+            'phone'      => '',
+        ]);
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('chevauche', $body, 'Le message overlap_conflict doit mentionner "chevauche"');
+        // Conflicting slot A times must appear (09:00–10:30)
+        $this->assertStringContainsString('09:00', $body, 'L\'heure de début du créneau conflictuel doit être affichée');
+        $this->assertStringContainsString('10:30', $body, 'L\'heure de fin du créneau conflictuel doit être affichée');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — Cancelled signups do not count as capacity
+    // ------------------------------------------------------------------
+
+    public function testCancelledSignupDoesNotBlockNewSignup(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-cancelled-cap');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId, 1); // capacity = 1
+
+        // Insert a CANCELLED signup — must not count toward capacity
+        $db = db_connect();
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Alice', 'Martin', 'alice@cancel.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $aliceId = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, 'cancelled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $result = $this->csrfPost("k/ecole-cancelled-cap/slots/{$slotId}/signup", [
+            'first_name' => 'Bob',
+            'last_name'  => 'Dupont',
+            'email'      => 'bob@cancel.fr',
+            'phone'      => '',
+        ]);
+
+        // Capacity 1, cancelled signup = 0 active → signup must succeed
+        $this->assertSame(302, $result->response()->getStatusCode(), 'Une inscription annulée ne doit pas bloquer la capacité');
+        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+    }
 }

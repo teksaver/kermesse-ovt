@@ -93,7 +93,7 @@ class PublicVolunteerPageService
         }
 
         $kermesse = model(KermesseModel::class)->find($stand['kermesse_id']);
-        if ($kermesse === null || $kermesse['status'] !== 'open' || $kermesse['public_slug'] !== $publicSlug) {
+        if ($kermesse === null || ! in_array($kermesse['status'], ['open', 'closed'], true) || $kermesse['public_slug'] !== $publicSlug) {
             return null;
         }
 
@@ -111,6 +111,7 @@ class PublicVolunteerPageService
             'publicSlug'     => $publicSlug,
             'slotId'         => $slotId,
             'kermesseId'     => (int) $kermesse['id'],
+            'kermesseStatus' => $kermesse['status'],
         ];
     }
 

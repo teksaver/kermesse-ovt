@@ -3,10 +3,13 @@
 namespace App\Controllers\Public;
 
 use App\Controllers\BaseController;
-use App\Services\PublicVolunteerPageService;
-use App\Services\SignupService;
-use App\Models\VolunteerModel;
+use App\Models\KermesseModel;
 use App\Models\SignupModel;
+use App\Models\SlotModel;
+use App\Models\VolunteerModel;
+use App\Services\PublicVolunteerPageService;
+use App\Services\SignupResult;
+use App\Services\SignupService;
 
 /**
  * Public signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
@@ -28,6 +31,10 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
+        if ($summary['kermesseStatus'] === 'closed') {
+            return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
         if ($summary['isFull']) {
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
@@ -45,10 +52,6 @@ class SignupController extends BaseController
 
         if ($summary === null) {
             return $this->neutral404();
-        }
-
-        if ($summary['isFull']) {
-            return redirect()->to(site_url("k/{$publicSlug}"))->with('error', 'Ce créneau est complet.');
         }
 
         $getPostString = function(string $key): string {
@@ -82,6 +85,8 @@ class SignupController extends BaseController
         $result = (new SignupService(
             new VolunteerModel(),
             new SignupModel(),
+            new KermesseModel(),
+            new SlotModel(),
         ))->signup(
             slotId:      (int) $slotId,
             kermesseId:  (int) $summary['kermesseId'],
@@ -92,7 +97,7 @@ class SignupController extends BaseController
             return view('public/signup_form', [
                 'summary' => $summary,
                 'fields'  => $raw,
-                'errors'  => ['_service' => 'Votre inscription n\'a pas pu être enregistrée. Veuillez réessayer.'],
+                'errors'  => ['_service' => $this->serviceErrorMessage($result)],
             ]);
         }
 
@@ -112,10 +117,42 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
+        if ($summary['kermesseStatus'] === 'closed') {
+            return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
         return view('public/signup_confirmation', [
             'kermesseName' => $summary['kermesseName'],
             'publicSlug'   => $publicSlug,
         ]);
+    }
+
+    private function serviceErrorMessage(SignupResult $result): string
+    {
+        if ($result->errorCode === 'slot_full') {
+            return 'Ce créneau vient d\'être rempli. Choisissez un autre créneau.';
+        }
+
+        if ($result->errorCode === 'duplicate_signup') {
+            return 'Vous avez déjà une inscription active sur ce créneau avec cette adresse email.';
+        }
+
+        if ($result->errorCode === 'overlap_conflict') {
+            $start = $result->context['conflicting_starts_at'] ?? null;
+            $end   = $result->context['conflicting_ends_at']   ?? null;
+            $tsStart = $start ? strtotime((string) $start) : false;
+            $tsEnd   = $end ? strtotime((string) $end) : false;
+            $time  = ($tsStart !== false && $tsEnd !== false)
+                ? ' (' . date('H:i', $tsStart) . '–' . date('H:i', $tsEnd) . ')'
+                : '';
+            return 'Vous avez déjà une inscription sur un créneau qui se chevauche' . $time . '.';
+        }
+
+        if ($result->errorCode === 'signups_not_open') {
+            return 'Les inscriptions ne sont pas ouvertes pour cette kermesse.';
+        }
+
+        return 'Votre inscription n\'a pas pu être enregistrée. Veuillez réessayer.';
     }
 
     private function neutral404(): mixed

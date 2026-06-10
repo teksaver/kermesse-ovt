@@ -30,4 +30,14 @@ class VolunteerModel extends Model
             ->where('email', $normalizedEmail)
             ->first();
     }
+
+    /**
+     * Lock the volunteer row to serialize concurrent overlap checks.
+     */
+    public function lockForOverlapCheck(int $volunteerId, \CodeIgniter\Database\ConnectionInterface $db): void
+    {
+        $table = $db->prefixTable('volunteers');
+        $lock  = (property_exists($db, 'DBDriver') && $db->DBDriver === 'MySQLi') ? ' FOR UPDATE' : '';
+        $db->query("SELECT id FROM {$table} WHERE id = ?{$lock}", [$volunteerId]);
+    }
 }

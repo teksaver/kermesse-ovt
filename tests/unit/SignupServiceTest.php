@@ -1,13 +1,19 @@
 <?php
 
 use CodeIgniter\Test\CIUnitTestCase;
+use App\Models\KermesseModel;
+use App\Models\SlotModel;
 use App\Services\SignupService;
 use App\Services\SignupResult;
 use App\Models\VolunteerModel;
 use App\Models\SignupModel;
 
 /**
- * Unit tests for SignupService — volunteer creation/reuse and signup insertion (Story 3.3).
+ * Unit tests for SignupService — Stories 3.3 & 3.4.
+ *
+ * All DB access is mocked so tests are fast and isolated.
+ * Story 3.3: volunteer create/reuse, email normalization.
+ * Story 3.4: kermesse open, slot capacity, duplicate, overlap constraints.
  *
  * @internal
  */
@@ -16,10 +22,14 @@ final class SignupServiceTest extends CIUnitTestCase
     private function buildService(
         ?VolunteerModel $volunteerModel = null,
         ?SignupModel    $signupModel    = null,
+        ?KermesseModel  $kermesseModel  = null,
+        ?SlotModel      $slotModel      = null,
     ): SignupService {
         return new SignupService(
             $volunteerModel ?? $this->buildMockVolunteerModel(),
             $signupModel    ?? $this->buildMockSignupModel(),
+            $kermesseModel  ?? $this->buildMockKermesseModel(),
+            $slotModel      ?? $this->buildMockSlotModel(),
         );
     }
 
@@ -35,11 +45,46 @@ final class SignupServiceTest extends CIUnitTestCase
         return $mock;
     }
 
+    /**
+     * Build a SignupModel mock with insert preconfigured.
+     * countActiveForSlot/findActiveByVolunteerAndSlot/findOverlappingActiveByVolunteer
+     * are left unconfigured so callers can override without FIFO stub conflicts.
+     * Unconfigured mock methods return null — which the service treats as "no issue" (0
+     * active signups, no duplicate, no overlap) for happy-path tests.
+     */
     private function buildMockSignupModel(int $returnedId = 99): SignupModel
     {
-        $mock = $this->createMock(SignupModel::class);
+        $mock = $this->getMockBuilder(SignupModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByVolunteerAndSlot', 'findOverlappingActiveByVolunteer'])
+            ->getMock();
         $mock->method('skipValidation')->willReturnSelf();
         $mock->method('insert')->willReturn($returnedId);
+        return $mock;
+    }
+
+    private function buildMockKermesseModel(string $status = 'open'): KermesseModel
+    {
+        $mock = $this->getMockBuilder(KermesseModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['find'])
+            ->getMock();
+        $mock->method('find')->willReturn(['id' => 10, 'status' => $status]);
+        return $mock;
+    }
+
+    private function buildMockSlotModel(int $capacity = 10): SlotModel
+    {
+        $mock = $this->getMockBuilder(SlotModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findForCapacityCheck'])
+            ->getMock();
+        $mock->method('findForCapacityCheck')->willReturn([
+            'id'         => 1,
+            'capacity'   => $capacity,
+            'starts_at'  => '2026-09-12 09:00:00',
+            'ends_at'    => '2026-09-12 10:30:00',
+        ]);
         return $mock;
     }
 
@@ -54,7 +99,7 @@ final class SignupServiceTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // AC1 — New email → creates volunteer + signup
+    // Story 3.3 — AC1: New email → creates volunteer + signup
     // ------------------------------------------------------------------
 
     public function testNewEmailCreatesVolunteerAndReturnsSuccess(): void
@@ -75,7 +120,7 @@ final class SignupServiceTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // AC2 — Existing email for same kermesse → reuse volunteer
+    // Story 3.3 — AC2: Existing email → reuse volunteer
     // ------------------------------------------------------------------
 
     public function testExistingEmailReusesVolunteerWithoutCreating(): void
@@ -100,7 +145,7 @@ final class SignupServiceTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // AC3 — Email normalization: casing treated identically
+    // Story 3.3 — AC3: Email normalization
     // ------------------------------------------------------------------
 
     public function testEmailIsNormalizedBeforeLookup(): void
@@ -163,7 +208,7 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $signupMock = $this->getMockBuilder(SignupModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['skipValidation', 'insert'])
+            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByVolunteerAndSlot', 'findOverlappingActiveByVolunteer'])
             ->getMock();
         $signupMock->method('skipValidation')->willReturnSelf();
         $signupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedSignup) {
@@ -177,5 +222,145 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertSame(3,  $capturedSignup['slot_id'] ?? null);
         $this->assertSame(55, $capturedSignup['volunteer_id'] ?? null);
         $this->assertSame('active', $capturedSignup['status'] ?? null);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC4: Kermesse must be open
+    // ------------------------------------------------------------------
+
+    public function testSignupRefusedWhenKermesseNotOpen(): void
+    {
+        $service = $this->buildService(
+            kermesseModel: $this->buildMockKermesseModel('closed'),
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('signups_not_open', $result->errorCode);
+    }
+
+    public function testSignupRefusedWhenKermesseInPreparation(): void
+    {
+        $service = $this->buildService(
+            kermesseModel: $this->buildMockKermesseModel('preparation'),
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('signups_not_open', $result->errorCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC1: Slot capacity enforcement
+    // ------------------------------------------------------------------
+
+    public function testSignupRefusedWhenSlotFull(): void
+    {
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('countActiveForSlot')->willReturn(3);
+
+        $service = $this->buildService(
+            signupModel: $signupMock,
+            slotModel:   $this->buildMockSlotModel(3), // capacity 3, count 3 → full
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('slot_full', $result->errorCode);
+    }
+
+    public function testSignupAllowedWhenOneSlotRemains(): void
+    {
+        $signupMock = $this->buildMockSignupModel(77);
+        $signupMock->method('countActiveForSlot')->willReturn(2);
+
+        $service = $this->buildService(
+            signupModel: $signupMock,
+            slotModel:   $this->buildMockSlotModel(3), // capacity 3, count 2 → still 1 place
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC2: Duplicate signup detection
+    // ------------------------------------------------------------------
+
+    public function testSignupRefusedWhenDuplicateExists(): void
+    {
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('findActiveByVolunteerAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+
+        $service = $this->buildService(signupModel: $signupMock);
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('duplicate_signup', $result->errorCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC3: Overlap detection
+    // ------------------------------------------------------------------
+
+    public function testSignupRefusedWhenOverlapConflict(): void
+    {
+        $conflictingSlot = [
+            'id'        => 99,
+            'starts_at' => '2026-09-12 08:30:00',
+            'ends_at'   => '2026-09-12 10:00:00',
+        ];
+
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('findOverlappingActiveByVolunteer')->willReturn($conflictingSlot);
+
+        $service = $this->buildService(signupModel: $signupMock);
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('overlap_conflict', $result->errorCode);
+        $this->assertSame('2026-09-12 08:30:00', $result->context['conflicting_starts_at']);
+        $this->assertSame('2026-09-12 10:00:00', $result->context['conflicting_ends_at']);
+    }
+
+    public function testOverlapContextCarriesConflictingTimes(): void
+    {
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('findOverlappingActiveByVolunteer')->willReturn([
+            'starts_at' => '2026-09-12 11:00:00',
+            'ends_at'   => '2026-09-12 12:30:00',
+        ]);
+
+        $result = $this->buildService(signupModel: $signupMock)->signup(1, 10, $this->validFields());
+
+        $this->assertSame('2026-09-12 11:00:00', $result->context['conflicting_starts_at'] ?? null);
+        $this->assertSame('2026-09-12 12:30:00', $result->context['conflicting_ends_at']   ?? null);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.4 — AC5: Capacity checked before duplicate/overlap
+    // ------------------------------------------------------------------
+
+    public function testCapacityCheckedBeforeDuplicate(): void
+    {
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('countActiveForSlot')->willReturn(5);
+        $signupMock->method('findActiveByVolunteerAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+
+        $service = $this->buildService(
+            signupModel: $signupMock,
+            slotModel:   $this->buildMockSlotModel(5), // full
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        // slot_full must be returned, not duplicate_signup
+        $this->assertSame('slot_full', $result->errorCode);
     }
 }
