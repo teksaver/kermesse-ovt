@@ -4,10 +4,11 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
 /**
- * Feature tests for the public signup form GET/POST /k/{slug}/slots/{id}/signup (Story 3.2).
+ * Feature tests for the public signup form GET/POST /k/{slug}/slots/{id}/signup (Stories 3.2 & 3.3).
  *
  * Focus: slot link on volunteer page, form display, server-side validation, 404 boundaries,
- * and the hard privacy boundary (no volunteer/owner/admin data exposed).
+ * the hard privacy boundary (no volunteer/owner/admin data exposed), volunteer create/reuse,
+ * email normalization, and signup confirmation page.
  *
  * @internal
  */
@@ -71,10 +72,22 @@ final class PublicSignupFormTest extends CIUnitTestCase
             )
         ');
         $db->query('
+            CREATE TABLE IF NOT EXISTS db_volunteers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id INTEGER NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT NOT NULL DEFAULT \'\',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id INTEGER NOT NULL,
-                volunteer_name TEXT NOT NULL DEFAULT \'\',
+                volunteer_id INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT \'active\',
                 deleted_at DATETIME,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -87,6 +100,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     {
         $db = db_connect();
         $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_volunteers');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
@@ -165,8 +179,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 1);
 
         $db = db_connect();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, 'Bénévole', 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Test', 'Bénévole', 'benevole@test.example', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $volunteerIdFull = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$volunteerIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->get('k/ecole-full-link');
         $body   = $result->response()->getBody();
@@ -304,8 +321,9 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'phone'      => '',
         ]);
 
-        // Valid submit redirects to volunteer page (no inscription created yet in 3.2)
+        // Valid submit redirects to confirmation page (signup created in 3.3)
         $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
     }
 
     // ------------------------------------------------------------------
@@ -392,6 +410,175 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertStringNotContainsString('owner_id', $body);
         $this->assertStringNotContainsString('SELECT', $body);
         $this->assertStringNotContainsString('.env', $body);
+        $this->assertStringNotContainsString('management', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC1: valid POST creates volunteer + signup, redirects
+    // ------------------------------------------------------------------
+
+    public function testValidSubmitCreatesVolunteerRowInDb(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-create-vol');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-create-vol/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        $db  = db_connect();
+        $row = $db->query("SELECT * FROM db_volunteers WHERE email = 'marie@exemple.fr'")->getRowArray();
+
+        $this->assertNotNull($row, 'A volunteer row must be created after successful signup');
+        $this->assertSame('Marie', $row['first_name']);
+        $this->assertSame('Dupont', $row['last_name']);
+    }
+
+    public function testValidSubmitCreatesSignupRow(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-create-signup');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-create-signup/slots/{$slotId}/signup", [
+            'first_name' => 'Jean',
+            'last_name'  => 'Martin',
+            'email'      => 'jean@martin.fr',
+            'phone'      => '',
+        ]);
+
+        $db    = db_connect();
+        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId}")->getRowArray()['cnt'];
+
+        $this->assertSame(1, $count, 'One signup row must exist after successful POST');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC2: existing email reuses volunteer row
+    // ------------------------------------------------------------------
+
+    public function testExistingEmailReusesVolunteerRow(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-reuse-vol');
+        $standId    = $this->insertStand($kermesseId);
+        $slotIdA    = $this->insertSlot($standId, 5);
+        $slotIdB    = $this->insertSlot($standId, 5);
+
+        $db = db_connect();
+        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
+            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'reuse@exemple.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $this->csrfPost("k/ecole-reuse-vol/slots/{$slotIdB}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'reuse@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_volunteers WHERE email = 'reuse@exemple.fr'")->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'Only one volunteer row must exist; duplicates are not created');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC3: email casing treated as same identity
+    // ------------------------------------------------------------------
+
+    public function testUpperCaseEmailNormalizedToLowercase(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-case-norm');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-case-norm/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'Marie@EXEMPLE.FR',
+            'phone'      => '',
+        ]);
+
+        $db  = db_connect();
+        $row = $db->query("SELECT email FROM db_volunteers WHERE kermesse_id = {$kermesseId}")->getRowArray();
+
+        $this->assertNotNull($row);
+        $this->assertSame('marie@exemple.fr', $row['email'], 'Stored email must be normalized to lowercase');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC4: confirmation page shown after successful signup
+    // ------------------------------------------------------------------
+
+    public function testSuccessfulSubmitRedirectsToConfirmationPage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->csrfPost("k/ecole-confirm/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'confirm@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString(
+            "k/ecole-confirm/slots/{$slotId}/signup/confirmation",
+            $result->response()->getHeaderLine('Location'),
+        );
+    }
+
+    public function testConfirmationPageShowsSuccessMessage(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm-page');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        // CI4 FeatureTestTrait: flash data set during POST is still in 'new' state and not
+        // yet promoted for the subsequent GET. Inject it directly via withSession() using
+        // the CI4 internal flash format so confirm() finds it immediately.
+        $flashSession = ['signup_success' => true, '__ci_vars' => ['signup_success' => 'new']];
+
+        $this->csrfPost("k/ecole-confirm-page/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'confirm-page@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        $result = $this->withSession($flashSession)
+            ->get("k/ecole-confirm-page/slots/{$slotId}/signup/confirmation");
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('confirmée', $body);
+        $this->assertStringContainsString('email de confirmation', $body);
+    }
+
+    public function testConfirmationPageDoesNotExposeInternalIds(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm-priv');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $flashSession = ['signup_success' => true, '__ci_vars' => ['signup_success' => 'new']];
+
+        $this->csrfPost("k/ecole-confirm-priv/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'priv@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        $result = $this->withSession($flashSession)
+            ->get("k/ecole-confirm-priv/slots/{$slotId}/signup/confirmation");
+        $body   = $result->response()->getBody();
+
+        $this->assertStringNotContainsString('volunteer_id', $body);
+        $this->assertStringNotContainsString('/admin/', $body);
         $this->assertStringNotContainsString('management', $body);
     }
 }

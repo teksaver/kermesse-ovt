@@ -74,7 +74,7 @@ final class AdminStandTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id INTEGER NOT NULL,
-                volunteer_name TEXT NOT NULL DEFAULT \'\',
+                volunteer_id INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT \'active\',
                 deleted_at DATETIME,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -133,8 +133,8 @@ final class AdminStandTest extends CIUnitTestCase
     {
         $db = db_connect();
         $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_name, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, 'Bénévole Test', '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, 0, '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         return (int) $db->insertID();
     }
 

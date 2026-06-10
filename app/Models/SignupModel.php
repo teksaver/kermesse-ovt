@@ -24,7 +24,7 @@ class SignupModel extends Model
 
     protected $allowedFields = [
         'slot_id',
-        'volunteer_name',
+        'volunteer_id',
         'status',
         'deleted_at',
     ];

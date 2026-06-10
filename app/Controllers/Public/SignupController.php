@@ -4,16 +4,19 @@ namespace App\Controllers\Public;
 
 use App\Controllers\BaseController;
 use App\Services\PublicVolunteerPageService;
+use App\Services\SignupService;
+use App\Models\VolunteerModel;
+use App\Models\SignupModel;
 
 /**
  * Public signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
  *
- * Displays and validates the volunteer signup form. Does NOT create an inscription —
- * that is handled by SignupService in Story 3.3. Returns neutral 404 for any slug/slot
- * mismatch or non-open kermesse, without revealing internal state.
+ * Displays and validates the volunteer signup form, then delegates inscription
+ * creation to SignupService (find-or-create volunteer + transactional signup insert).
+ * Returns neutral 404 for any slug/slot mismatch or non-open kermesse.
  *
  * PRIVACY: only slot summary data (kermesse name, stand name, time, availability) is
- * passed to the view. No volunteer data, owner/admin fields, or management links.
+ * passed to views. No volunteer data, owner/admin fields, or management links.
  */
 class SignupController extends BaseController
 {
@@ -76,9 +79,43 @@ class SignupController extends BaseController
             ]);
         }
 
-        // Validated fields are ready for SignupService (Story 3.3).
-        // Until then, redirect back to the volunteer page without creating an inscription.
-        return redirect()->to(site_url("k/{$publicSlug}"))->with('success', 'Votre inscription a bien été prise en compte.');
+        $result = (new SignupService(
+            new VolunteerModel(),
+            new SignupModel(),
+        ))->signup(
+            slotId:      (int) $slotId,
+            kermesseId:  (int) $summary['kermesseId'],
+            fields:      $validation->getValidated(),
+        );
+
+        if (! $result->success) {
+            return view('public/signup_form', [
+                'summary' => $summary,
+                'fields'  => $raw,
+                'errors'  => ['_service' => 'Votre inscription n\'a pas pu être enregistrée. Veuillez réessayer.'],
+            ]);
+        }
+
+        session()->setFlashdata('signup_success', true);
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
+    }
+
+    public function confirm(string $publicSlug, string $slotId): mixed
+    {
+        if (! session()->getFlashdata('signup_success')) {
+            return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
+        $summary = (new PublicVolunteerPageService())->buildSlotSummary($publicSlug, (int) $slotId);
+
+        if ($summary === null) {
+            return $this->neutral404();
+        }
+
+        return view('public/signup_confirmation', [
+            'kermesseName' => $summary['kermesseName'],
+            'publicSlug'   => $publicSlug,
+        ]);
     }
 
     private function neutral404(): mixed

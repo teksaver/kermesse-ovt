@@ -110,6 +110,7 @@ class PublicVolunteerPageService
             'isFull'         => $remainingSpots === 0,
             'publicSlug'     => $publicSlug,
             'slotId'         => $slotId,
+            'kermesseId'     => (int) $kermesse['id'],
         ];
     }
 
