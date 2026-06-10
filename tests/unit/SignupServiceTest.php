@@ -1,5 +1,7 @@
 <?php
 
+use CodeIgniter\Database\BaseConnection;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
@@ -11,9 +13,10 @@ use App\Models\SignupModel;
 /**
  * Unit tests for SignupService — Stories 3.3 & 3.4.
  *
- * All DB access is mocked so tests are fast and isolated.
- * Story 3.3: volunteer create/reuse, email normalization.
- * Story 3.4: kermesse open, slot capacity, duplicate, overlap constraints.
+ * All DB access is mocked — including the transaction connection — so tests are
+ * fast and fully isolated from any real database.
+ * Story 3.3: volunteer create/reuse, email normalization, insert-race fallback.
+ * Story 3.4: kermesse open, slot state/capacity, duplicate, overlap constraints.
  *
  * @internal
  */
@@ -24,20 +27,34 @@ final class SignupServiceTest extends CIUnitTestCase
         ?SignupModel    $signupModel    = null,
         ?KermesseModel  $kermesseModel  = null,
         ?SlotModel      $slotModel      = null,
+        ?BaseConnection $db             = null,
     ): SignupService {
         return new SignupService(
             $volunteerModel ?? $this->buildMockVolunteerModel(),
             $signupModel    ?? $this->buildMockSignupModel(),
             $kermesseModel  ?? $this->buildMockKermesseModel(),
             $slotModel      ?? $this->buildMockSlotModel(),
+            $db             ?? $this->buildMockConnection(),
         );
+    }
+
+    /**
+     * Transaction connection mock: begin/commit succeed so the service reaches the
+     * invariant checks; no real database is ever touched.
+     */
+    private function buildMockConnection(): BaseConnection
+    {
+        $mock = $this->createMock(BaseConnection::class);
+        $mock->method('transBegin')->willReturn(true);
+        $mock->method('transCommit')->willReturn(true);
+        return $mock;
     }
 
     private function buildMockVolunteerModel(int $returnedId = 42): VolunteerModel
     {
         $mock = $this->getMockBuilder(VolunteerModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByKermesseAndEmail', 'skipValidation', 'insert'])
+            ->onlyMethods(['findByKermesseAndEmail', 'skipValidation', 'insert', 'lockForOverlapCheck'])
             ->getMock();
         $mock->method('findByKermesseAndEmail')->willReturn(null);
         $mock->method('skipValidation')->willReturnSelf();
@@ -73,8 +90,11 @@ final class SignupServiceTest extends CIUnitTestCase
         return $mock;
     }
 
-    private function buildMockSlotModel(int $capacity = 10): SlotModel
-    {
+    private function buildMockSlotModel(
+        int $capacity = 10,
+        string $status = SlotModel::STATUS_ACTIVE,
+        ?string $endsAt = null,
+    ): SlotModel {
         $mock = $this->getMockBuilder(SlotModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['findForCapacityCheck'])
@@ -82,8 +102,9 @@ final class SignupServiceTest extends CIUnitTestCase
         $mock->method('findForCapacityCheck')->willReturn([
             'id'         => 1,
             'capacity'   => $capacity,
+            'status'     => $status,
             'starts_at'  => '2026-09-12 09:00:00',
-            'ends_at'    => '2026-09-12 10:30:00',
+            'ends_at'    => $endsAt ?? '2026-09-12 10:30:00',
         ]);
         return $mock;
     }
@@ -362,5 +383,90 @@ final class SignupServiceTest extends CIUnitTestCase
 
         // slot_full must be returned, not duplicate_signup
         $this->assertSame('slot_full', $result->errorCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Slot state is a service-owned invariant: the public summary filter
+    // must not be the only guard (admin-deactivation race, direct callers)
+    // ------------------------------------------------------------------
+
+    public function testSignupRefusedWhenSlotDeactivated(): void
+    {
+        $service = $this->buildService(
+            slotModel: $this->buildMockSlotModel(status: SlotModel::STATUS_DEACTIVATED),
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('slot_unavailable', $result->errorCode);
+    }
+
+    public function testSignupRefusedWhenSlotAlreadyEnded(): void
+    {
+        $service = $this->buildService(
+            slotModel: $this->buildMockSlotModel(endsAt: '2020-01-01 10:00:00'),
+        );
+
+        $result = $service->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('slot_unavailable', $result->errorCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Transaction robustness
+    // ------------------------------------------------------------------
+
+    public function testTransactionBeginFailureReturnsTransactionFailed(): void
+    {
+        $db = $this->createMock(BaseConnection::class);
+        $db->method('transBegin')->willReturn(false);
+
+        $result = $this->buildService(db: $db)->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('transaction_failed', $result->errorCode);
+    }
+
+    public function testOverlapCheckFailureFailsClosed(): void
+    {
+        // A failed overlap check must abort the signup, never pass as "no overlap"
+        $signupMock = $this->buildMockSignupModel();
+        $signupMock->method('findOverlappingActiveByVolunteer')
+            ->willThrowException(new DatabaseException('overlap check failed'));
+
+        $result = $this->buildService(signupModel: $signupMock)->signup(1, 10, $this->validFields());
+
+        $this->assertFalse($result->success);
+        $this->assertSame('transaction_failed', $result->errorCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — volunteer insert race: the duplicate-key loser must reuse
+    // the competitor's committed volunteer via the locking re-read
+    // ------------------------------------------------------------------
+
+    public function testVolunteerInsertRaceFallsBackToExistingVolunteer(): void
+    {
+        $volunteerMock = $this->getMockBuilder(VolunteerModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findByKermesseAndEmail', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->getMock();
+        // Plain lookup misses (stale snapshot), insert loses the unique-key race,
+        // the locking re-read then sees the competitor's committed row.
+        $volunteerMock->method('findByKermesseAndEmail')
+            ->willReturnOnConsecutiveCalls(null, ['id' => 7, 'email' => 'marie@exemple.fr']);
+        $volunteerMock->method('skipValidation')->willReturnSelf();
+        $volunteerMock->method('insert')
+            ->willThrowException(new DatabaseException('Duplicate entry for uq_volunteers_kermesse_email'));
+
+        $signupMock = $this->buildMockSignupModel(123);
+        $signupMock->expects($this->once())->method('insert');
+
+        $result = $this->buildService($volunteerMock, $signupMock)->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertSame(7, $result->volunteerId);
     }
 }

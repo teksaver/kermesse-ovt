@@ -2,16 +2,21 @@
 
 namespace App\Models;
 
+use CodeIgniter\Database\ConnectionInterface;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Model;
 
 class SignupModel extends Model
 {
+    use LockingReadsTrait;
+
     protected $table      = 'signups';
     protected $primaryKey = 'id';
     protected $returnType = 'array';
     protected $useTimestamps = true;
     protected $useSoftDeletes = true;
 
+    public const STATUS_ACTIVE      = 'active';
     public const STATUS_CANCELLED   = 'cancelled';
     public const STATUS_DEACTIVATED = 'deactivated';
     public const STATUS_DELETED     = 'deleted';
@@ -31,25 +36,60 @@ class SignupModel extends Model
 
     /**
      * Return the active signup count for a single slot.
+     *
+     * Pass $db to run on the signup transaction's connection — the count is correct
+     * under concurrency only because the slot row is locked FOR UPDATE before this
+     * first plain read establishes the transaction snapshot.
      */
-    public function countActiveForSlot(int $slotId): int
+    public function countActiveForSlot(int $slotId, ?ConnectionInterface $db = null): int
     {
-        return $this->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
+        if ($db === null) {
+            return $this->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
+        }
+
+        $table = $db->prefixTable('signups');
+        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
+
+        $result = $db->query(
+            "SELECT COUNT(*) AS cnt FROM {$table}
+             WHERE slot_id = ? AND status NOT IN ({$inact}) AND deleted_at IS NULL",
+            array_merge([$slotId], self::INACTIVE_STATUSES),
+        );
+
+        if ($result === false) {
+            throw new DatabaseException('Active-signup count failed; refusing to continue (fail-closed).');
+        }
+
+        return (int) ($result->getRowArray()['cnt'] ?? 0);
     }
 
     /**
      * Return an active signup for the given volunteer on the given slot, or null.
      *
-     * Used for duplicate-signup detection inside a transaction.
+     * Used for duplicate-signup detection inside a transaction. On MySQLi this is a
+     * locking read: it must see signups committed by concurrent transactions after
+     * this transaction's snapshot (the volunteer-row lock alone does not refresh
+     * plain reads under REPEATABLE READ).
      */
-    public function findActiveByVolunteerAndSlot(int $volunteerId, int $slotId): ?array
+    public function findActiveByVolunteerAndSlot(int $volunteerId, int $slotId, ?ConnectionInterface $db = null): ?array
     {
-        $row = $this->where('volunteer_id', $volunteerId)
-            ->where('slot_id', $slotId)
-            ->whereNotIn('status', self::INACTIVE_STATUSES)
-            ->first();
+        $conn  = $db ?? $this->db;
+        $table = $conn->prefixTable('signups');
+        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
-        return $row ?: null;
+        $result = $conn->query(
+            "SELECT id, status FROM {$table}
+             WHERE volunteer_id = ? AND slot_id = ?
+               AND status NOT IN ({$inact}) AND deleted_at IS NULL
+             LIMIT 1" . $this->forUpdateSuffix($conn),
+            array_merge([$volunteerId, $slotId], self::INACTIVE_STATUSES),
+        );
+
+        if ($result === false) {
+            throw new DatabaseException('Duplicate-signup check failed; refusing to continue (fail-closed).');
+        }
+
+        return $result->getRowArray() ?: null;
     }
 
     /**
@@ -57,17 +97,19 @@ class SignupModel extends Model
      * the given volunteer, excluding $excludeSlotId (the target slot).
      *
      * Two intervals overlap when: existing.starts_at < endsAt AND existing.ends_at > startsAt.
-     * Used for overlap detection inside a transaction.
+     * Used for overlap detection inside a transaction. On MySQLi this is a locking read
+     * for the same snapshot-freshness reason as findActiveByVolunteerAndSlot.
      */
     public function findOverlappingActiveByVolunteer(
         int    $volunteerId,
         string $startsAt,
         string $endsAt,
         int    $excludeSlotId,
+        ?ConnectionInterface $db = null,
     ): ?array {
-        $db      = db_connect();
-        $tSign   = $db->prefixTable('signups');
-        $tSlots  = $db->prefixTable('slots');
+        $conn    = $db ?? $this->db;
+        $tSign   = $conn->prefixTable('signups');
+        $tSlots  = $conn->prefixTable('slots');
         $inact   = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
         $params = array_merge(
@@ -76,7 +118,7 @@ class SignupModel extends Model
             [$endsAt, $startsAt]
         );
 
-        $result = $db->query(
+        $result = $conn->query(
             "SELECT {$tSign}.id, {$tSlots}.starts_at, {$tSlots}.ends_at
              FROM {$tSign}
              JOIN {$tSlots} ON {$tSlots}.id = {$tSign}.slot_id
@@ -86,12 +128,13 @@ class SignupModel extends Model
                AND {$tSign}.deleted_at IS NULL
                AND {$tSlots}.starts_at < ?
                AND {$tSlots}.ends_at > ?
-             LIMIT 1",
+             LIMIT 1" . $this->forUpdateSuffix($conn),
             $params,
         );
 
-        if (! $result) {
-            return null;
+        if ($result === false) {
+            // Fail closed: a failed check must never be read as "no overlap".
+            throw new DatabaseException('Overlap check failed; refusing to continue (fail-closed).');
         }
 
         return $result->getRowArray() ?: null;

@@ -531,25 +531,50 @@ final class PublicSignupFormTest extends CIUnitTestCase
         );
     }
 
+    /**
+     * Build the scoped confirmation flash exactly as submit() stores it. CI4
+     * FeatureTestTrait boots a fresh request per call, so the POST's flash is not
+     * promoted for a subsequent GET; we inject it via withSession() using the CI4
+     * internal flash format. testSuccessfulSubmitStoresScopedConfirmationFlash
+     * asserts that submit() really writes this exact payload shape.
+     */
+    private function confirmationFlash(string $slug, int $slotId, string $kermesseName = 'Kermesse de test'): array
+    {
+        return [
+            'signup_success' => ['slug' => $slug, 'slotId' => $slotId, 'kermesseName' => $kermesseName],
+            '__ci_vars'      => ['signup_success' => 'new'],
+        ];
+    }
+
+    public function testSuccessfulSubmitStoresScopedConfirmationFlash(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm-flash');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-confirm-flash/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'flash@exemple.fr',
+            'phone'      => '',
+        ]);
+
+        // The flash must be scoped to the slot signed up, never a bare boolean:
+        // confirm() refuses to render any other slug/slot from it.
+        $flash = session()->getFlashdata('signup_success');
+        $this->assertIsArray($flash);
+        $this->assertSame('ecole-confirm-flash', $flash['slug'] ?? null);
+        $this->assertSame($slotId, $flash['slotId'] ?? null);
+        $this->assertSame('Kermesse de test', $flash['kermesseName'] ?? null);
+    }
+
     public function testConfirmationPageShowsSuccessMessage(): void
     {
         $kermesseId = $this->insertKermesse('ecole-confirm-page');
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        // CI4 FeatureTestTrait: flash data set during POST is still in 'new' state and not
-        // yet promoted for the subsequent GET. Inject it directly via withSession() using
-        // the CI4 internal flash format so confirm() finds it immediately.
-        $flashSession = ['signup_success' => true, '__ci_vars' => ['signup_success' => 'new']];
-
-        $this->csrfPost("k/ecole-confirm-page/slots/{$slotId}/signup", [
-            'first_name' => 'Marie',
-            'last_name'  => 'Dupont',
-            'email'      => 'confirm-page@exemple.fr',
-            'phone'      => '',
-        ]);
-
-        $result = $this->withSession($flashSession)
+        $result = $this->withSession($this->confirmationFlash('ecole-confirm-page', $slotId))
             ->get("k/ecole-confirm-page/slots/{$slotId}/signup/confirmation");
         $result->assertOK();
         $body = $result->response()->getBody();
@@ -564,22 +589,57 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $flashSession = ['signup_success' => true, '__ci_vars' => ['signup_success' => 'new']];
-
-        $this->csrfPost("k/ecole-confirm-priv/slots/{$slotId}/signup", [
-            'first_name' => 'Marie',
-            'last_name'  => 'Dupont',
-            'email'      => 'priv@exemple.fr',
-            'phone'      => '',
-        ]);
-
-        $result = $this->withSession($flashSession)
+        $result = $this->withSession($this->confirmationFlash('ecole-confirm-priv', $slotId))
             ->get("k/ecole-confirm-priv/slots/{$slotId}/signup/confirmation");
         $body   = $result->response()->getBody();
 
         $this->assertStringNotContainsString('volunteer_id', $body);
         $this->assertStringNotContainsString('/admin/', $body);
         $this->assertStringNotContainsString('management', $body);
+    }
+
+    public function testConfirmationPageWithoutFlashRedirectsToKermesse(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm-noflash');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->get("k/ecole-confirm-noflash/slots/{$slotId}/signup/confirmation");
+
+        $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString('k/ecole-confirm-noflash', $result->response()->getHeaderLine('Location'));
+    }
+
+    public function testConfirmationPageWithMismatchedSlotRedirects(): void
+    {
+        $kermesseId  = $this->insertKermesse('ecole-confirm-scope');
+        $standId     = $this->insertStand($kermesseId);
+        $slotId      = $this->insertSlot($standId);
+        $otherSlotId = $this->insertSlot($standId);
+
+        // Flash earned on $slotId must not unlock the confirmation of $otherSlotId
+        $result = $this->withSession($this->confirmationFlash('ecole-confirm-scope', $slotId))
+            ->get("k/ecole-confirm-scope/slots/{$otherSlotId}/signup/confirmation");
+
+        $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString('k/ecole-confirm-scope', $result->response()->getHeaderLine('Location'));
+    }
+
+    public function testConfirmationPageSurvivesKermesseClosingAfterSignup(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-confirm-closed');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        // Kermesse closes between the POST and the confirmation GET: the signup is
+        // already recorded, the volunteer must still see their confirmation.
+        db_connect()->query("UPDATE db_kermesses SET status = 'closed' WHERE id = {$kermesseId}");
+
+        $result = $this->withSession($this->confirmationFlash('ecole-confirm-closed', $slotId))
+            ->get("k/ecole-confirm-closed/slots/{$slotId}/signup/confirmation");
+
+        $result->assertOK();
+        $this->assertStringContainsString('confirmée', $result->response()->getBody());
     }
 
     // ------------------------------------------------------------------
@@ -601,11 +661,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
     // ------------------------------------------------------------------
     // Story 3.4 — AC1: Slot capacity enforcement
     //
-    // When a slot is at full capacity, the controller detects it early (via the
-    // PublicVolunteerPageService summary check) and redirects to the kermesse
-    // page.  The service-level slot_full guard (FOR UPDATE + count) is the
-    // race-condition safety net — it is exercised in unit tests
-    // (SignupServiceTest::testSignupRefusedWhenSlotFull) rather than here.
+    // The POST always reaches SignupService, which re-counts active signups
+    // under the slot FOR UPDATE lock and returns slot_full when the capacity
+    // is reached; the controller re-renders the form with the exact AC1
+    // message. (The GET form still redirects early when the summary says the
+    // slot is full — stale-form POSTs are the case exercised here.)
     // ------------------------------------------------------------------
 
     public function testPostToFullSlotShowsFullMessage(): void
@@ -632,7 +692,8 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $result->assertOK();
         $body = $result->response()->getBody();
 
-        $this->assertStringContainsString('vient d&#039;être rempli', $body);
+        // Exact AC1 message, in its HTML-escaped form
+        $this->assertStringContainsString('Ce créneau vient d&#039;être rempli. Choisissez un autre créneau.', $body);
     }
 
     // ------------------------------------------------------------------

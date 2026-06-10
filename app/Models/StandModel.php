@@ -6,6 +6,9 @@ use CodeIgniter\Model;
 
 class StandModel extends Model
 {
+    public const STATUS_ACTIVE      = 'active';
+    public const STATUS_DEACTIVATED = 'deactivated';
+
     protected $table      = 'stands';
     protected $primaryKey = 'id';
     protected $returnType = 'array';
@@ -26,7 +29,7 @@ class StandModel extends Model
     public function getActiveForKermesse(int $kermesseId): array
     {
         return $this->where('kermesse_id', $kermesseId)
-            ->where('status', 'active')
+            ->where('status', self::STATUS_ACTIVE)
             ->orderBy('display_order', 'ASC')
             ->orderBy('id', 'ASC')
             ->findAll();
@@ -39,7 +42,7 @@ class StandModel extends Model
     {
         $result = $this->selectMax('display_order')
             ->where('kermesse_id', $kermesseId)
-            ->where('status', 'active')
+            ->where('status', self::STATUS_ACTIVE)
             ->first();
 
         return (int) ($result['display_order'] ?? 0) + 1;
@@ -51,7 +54,7 @@ class StandModel extends Model
     public function hasActiveDuplicate(int $kermesseId, string $name, ?int $excludeId = null): bool
     {
         $builder = $this->where('kermesse_id', $kermesseId)
-            ->where('status', 'active')
+            ->where('status', self::STATUS_ACTIVE)
             ->where('LOWER(name)', mb_strtolower(trim($name)));
 
         if ($excludeId !== null) {

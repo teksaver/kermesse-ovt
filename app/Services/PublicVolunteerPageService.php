@@ -13,16 +13,17 @@ use App\Models\StandModel;
  * PRIVACY BOUNDARY: this is the only place the public page gets its data, and it
  * deliberately whitelists fields. It must NEVER expose volunteer names, emails,
  * phone numbers, admin data, owner data, or management links. Only event, stand,
- * slot and availability data is surfaced. Stands and slots are loaded ONLY when
- * the kermesse is open — preparation and closed states reveal nothing about the
- * planning.
+ * slot and availability data is surfaced. The public page loads stands and slots
+ * ONLY when the kermesse is open; buildSlotSummary additionally serves closed
+ * kermesses so the signup POST can answer with the AC4 "not open" message (story
+ * 3.4 review trade-off). Preparation state reveals nothing about the planning.
  */
 class PublicVolunteerPageService
 {
     private const STATUS_MAP = [
-        'preparation' => ['label' => 'Inscriptions à venir', 'class' => 'status-badge--preparation'],
-        'open'        => ['label' => 'Inscriptions ouvertes', 'class' => 'status-badge--open'],
-        'closed'      => ['label' => 'Inscriptions clôturées', 'class' => 'status-badge--closed'],
+        KermesseModel::STATUS_PREPARATION => ['label' => 'Inscriptions à venir', 'class' => 'status-badge--preparation'],
+        KermesseModel::STATUS_OPEN        => ['label' => 'Inscriptions ouvertes', 'class' => 'status-badge--open'],
+        KermesseModel::STATUS_CLOSED      => ['label' => 'Inscriptions clôturées', 'class' => 'status-badge--closed'],
     ];
 
     /**
@@ -40,8 +41,8 @@ class PublicVolunteerPageService
             return null;
         }
 
-        $status     = $kermesse['status'] ?? 'preparation';
-        $statusInfo = self::STATUS_MAP[$status] ?? self::STATUS_MAP['preparation'];
+        $status     = $kermesse['status'] ?? KermesseModel::STATUS_PREPARATION;
+        $statusInfo = self::STATUS_MAP[$status] ?? self::STATUS_MAP[KermesseModel::STATUS_PREPARATION];
 
         // Whitelist public-safe kermesse fields only. Never spread the raw row,
         // which carries owner_id and other non-public columns.
@@ -53,7 +54,7 @@ class PublicVolunteerPageService
         ];
 
         $stands = [];
-        if ($status === 'open') {
+        if ($status === KermesseModel::STATUS_OPEN) {
             $stands = $this->buildStands((int) $kermesse['id'], $publicSlug);
         }
 
@@ -62,7 +63,7 @@ class PublicVolunteerPageService
             'status'      => $status,
             'statusLabel' => $statusInfo['label'],
             'statusClass' => $statusInfo['class'],
-            'signupsOpen' => $status === 'open',
+            'signupsOpen' => $status === KermesseModel::STATUS_OPEN,
             'stands'      => $stands,
             'hasStands'   => count($stands) > 0,
             'hasSlots'    => $this->hasSlots($stands),
@@ -72,8 +73,10 @@ class PublicVolunteerPageService
     /**
      * Build a privacy-safe summary for a single slot, used by the signup form.
      *
-     * Returns null if the kermesse is not open, or the slot/stand is inactive or
-     * does not belong to this kermesse — callers render a neutral 404.
+     * Returns null if the kermesse is in preparation, or the slot/stand is inactive
+     * or does not belong to this kermesse — callers render a neutral 404. Open AND
+     * closed kermesses get a summary: the signup POST needs the closed state to show
+     * the French "not open" message instead of a silent 404 (story 3.4 AC4).
      *
      * PRIVACY: only kermesse name, stand name, slot timing, and availability are
      * exposed. No volunteer data, no owner/admin fields, no management links.
@@ -83,17 +86,19 @@ class PublicVolunteerPageService
     public function buildSlotSummary(string $publicSlug, int $slotId): ?array
     {
         $slot = model(SlotModel::class)->find($slotId);
-        if ($slot === null || $slot['status'] !== 'active' || $slot['ends_at'] < date('Y-m-d H:i:s')) {
+        if ($slot === null || $slot['status'] !== SlotModel::STATUS_ACTIVE || $slot['ends_at'] < date('Y-m-d H:i:s')) {
             return null;
         }
 
         $stand = model(StandModel::class)->find($slot['stand_id']);
-        if ($stand === null || $stand['status'] !== 'active') {
+        if ($stand === null || $stand['status'] !== StandModel::STATUS_ACTIVE) {
             return null;
         }
 
         $kermesse = model(KermesseModel::class)->find($stand['kermesse_id']);
-        if ($kermesse === null || ! in_array($kermesse['status'], ['open', 'closed'], true) || $kermesse['public_slug'] !== $publicSlug) {
+        if ($kermesse === null
+            || ! in_array($kermesse['status'], [KermesseModel::STATUS_OPEN, KermesseModel::STATUS_CLOSED], true)
+            || $kermesse['public_slug'] !== $publicSlug) {
             return null;
         }
 

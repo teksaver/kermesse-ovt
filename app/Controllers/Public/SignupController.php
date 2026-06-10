@@ -31,7 +31,7 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
-        if ($summary['kermesseStatus'] === 'closed') {
+        if ($summary['kermesseStatus'] === KermesseModel::STATUS_CLOSED) {
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
@@ -101,28 +101,32 @@ class SignupController extends BaseController
             ]);
         }
 
-        session()->setFlashdata('signup_success', true);
+        // Scoped to the exact slot signed up: confirm() must not render a confirmation
+        // for any other slug/slot that happens to share the session.
+        session()->setFlashdata('signup_success', [
+            'slug'         => $publicSlug,
+            'slotId'       => (int) $slotId,
+            'kermesseName' => (string) $summary['kermesseName'],
+        ]);
+
         return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
     }
 
     public function confirm(string $publicSlug, string $slotId): mixed
     {
-        if (! session()->getFlashdata('signup_success')) {
+        $flash = session()->getFlashdata('signup_success');
+
+        if (! is_array($flash)
+            || ($flash['slug'] ?? null) !== $publicSlug
+            || ($flash['slotId'] ?? null) !== (int) $slotId) {
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
-        $summary = (new PublicVolunteerPageService())->buildSlotSummary($publicSlug, (int) $slotId);
-
-        if ($summary === null) {
-            return $this->neutral404();
-        }
-
-        if ($summary['kermesseStatus'] === 'closed') {
-            return redirect()->to(site_url("k/{$publicSlug}"));
-        }
-
+        // Rendered from the flash captured at submit time: the signup is already
+        // recorded, so the confirmation must survive the slot ending or the kermesse
+        // closing between the POST and this redirect.
         return view('public/signup_confirmation', [
-            'kermesseName' => $summary['kermesseName'],
+            'kermesseName' => (string) ($flash['kermesseName'] ?? ''),
             'publicSlug'   => $publicSlug,
         ]);
     }

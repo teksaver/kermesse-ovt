@@ -25,7 +25,7 @@
         </div>
 
         <div class="signup-back">
-            <a href="<?= site_url('k/' . esc($publicSlug, 'attr')) ?>" class="back-link">← Retour aux créneaux</a>
+            <a href="<?= esc(site_url('k/' . $publicSlug), 'attr') ?>" class="back-link">← Retour aux créneaux</a>
         </div>
 
     </section>

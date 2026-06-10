@@ -10,11 +10,19 @@ use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
- * Handles volunteer signup: validates kermesse state, slot capacity, duplicate and overlap
- * constraints, then finds or creates the volunteer and inserts the signup row.
- * All writes and constraint checks are wrapped in a single transaction.
+ * Handles volunteer signup: validates kermesse state, slot state and capacity,
+ * duplicate and overlap constraints, then finds or creates the volunteer and
+ * inserts the signup row. All constraint checks and writes run in one manual
+ * transaction on a single connection.
  *
  * INVARIANT: email is normalized (lowercase + trim) before any DB lookup or insert.
+ *
+ * CONCURRENCY: the slot row is locked FOR UPDATE before the first plain read so the
+ * capacity count sees the latest committed state; the volunteer row is locked to
+ * serialize same-volunteer submissions; the duplicate/overlap checks are locking
+ * reads because plain reads under REPEATABLE READ would reuse this transaction's
+ * stale snapshot. Cross-volunteer lock contention can surface as a deadlock victim:
+ * MariaDB rolls one transaction back, which we map to transaction_failed (retryable).
  *
  * BOUNDARY: this service owns all signup state mutations and all business invariants.
  * Controllers must never call VolunteerModel or SignupModel insert/update directly.
@@ -32,8 +40,9 @@ class SignupService
     /**
      * Validate all business invariants and, if satisfied, insert the signup.
      *
-     * Failure codes: signups_not_open | slot_full | duplicate_signup | overlap_conflict
-     *                volunteer_insert_failed | signup_insert_failed | transaction_failed
+     * Failure codes: signups_not_open | slot_full | slot_unavailable | duplicate_signup
+     *                overlap_conflict | volunteer_insert_failed | signup_insert_failed
+     *                transaction_failed
      *
      * @param array<string, mixed> $fields  Validated: first_name, last_name, email, phone
      */
@@ -45,81 +54,101 @@ class SignupService
             return SignupResult::failure('volunteer_insert_failed');
         }
 
-        // Pre-transaction: kermesse must be open (defense-in-depth; form URL already guards this)
+        // Pre-transaction: kermesse must be open (defense-in-depth; the form URL already
+        // guards this — accepted trade-off, see story 3.4 review: the row is not re-read
+        // under lock, so an admin closing concurrently may race one last signup through)
         $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
-        if ($kermesse === null || $kermesse['status'] !== 'open') {
+        if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
             return SignupResult::failure('signups_not_open');
         }
 
         $db = $this->db ?? db_connect();
-        $db->transStart();
+        $this->assertSharedConnection($db);
 
-        // Lock the slot row so concurrent transactions serialize on the capacity check
+        // Manual transaction mode: the recoverable duplicate-key failure on the volunteer
+        // insert race must not doom the whole transaction, which transStart()'s automatic
+        // status tracking would do.
+        if (! $db->transBegin()) {
+            return SignupResult::failure('transaction_failed');
+        }
+
+        try {
+            $result = $this->signupWithinTransaction($db, $slotId, $kermesseId, $email, $fields);
+        } catch (DatabaseException $e) {
+            $db->transRollback();
+            log_message('error', 'Signup transaction aborted: ' . $e->getMessage());
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        if (! $result->success) {
+            $db->transRollback();
+
+            return $result;
+        }
+
+        if (! $db->transCommit()) {
+            $db->transRollback();
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Run the invariant checks and inserts. Never commits or rolls back: the caller
+     * owns the transaction boundary (single rollback point, exception-safe).
+     */
+    private function signupWithinTransaction(
+        ConnectionInterface $db,
+        int $slotId,
+        int $kermesseId,
+        string $email,
+        array $fields,
+    ): SignupResult {
+        // Lock the slot row so concurrent transactions serialize on the capacity check;
+        // the count below is then this transaction's first plain read and its snapshot
+        // includes every signup committed before the lock was granted.
         $slot = ($this->slotModel ?? model(SlotModel::class))->findForCapacityCheck($slotId, $db);
         if ($slot === null) {
-            $db->transRollback();
             return SignupResult::failure('slot_full');
         }
 
-        $activeCount = $this->signupModel->countActiveForSlot($slotId);
+        // The public summary already filters inactive/finished slots, but the service
+        // owns the invariant: direct callers and admin-deactivation races must not
+        // bypass it.
+        if (($slot['status'] ?? null) !== SlotModel::STATUS_ACTIVE
+            || (string) $slot['ends_at'] < date('Y-m-d H:i:s')) {
+            return SignupResult::failure('slot_unavailable');
+        }
+
+        $activeCount = $this->signupModel->countActiveForSlot($slotId, $db);
         if ($activeCount >= (int) $slot['capacity']) {
-            $db->transRollback();
             return SignupResult::failure('slot_full');
         }
 
-        // Find or create the volunteer profile for this kermesse
-        $volunteerId = null;
-        $existing    = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email);
-
-        if ($existing !== null) {
-            $volunteerId = (int) $existing['id'];
-        } else {
-            try {
-                $inserted = $this->volunteerModel->skipValidation(true)->insert([
-                    'kermesse_id' => $kermesseId,
-                    'first_name'  => (string) ($fields['first_name'] ?? ''),
-                    'last_name'   => (string) ($fields['last_name'] ?? ''),
-                    'email'       => $email,
-                    'phone'       => (string) ($fields['phone'] ?? ''),
-                ]);
-
-                if ($inserted !== false) {
-                    $volunteerId = (int) $inserted;
-                }
-            } catch (DatabaseException $e) {
-                // Handled in fallback below
-            }
-
-            if ($volunteerId === null) {
-                // Race condition fallback: another request may have inserted the same volunteer
-                $existing = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email);
-                if ($existing !== null) {
-                    $volunteerId = (int) $existing['id'];
-                } else {
-                    $db->transRollback();
-                    return SignupResult::failure('volunteer_insert_failed');
-                }
-            }
+        $volunteerId = $this->findOrCreateVolunteer($db, $kermesseId, $email, $fields);
+        if ($volunteerId === null) {
+            return SignupResult::failure('volunteer_insert_failed');
         }
 
-        // Lock the volunteer row to serialize concurrent overlap checks for the same person
+        // Lock the volunteer row so same-volunteer submissions serialize before the
+        // duplicate/overlap checks (which are locking reads — see SignupModel).
         $this->volunteerModel->lockForOverlapCheck($volunteerId, $db);
 
-        // Duplicate check: same volunteer already signed up for this slot
-        if ($this->signupModel->findActiveByVolunteerAndSlot($volunteerId, $slotId) !== null) {
-            $db->transRollback();
+        if ($this->signupModel->findActiveByVolunteerAndSlot($volunteerId, $slotId, $db) !== null) {
             return SignupResult::failure('duplicate_signup');
         }
 
-        // Overlap check: same volunteer has an active signup on a slot with overlapping hours
         $overlap = $this->signupModel->findOverlappingActiveByVolunteer(
             $volunteerId,
             (string) $slot['starts_at'],
             (string) $slot['ends_at'],
             $slotId,
+            $db,
         );
         if ($overlap !== null) {
-            $db->transRollback();
             return SignupResult::failure('overlap_conflict', [
                 'conflicting_starts_at' => $overlap['starts_at'] ?? null,
                 'conflicting_ends_at'   => $overlap['ends_at'] ?? null,
@@ -129,20 +158,65 @@ class SignupService
         $signupId = $this->signupModel->skipValidation(true)->insert([
             'slot_id'      => $slotId,
             'volunteer_id' => $volunteerId,
-            'status'       => 'active',
+            'status'       => SignupModel::STATUS_ACTIVE,
         ]);
 
         if ($signupId === false) {
-            $db->transRollback();
             return SignupResult::failure('signup_insert_failed');
         }
 
-        $db->transComplete();
+        return SignupResult::success((int) $signupId, $volunteerId);
+    }
 
-        if (! $db->transStatus()) {
-            return SignupResult::failure('transaction_failed');
+    /**
+     * Find the volunteer for (kermesse, normalized email) or create it, surviving the
+     * concurrent-creation race on the uq_volunteers_kermesse_email unique key.
+     */
+    private function findOrCreateVolunteer(ConnectionInterface $db, int $kermesseId, string $email, array $fields): ?int
+    {
+        $existing = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email, $db);
+        if ($existing !== null) {
+            return (int) $existing['id'];
         }
 
-        return SignupResult::success((int) $signupId, $volunteerId);
+        try {
+            $inserted = $this->volunteerModel->skipValidation(true)->insert([
+                'kermesse_id' => $kermesseId,
+                'first_name'  => (string) ($fields['first_name'] ?? ''),
+                'last_name'   => (string) ($fields['last_name'] ?? ''),
+                'email'       => $email,
+                'phone'       => (string) ($fields['phone'] ?? ''),
+            ]);
+
+            if ($inserted !== false) {
+                return (int) $inserted;
+            }
+        } catch (DatabaseException $e) {
+            // A concurrent request won the insert race on the unique key. Manual
+            // transaction mode keeps this transaction usable; fall through to the
+            // locking re-read, which sees the competitor's committed row.
+            log_message('info', 'Volunteer insert race, falling back to reuse: ' . $e->getMessage());
+        }
+
+        $existing = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email, $db, true);
+
+        return $existing !== null ? (int) $existing['id'] : null;
+    }
+
+    /**
+     * Locks live on $db; a model bound to a different connection would run its reads
+     * and writes outside the transaction and silently void every invariant. Fail fast
+     * instead — this is a wiring error, not a runtime condition.
+     */
+    private function assertSharedConnection(ConnectionInterface $db): void
+    {
+        foreach ([$this->volunteerModel, $this->signupModel] as $model) {
+            $modelDb = $model->db ?? null;
+            if ($modelDb instanceof ConnectionInterface && $modelDb !== $db) {
+                throw new DatabaseException(
+                    'SignupService models must share the transaction connection.'
+                );
+            }
+        }
     }
 }

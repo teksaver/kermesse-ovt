@@ -7,6 +7,11 @@ use CodeIgniter\Model;
 
 class SlotModel extends Model
 {
+    use LockingReadsTrait;
+
+    public const STATUS_ACTIVE      = 'active';
+    public const STATUS_DEACTIVATED = 'deactivated';
+
     protected $table      = 'slots';
     protected $primaryKey = 'id';
     protected $returnType = 'array';
@@ -30,10 +35,9 @@ class SlotModel extends Model
     public function findForCapacityCheck(int $slotId, ConnectionInterface $db): ?array
     {
         $table = $db->prefixTable('slots');
-        $lock  = (property_exists($db, 'DBDriver') && $db->DBDriver === 'MySQLi') ? ' FOR UPDATE' : '';
 
         $result = $db->query(
-            "SELECT id, capacity, starts_at, ends_at FROM {$table} WHERE id = ?{$lock}",
+            "SELECT id, capacity, status, starts_at, ends_at FROM {$table} WHERE id = ?" . $this->forUpdateSuffix($db),
             [$slotId],
         );
 
@@ -53,7 +57,7 @@ class SlotModel extends Model
         }
 
         return $this->whereIn('stand_id', $standIds)
-            ->where('status', 'active')
+            ->where('status', self::STATUS_ACTIVE)
             ->orderBy('stand_id', 'ASC')
             ->orderBy('starts_at', 'ASC')
             ->orderBy('id', 'ASC')

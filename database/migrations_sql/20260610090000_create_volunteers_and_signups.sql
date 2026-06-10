@@ -30,8 +30,9 @@ CREATE TABLE IF NOT EXISTS `volunteers` (
 -- FK instead of denormalized volunteer_name. Status tracks
 -- lifecycle; deleted_at supports soft deletes.
 -- Active = status NOT IN ('cancelled','deactivated','deleted') AND deleted_at IS NULL.
+-- No DROP here: the migration runner retries any version not recorded as success,
+-- so a destructive statement would wipe production signups on re-application.
 -- -----------------------------------------------------
-DROP TABLE IF EXISTS `signups`;
 CREATE TABLE IF NOT EXISTS `signups` (
     `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `slot_id`      BIGINT UNSIGNED NOT NULL,
