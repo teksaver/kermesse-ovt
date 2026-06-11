@@ -4,6 +4,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
 require_once __DIR__ . '/../_support/TmpDirTrait.php';
 
 /**
@@ -20,15 +21,11 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
     use TmpDirTrait;
 
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
     private ?string $tmpDir = null;
-
-    private bool $originalOpsMigrationProductionOnly;
-    private string $originalOpsMigrationHmacSecret;
-    private int $originalOpsMigrationAllowedTimestampSkew;
-    private string $originalOpsMigrationPath;
+    private \Config\Kermesse $originalConfig;
 
     protected $DBGroup = 'tests';
 
@@ -50,22 +47,18 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
         $this->bootstrapSchemaVersions();
         $db->query('DELETE FROM `schema_versions`');
 
-        $this->originalOpsMigrationProductionOnly       = config('Kermesse')->opsMigrationProductionOnly;
-        $this->originalOpsMigrationHmacSecret           = config('Kermesse')->opsMigrationHmacSecret;
-        $this->originalOpsMigrationAllowedTimestampSkew = config('Kermesse')->opsMigrationAllowedTimestampSkew;
-        $this->originalOpsMigrationPath                 = config('Kermesse')->opsMigrationPath;
+        $config = config('Kermesse');
+        $this->originalConfig = clone $config;
 
-        config('Kermesse')->opsMigrationProductionOnly       = false;
-        config('Kermesse')->opsMigrationHmacSecret           = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
     }
 
     protected function tearDown(): void
     {
-        config('Kermesse')->opsMigrationProductionOnly       = $this->originalOpsMigrationProductionOnly;
-        config('Kermesse')->opsMigrationHmacSecret           = $this->originalOpsMigrationHmacSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = $this->originalOpsMigrationAllowedTimestampSkew;
-        config('Kermesse')->opsMigrationPath                 = $this->originalOpsMigrationPath;
+        $config = config('Kermesse');
+        foreach (get_object_vars($this->originalConfig) as $key => $value) {
+            $config->$key = $value;
+        }
 
         if ($this->tmpDir !== null) {
             $this->removeDirRecursive($this->tmpDir);
@@ -81,7 +74,7 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
         mkdir($this->tmpDir, 0755, true);
         config('Kermesse')->opsMigrationPath = $this->tmpDir;
 
-        $result = $this->withHeaders($this->buildValidHeaders())
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/migrate/status', ''))
             ->withBody('')
             ->post('ops/migrate/status');
 
@@ -106,7 +99,7 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
 
         config('Kermesse')->opsMigrationPath = $this->tmpDir;
 
-        $result = $this->withHeaders($this->buildValidHeaders())
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/migrate/status', ''))
             ->withBody('')
             ->post('ops/migrate/status');
 
@@ -115,24 +108,6 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
 
         $this->assertTrue($json['ok']);
         $this->assertContains('20260601000000_pending_test', $json['pending']);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function buildValidHeaders(string $body = ''): array
-    {
-        $timestamp = (string) time();
-        $nonce     = bin2hex(random_bytes(16));
-        $bodyHash  = hash('sha256', $body);
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/migrate/status', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        return [
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ];
     }
 
     private function bootstrapSchemaVersions(): void

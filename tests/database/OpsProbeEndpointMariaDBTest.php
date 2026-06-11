@@ -4,6 +4,8 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+
 /**
  * MariaDB-backed feature tests for POST /ops/probe.
  *
@@ -17,8 +19,8 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
 
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
     private \Config\Kermesse $originalConfig;
 
     protected $DBGroup = 'tests';
@@ -42,9 +44,7 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         $config = config('Kermesse');
         $this->originalConfig = clone $config;
 
-        $config->opsMigrationProductionOnly      = false;
-        $config->opsMigrationHmacSecret          = $this->testSecret;
-        $config->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
     }
 
     protected function tearDown(): void
@@ -56,30 +56,11 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
         }
     }
 
-    /**
-     * Build valid HMAC headers signing the probe route path.
-     *
-     * @return array<string, string>
-     */
-    private function buildValidHeaders(string $nonce, string $body = ''): array
-    {
-        $timestamp = (string) time();
-        $bodyHash  = hash('sha256', $body);
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/probe', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        return [
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ];
-    }
-
     public function testEnabledProbeReturnsRuntimeFacts(): void
     {
         config('Kermesse')->opsProbeEnabled = true;
 
-        $headers = $this->buildValidHeaders('probe-enabled-nonce');
+        $headers = $this->buildOpsHeaders('ops/probe', '', 'probe-enabled-nonce');
 
         $result = $this->withBody('')
             ->withHeaders($headers)
@@ -129,7 +110,7 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
     {
         config('Kermesse')->opsProbeEnabled = false;
 
-        $headers = $this->buildValidHeaders('probe-disabled-nonce');
+        $headers = $this->buildOpsHeaders('ops/probe', '', 'probe-disabled-nonce');
 
         $result = $this->withBody('')
             ->withHeaders($headers)
