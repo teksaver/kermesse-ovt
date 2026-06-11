@@ -1,12 +1,10 @@
--- Migration: 20260602161500_initial_schema
--- Description: Create initial Kermesse schema with core tables.
+-- Migration: 000_initial_schema
+-- Description: Unified greenfield schema for Kermesse.
 -- Engine: InnoDB | Charset: utf8mb4 | Collation: utf8mb4_general_ci
 
 -- -----------------------------------------------------
 -- Table: schema_versions
--- Tracks applied SQL migrations (version, checksum, status).
--- Bootstrap table: uses IF NOT EXISTS so the runner can
--- self-initialise on a blank database.
+-- Bootstrap table: runner self-initialises on blank DB.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `schema_versions` (
     `id`                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -25,44 +23,45 @@ CREATE TABLE IF NOT EXISTS `schema_versions` (
 
 -- -----------------------------------------------------
 -- Table: ops_nonces
--- Stores hashed nonces for anti-replay protection on
--- ops endpoints. Bootstrap table: uses IF NOT EXISTS.
+-- Anti-replay tokens for ops endpoints (10-min TTL).
+-- No AUTO_INCREMENT id: nonce_hash is the natural PK.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `ops_nonces` (
-    `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `nonce_hash`   VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of the raw nonce',
-    `expires_at`   DATETIME        NOT NULL,
-    `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_ops_nonces_hash` (`nonce_hash`),
-    KEY `idx_ops_nonces_expires` (`expires_at`)
+    `nonce_hash`   VARCHAR(64)  NOT NULL,
+    `expires_at`   DATETIME     NOT NULL,
+    `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`nonce_hash`),
+    INDEX `idx_ops_nonces_expires` (`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- -----------------------------------------------------
--- Table: owners
--- Owner identity (MVP): email-based, explicit status.
+-- Table: users
+-- Global identity: one record per email address.
+-- Replaces the pre-pivot separate owners + volunteers tables.
+-- No passwords: all access via Magic Link.
 -- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `owners` (
-    `id`                    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `email`                 VARCHAR(320)    NOT NULL COMMENT 'Normalised email address',
-    `email_hash`            VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of lower-cased trimmed email',
-    `display_name`          VARCHAR(255)    NOT NULL DEFAULT '',
-    `status`                ENUM('owner_pending','active') NOT NULL DEFAULT 'owner_pending',
-    `email_verified_at`     DATETIME        NULL     DEFAULT NULL,
-    `created_at`            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+CREATE TABLE IF NOT EXISTS `users` (
+    `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `email`      VARCHAR(320)    NOT NULL COMMENT 'Normalised (lowercase + trim)',
+    `email_hash` VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of normalised email',
+    `first_name` VARCHAR(100)    NOT NULL DEFAULT '',
+    `last_name`  VARCHAR(100)    NOT NULL DEFAULT '',
+    `phone`      VARCHAR(30)     NOT NULL DEFAULT '',
+    `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_owners_email_hash` (`email_hash`),
-    KEY `idx_owners_status` (`status`)
+    UNIQUE KEY `uq_users_email_hash` (`email_hash`),
+    KEY `idx_users_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- -----------------------------------------------------
 -- Table: kermesses
--- Event created by an owner.
+-- Event created by a user (creator gets Owner role in kermesse_user_roles).
+-- created_by references users.id.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `kermesses` (
     `id`                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `owner_id`          BIGINT UNSIGNED NOT NULL,
+    `created_by`        BIGINT UNSIGNED NOT NULL COMMENT 'User who created this kermesse (Owner)',
     `public_slug`       VARCHAR(255)    NOT NULL,
     `name`              VARCHAR(255)    NOT NULL,
     `event_date`        DATE            NULL     DEFAULT NULL,
@@ -74,14 +73,104 @@ CREATE TABLE IF NOT EXISTS `kermesses` (
     `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_kermesses_slug` (`public_slug`),
-    KEY `idx_kermesses_owner` (`owner_id`),
+    KEY `idx_kermesses_creator` (`created_by`),
     KEY `idx_kermesses_status` (`status`),
-    CONSTRAINT `fk_kermesses_owner` FOREIGN KEY (`owner_id`) REFERENCES `owners` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT `fk_kermesses_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- -----------------------------------------------------
+-- Table: kermesse_user_roles
+-- Per-kermesse RBAC: Owner, Admin, Gestionnaire, Bénévole.
+-- One row per (kermesse_id, user_id) pair.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `kermesse_user_roles` (
+    `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `kermesse_id` BIGINT UNSIGNED NOT NULL,
+    `user_id`     BIGINT UNSIGNED NOT NULL,
+    `role`        ENUM('owner','admin','gestionnaire','benevole') NOT NULL,
+    `invited_by`  BIGINT UNSIGNED NULL     DEFAULT NULL COMMENT 'User who granted this role (NULL for creator)',
+    `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_role_per_kermesse` (`kermesse_id`, `user_id`),
+    KEY `idx_roles_user` (`user_id`),
+    CONSTRAINT `fk_roles_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `fk_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `fk_roles_inviter` FOREIGN KEY (`invited_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- -----------------------------------------------------
+-- Table: access_tokens
+-- Scoped, hashed, single-use Magic Link and invitation tokens.
+-- token_type: magic_link (universal login) | role_invitation | signup_management
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `access_tokens` (
+    `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `token_hash`  VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of raw token',
+    `token_type`  ENUM('magic_link','role_invitation','signup_management') NOT NULL,
+    `user_id`     BIGINT UNSIGNED NULL     DEFAULT NULL,
+    `kermesse_id` BIGINT UNSIGNED NULL     DEFAULT NULL,
+    `email`       VARCHAR(320)    NULL     DEFAULT NULL COMMENT 'Target email for delivery',
+    `expires_at`  DATETIME        NOT NULL,
+    `used_at`     DATETIME        NULL     DEFAULT NULL,
+    `revoked_at`  DATETIME        NULL     DEFAULT NULL,
+    `created_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_access_tokens_hash` (`token_hash`),
+    KEY `idx_access_tokens_type` (`token_type`),
+    KEY `idx_access_tokens_user` (`user_id`),
+    KEY `idx_access_tokens_kermesse` (`kermesse_id`),
+    KEY `idx_access_tokens_expires` (`expires_at`),
+    CONSTRAINT `fk_access_tokens_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT `fk_access_tokens_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- -----------------------------------------------------
+-- Table: email_events
+-- Records every email sending attempt and outcome.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `email_events` (
+    `id`               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `event_type`       VARCHAR(50)     NOT NULL,
+    `status`           ENUM('queued','sent','failed') NOT NULL DEFAULT 'queued',
+    `recipient_email`  VARCHAR(320)    NOT NULL,
+    `recipient_hash`   VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of normalised recipient email',
+    `error_message`    TEXT            NULL     DEFAULT NULL,
+    `metadata`         JSON            NULL     DEFAULT NULL,
+    `created_at`       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_email_events_type` (`event_type`),
+    KEY `idx_email_events_status` (`status`),
+    KEY `idx_email_events_recipient` (`recipient_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- -----------------------------------------------------
+-- Table: profile_divergences
+-- Tracks when a public signup submits different first_name/last_name/phone
+-- than the user's stored profile. Resolved via Story 3.6 (profile resolution).
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `profile_divergences` (
+    `id`                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id`              BIGINT UNSIGNED NOT NULL,
+    `kermesse_id`          BIGINT UNSIGNED NOT NULL,
+    `signup_id`            BIGINT UNSIGNED NULL     DEFAULT NULL,
+    `submitted_first_name` VARCHAR(100)    NOT NULL,
+    `submitted_last_name`  VARCHAR(100)    NOT NULL,
+    `submitted_phone`      VARCHAR(30)     NOT NULL DEFAULT '',
+    `resolved_at`          DATETIME        NULL     DEFAULT NULL,
+    `created_at`           DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`           DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_divergences_user` (`user_id`),
+    KEY `idx_divergences_unresolved` (`user_id`, `resolved_at`),
+    CONSTRAINT `fk_divergences_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT `fk_divergences_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- -----------------------------------------------------
 -- Table: stands
--- Post-initial schema reference for Story 2.2.
 -- Stands belong to a kermesse and active names are unique
 -- per kermesse using a generated normalized key.
 -- -----------------------------------------------------
@@ -105,7 +194,6 @@ CREATE TABLE IF NOT EXISTS `stands` (
 
 -- -----------------------------------------------------
 -- Table: slots
--- Post-initial schema reference for Story 2.4.
 -- Time slots for a stand, with capacity.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `slots` (
@@ -124,89 +212,22 @@ CREATE TABLE IF NOT EXISTS `slots` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- -----------------------------------------------------
--- Table: access_tokens
--- Hashed tokens only — never store raw tokens.
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `access_tokens` (
-    `id`             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `token_hash`     VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of the raw token',
-    `token_type`     ENUM('owner_validation','owner_login','volunteer_management') NOT NULL,
-    `owner_id`       BIGINT UNSIGNED NULL     DEFAULT NULL,
-    `kermesse_id`    BIGINT UNSIGNED NULL     DEFAULT NULL,
-    `email`          VARCHAR(320)    NULL     DEFAULT NULL COMMENT 'Target email for token delivery',
-    `expires_at`     DATETIME        NOT NULL,
-    `used_at`        DATETIME        NULL     DEFAULT NULL,
-    `revoked_at`     DATETIME        NULL     DEFAULT NULL,
-    `created_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_access_tokens_hash` (`token_hash`),
-    KEY `idx_access_tokens_type` (`token_type`),
-    KEY `idx_access_tokens_owner` (`owner_id`),
-    KEY `idx_access_tokens_kermesse` (`kermesse_id`),
-    KEY `idx_access_tokens_expires` (`expires_at`),
-    CONSTRAINT `fk_access_tokens_owner` FOREIGN KEY (`owner_id`) REFERENCES `owners` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT `fk_access_tokens_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- -----------------------------------------------------
--- Table: volunteers
--- One profile per (kermesse, email). Email stored normalized
--- (lowercase + trim) so casing variants share the same identity.
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `volunteers` (
-    `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `kermesse_id`  BIGINT UNSIGNED NOT NULL,
-    `first_name`   VARCHAR(100)    NOT NULL,
-    `last_name`    VARCHAR(100)    NOT NULL,
-    `email`        VARCHAR(254)    NOT NULL COMMENT 'Normalized: lowercase + trim',
-    `phone`        VARCHAR(30)     NOT NULL DEFAULT '',
-    `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_volunteers_kermesse_email` (`kermesse_id`, `email`),
-    KEY `idx_volunteers_kermesse` (`kermesse_id`),
-    CONSTRAINT `fk_volunteers_kermesse` FOREIGN KEY (`kermesse_id`) REFERENCES `kermesses` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- -----------------------------------------------------
 -- Table: signups
--- One row per volunteer-slot inscription. volunteer_id FK
--- links to the volunteer profile. Active signups counted via
--- status NOT IN ('cancelled','deactivated','deleted').
+-- One row per user-slot inscription.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `signups` (
-    `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `slot_id`      BIGINT UNSIGNED NOT NULL,
-    `volunteer_id` BIGINT UNSIGNED NOT NULL,
-    `status`       ENUM('active','cancelled','deactivated','deleted') NOT NULL DEFAULT 'active',
-    `deleted_at`   DATETIME        NULL     DEFAULT NULL,
-    `created_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `id`         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `slot_id`    BIGINT UNSIGNED NOT NULL,
+    `user_id`    BIGINT UNSIGNED NOT NULL,
+    `status`     ENUM('active','cancelled','deactivated','deleted') NOT NULL DEFAULT 'active',
+    `deleted_at` DATETIME        NULL     DEFAULT NULL,
+    `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_signups_user_slot` (`user_id`, `slot_id`),
     KEY `idx_signups_slot` (`slot_id`),
-    KEY `idx_signups_volunteer` (`volunteer_id`),
+    KEY `idx_signups_user` (`user_id`),
     KEY `idx_signups_status` (`status`),
     CONSTRAINT `fk_signups_slot` FOREIGN KEY (`slot_id`) REFERENCES `slots` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT `fk_signups_volunteer` FOREIGN KEY (`volunteer_id`) REFERENCES `volunteers` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- -----------------------------------------------------
--- Table: email_events
--- Tracks email sending attempts and outcomes.
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `email_events` (
-    `id`                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `event_type`        VARCHAR(50)     NOT NULL COMMENT 'E.g. owner_validation, owner_login',
-    `status`            ENUM('queued','sent','failed') NOT NULL DEFAULT 'queued',
-    `recipient_email`   VARCHAR(320)    NOT NULL,
-    `recipient_hash`    VARCHAR(64)     NOT NULL COMMENT 'SHA-256 hex of lower-cased trimmed recipient email',
-    `error_message`     TEXT            NULL     DEFAULT NULL,
-    `metadata`          JSON            NULL     DEFAULT NULL,
-    `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    KEY `idx_email_events_type` (`event_type`),
-    KEY `idx_email_events_status` (`status`),
-    KEY `idx_email_events_recipient` (`recipient_hash`)
+    CONSTRAINT `fk_signups_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

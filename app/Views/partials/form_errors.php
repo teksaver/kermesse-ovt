@@ -13,10 +13,13 @@ if (empty($errors)) return;
 <div class="form-error-banner" role="alert">
     <?= esc($errors['_service']) ?>
 </div>
-<?php else: ?>
+<?php endif; ?>
+<?php if (count($errors) > (isset($errors['_service']) ? 1 : 0)): ?>
 <ul class="form-error-list" role="alert">
     <?php foreach ($errors as $field => $msg): ?>
-    <li class="form-error-list__item"><?= esc($msg) ?></li>
+        <?php if ($field !== '_service'): ?>
+        <li class="form-error-list__item"><?= esc($msg) ?></li>
+        <?php endif; ?>
     <?php endforeach; ?>
 </ul>
 <?php endif; ?>

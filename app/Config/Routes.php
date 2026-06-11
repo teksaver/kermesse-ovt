@@ -27,7 +27,7 @@ $routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardCont
 // ---------------------------------------------------------------------------
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
-$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'auth']);
+$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
 
 // ---------------------------------------------------------------------------
 // Public volunteer page & signup (Stories 3.1–3.5)

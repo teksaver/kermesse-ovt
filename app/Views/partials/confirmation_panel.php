@@ -11,6 +11,6 @@
 <div class="confirmation-panel" role="region" aria-label="Confirmation">
     <p class="confirmation-panel__message"><?= esc($message ?? '') ?></p>
     <?php if (!empty($action)): ?>
-    <a href="<?= esc($action) ?>" class="btn btn--primary"><?= esc($label ?? 'Confirmer') ?></a>
+    <a href="<?= esc($action, 'url') ?>" class="btn btn--primary"><?= esc($label ?? 'Confirmer') ?></a>
     <?php endif; ?>
 </div>

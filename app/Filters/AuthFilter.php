@@ -17,7 +17,14 @@ class AuthFilter implements FilterInterface
      */
     public function before(RequestInterface $request, $arguments = null)
     {
-        if (! session()->has('user_id')) {
+        $userId = session()->get('user_id');
+        if (! $userId) {
+            return redirect()->to(site_url('auth/login'));
+        }
+
+        $userModel = new \App\Models\UserModel();
+        if (! $userModel->find($userId)) {
+            session()->remove('user_id');
             return redirect()->to(site_url('auth/login'));
         }
 
