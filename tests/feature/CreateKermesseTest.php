@@ -36,6 +36,7 @@ final class CreateKermesseTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_access_tokens');
@@ -87,6 +88,17 @@ final class CreateKermesseTest extends CIUnitTestCase
                 invited_by   INTEGER,
                 created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_stands (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id    INTEGER NOT NULL,
+                name           TEXT    NOT NULL,
+                display_order  INTEGER NOT NULL DEFAULT 0,
+                status         TEXT    NOT NULL DEFAULT "active",
+                created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('

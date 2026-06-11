@@ -4,6 +4,7 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\StandModel;
 
 /**
  * Kermesse admin dashboard: stands, slots, lifecycle, participants.
@@ -21,9 +22,12 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
+        $stands = model(StandModel::class)->getActiveForKermesse($id);
+
         return view('kermesse/dashboard', [
             'title'    => esc($kermesse['name']),
             'kermesse' => $kermesse,
+            'stands'   => $stands,
         ]);
     }
 }
