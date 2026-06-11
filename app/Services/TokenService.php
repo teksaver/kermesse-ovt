@@ -229,6 +229,64 @@ class TokenService
         return new IssuedToken($rawToken, (int) $tokenId);
     }
 
+    /**
+     * Validate a raw magic_link token.
+     *
+     * Hashes the raw token and looks it up in the DB.
+     * Does NOT consume the token — call markMagicLinkTokenAsUsed after validating.
+     */
+    public function validateMagicLink(string $rawToken): TokenValidationResult
+    {
+        $hash  = hash('sha256', $rawToken);
+        $token = $this->tokenModel
+            ->where('token_hash', $hash)
+            ->where('token_type', 'magic_link')
+            ->first();
+
+        if ($token === null) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN);
+        }
+
+        if ($token['revoked_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::REVOKED_TOKEN, $token);
+        }
+
+        if ($token['used_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::USED_TOKEN, $token);
+        }
+
+        $expiresAt = strtotime((string) $token['expires_at']);
+        if ($expiresAt === false) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN, $token);
+        }
+
+        if ($expiresAt <= time()) {
+            return new TokenValidationResult(TokenValidationResult::EXPIRED_TOKEN, $token);
+        }
+
+        return new TokenValidationResult(TokenValidationResult::VALID, $token);
+    }
+
+    /**
+     * Mark a magic_link token as used (atomic: WHERE token_type + used_at IS NULL + not expired).
+     *
+     * Returns false if the row was already claimed (concurrent request), in which
+     * case the caller must abort session creation and show the neutral error view.
+     */
+    public function markMagicLinkTokenAsUsed(int $tokenId): bool
+    {
+        $this->tokenModel
+            ->where('id', $tokenId)
+            ->where('token_type', 'magic_link')
+            ->where('used_at', null)
+            ->where('revoked_at', null)
+            ->where('expires_at >', date('Y-m-d H:i:s'))
+            ->set(['used_at' => date('Y-m-d H:i:s')])
+            ->update();
+
+        return $this->tokenModel->affectedRows() === 1;
+    }
+
     // ------------------------------------------------------------------
     // owner_login token methods (Story 1.6)
     // ------------------------------------------------------------------

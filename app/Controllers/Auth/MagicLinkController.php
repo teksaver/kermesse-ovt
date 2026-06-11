@@ -3,6 +3,7 @@
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
+use App\Models\UserModel;
 use App\Services\EmailService;
 use App\Services\TokenService;
 
@@ -52,7 +53,34 @@ class MagicLinkController extends BaseController
     /** GET /auth/magic-link/{token} — valide le token et crée la session (Story 1.4) */
     public function consume(string $token): mixed
     {
-        // TODO: Story 1.4
+        $tokenService = new TokenService();
+        $result       = $tokenService->validateMagicLink($token);
+
+        if (! $result->isValid()) {
+            return view('auth/magic_link_invalid');
+        }
+
+        $tokenRow = $result->tokenRow;
+        $tokenId  = (int) $tokenRow['id'];
+        $email    = (string) $tokenRow['email'];
+
+        // Atomic single-use guard against concurrent claims
+        if (! $tokenService->markMagicLinkTokenAsUsed($tokenId)) {
+            return view('auth/magic_link_invalid');
+        }
+
+        $userId = (new UserModel())->findOrCreateByEmail($email);
+
+        if ($userId === null) {
+            log_message('error', 'MagicLink: findOrCreateByEmail returned null for token ' . $tokenId);
+            return view('auth/magic_link_invalid');
+        }
+
+        session()->set([
+            'user_id'      => $userId,
+            'is_logged_in' => true,
+        ]);
+
         return redirect()->to(site_url('/'));
     }
 }

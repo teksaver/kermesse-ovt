@@ -57,6 +57,50 @@ class UserModel extends Model
     }
 
     /**
+     * Find the global user by normalized email or create a minimal record.
+     *
+     * Email must already be normalized (lowercased, trimmed) before calling.
+     * Returns the user ID, or null if the DB is in an unrecoverable state.
+     */
+    public function findOrCreateByEmail(string $email): ?int
+    {
+        $emailHash = hash('sha256', $email);
+
+        $existing = $this->findByEmailHash($emailHash);
+        if ($existing !== null) {
+            return (int) $existing['id'];
+        }
+
+        try {
+            $inserted = $this->skipValidation(true)->insert([
+                'email'      => $email,
+                'email_hash' => $emailHash,
+                'first_name' => '',
+                'last_name'  => '',
+                'phone'      => '',
+            ]);
+            $this->skipValidation(false);
+
+            if ($inserted !== false) {
+                return (int) $inserted;
+            }
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            // Concurrent insert raced on the unique key — fall through to re-read.
+            if ($e->getCode() === 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
+                log_message('info', 'UserModel: concurrent email insert race, reusing existing row');
+                $this->skipValidation(false);
+            } else {
+                $this->skipValidation(false);
+                throw $e;
+            }
+        }
+
+        $existing = $this->findByEmailHash($emailHash);
+
+        return $existing !== null ? (int) $existing['id'] : null;
+    }
+
+    /**
      * Lock the user row to serialize concurrent overlap checks.
      */
     public function lockForOverlapCheck(int $userId, ConnectionInterface $db): void
