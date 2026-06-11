@@ -46,13 +46,13 @@ class KermesseLifecycleService
      *
      * @return self::RESULT_* result code
      */
-    public function open(int $kermesseId, int $ownerId): string
+    public function open(int $kermesseId, int $createdBy): string
     {
         if (! $this->canOpen($kermesseId)) {
             return self::RESULT_NOT_PUBLISHABLE;
         }
 
-        if (! $this->openIfPublishable($kermesseId, $ownerId)) {
+        if (! $this->openIfPublishable($kermesseId, $createdBy)) {
             return self::RESULT_NOT_PUBLISHABLE;
         }
 
@@ -65,25 +65,25 @@ class KermesseLifecycleService
      *
      * @return self::RESULT_* result code
      */
-    public function close(int $kermesseId, int $ownerId): string
+    public function close(int $kermesseId, int $createdBy): string
     {
-        if ($this->statusForOwner($kermesseId, $ownerId) !== 'open') {
+        if ($this->statusForOwner($kermesseId, $createdBy) !== 'open') {
             return self::RESULT_INVALID_TRANSITION;
         }
 
-        if (! $this->setStatus($kermesseId, $ownerId, 'closed', 'open')) {
+        if (! $this->setStatus($kermesseId, $createdBy, 'closed', 'open')) {
             return self::RESULT_FAILED;
         }
 
         return self::RESULT_SUCCESS;
     }
 
-    private function statusForOwner(int $kermesseId, int $ownerId): ?string
+    private function statusForOwner(int $kermesseId, int $createdBy): ?string
     {
         $row = db_connect()->table('kermesses')
             ->select('status')
             ->where('id', $kermesseId)
-            ->where('created_by', $ownerId)
+            ->where('created_by', $createdBy)
             ->get()
             ->getRowArray();
 
@@ -95,7 +95,7 @@ class KermesseLifecycleService
      * write tied to the current active stand/slot state, so stale UI cannot open
      * a kermesse after its last active slot was deactivated.
      */
-    private function openIfPublishable(int $kermesseId, int $ownerId): bool
+    private function openIfPublishable(int $kermesseId, int $createdBy): bool
     {
         $db         = db_connect();
         $kermesses = $db->prefixTable('kermesses');
@@ -117,7 +117,7 @@ class KermesseLifecycleService
                      AND {$stands}.status = ?
                    LIMIT 1
                )",
-            ['open', date('Y-m-d H:i:s'), $kermesseId, $ownerId, 'active', 'active']
+            ['open', date('Y-m-d H:i:s'), $kermesseId, $createdBy, 'active', 'active']
         );
 
         return $db->affectedRows() === 1;
@@ -128,12 +128,12 @@ class KermesseLifecycleService
      * top of the controller's authorization check, so a status change can never
      * leak across owners through the id alone.
      */
-    private function setStatus(int $kermesseId, int $ownerId, string $status, ?string $expectedStatus = null): bool
+    private function setStatus(int $kermesseId, int $createdBy, string $status, ?string $expectedStatus = null): bool
     {
         $db      = db_connect();
         $builder = $db->table('kermesses')
             ->where('id', $kermesseId)
-            ->where('created_by', $ownerId);
+            ->where('created_by', $createdBy);
 
         if ($expectedStatus !== null) {
             $builder->where('status', $expectedStatus);

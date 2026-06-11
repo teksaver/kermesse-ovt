@@ -43,10 +43,14 @@ class KermesseAdminController extends BaseController
         }
         unset($stand);
 
+        $roleService = new \App\Services\RoleService(model(\App\Models\UserRoleModel::class), model(\App\Models\UserModel::class));
+        $userRole    = $roleService->getRoleForUser($id, (int) session()->get('user_id'));
+
         return view('kermesse/dashboard', [
-            'title'    => esc($kermesse['name']),
-            'kermesse' => $kermesse,
-            'stands'   => $stands,
+            'title'              => esc($kermesse['name']),
+            'kermesse'           => $kermesse,
+            'stands'             => $stands,
+            'canManageLifecycle' => in_array($userRole, [\App\Models\UserRoleModel::ROLE_OWNER, \App\Models\UserRoleModel::ROLE_ADMIN], true),
         ]);
     }
 
@@ -86,7 +90,7 @@ class KermesseAdminController extends BaseController
         if ($result === KermesseLifecycleService::RESULT_SUCCESS) {
             session()->setFlashdata('success', 'La kermesse est fermée.');
         } else {
-            session()->setFlashdata('lifecycle_error', 'Impossible de fermer la kermesse dans son état actuel.');
+            session()->setFlashdata('lifecycle_error', KermesseLifecycleService::REASON_NOT_PUBLISHABLE);
         }
 
         return redirect()->to(site_url("kermesse/{$id}"));

@@ -339,4 +339,20 @@ final class ManageKermesseLifecycleTest extends CIUnitTestCase
         $this->assertContains($result->response()->getStatusCode(), [302, 403]);
         $this->assertSame('preparation', $this->currentStatus());
     }
+
+    public function testOpenInvalidKermesseReturns404(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/999/open");
+
+        $result->assertStatus(403);
+    }
+
+    public function testCloseInvalidKermesseReturns404(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/999/close");
+
+        $result->assertStatus(403);
+    }
 }

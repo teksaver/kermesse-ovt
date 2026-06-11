@@ -27,16 +27,18 @@
 
         <!-- Actions lifecycle (UX-DR17) -->
         <div class="kermesse-dashboard__lifecycle">
-            <?php if ($kermesse['status'] === 'open'): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
-            </form>
-            <?php else: ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
-            </form>
+            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+                <?php if ($kermesse['status'] === 'open'): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
+                </form>
+                <?php elseif ($kermesse['status'] === 'preparation'): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
+                </form>
+                <?php endif; ?>
             <?php endif; ?>
 
             <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
@@ -106,7 +108,8 @@
 
                         <form method="post"
                               action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/delete") ?>"
-                              class="stand-delete__form">
+                              class="stand-delete__form"
+                              onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>
                             <?php if ($requiresStrong): ?>
                             <div class="form-group">
@@ -137,7 +140,8 @@
                 <!-- Formulaire de renommage -->
                 <form method="post"
                       action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}") ?>"
-                      class="stands-list__rename-form">
+                      class="stands-list__rename-form"
+                      onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                     <?= csrf_field() ?>
                     <div class="form-group">
                         <label for="rename-stand-<?= $sid ?>" class="sr-only">
@@ -176,7 +180,8 @@
                         <!-- Formulaire de modification de créneau -->
                         <form method="post"
                               action="<?= site_url("kermesse/{$kermesse['id']}/slots/{$slotId}") ?>"
-                              class="slot-edit-form">
+                              class="slot-edit-form"
+                              onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>
                             <?php
                                 $isEditingThis = ($slotForm === 'edit' && $slotFormSlotId === $slotId);
@@ -237,7 +242,8 @@
                 <?php $isAddingHere = ($slotForm === 'add' && $slotFormStandId === $sid); ?>
                 <form method="post"
                       action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/slots") ?>"
-                      class="slot-add-form">
+                      class="slot-add-form"
+                      onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                     <?= csrf_field() ?>
                     <h4 class="slot-add-form__title">Ajouter un créneau</h4>
                     <div class="form-group">
@@ -292,7 +298,8 @@
         <!-- Formulaire d'ajout d'un stand -->
         <form method="post"
               action="<?= site_url("kermesse/{$kermesse['id']}/stands") ?>"
-              class="stand-add-form">
+              class="stand-add-form"
+              onsubmit="this.querySelector('button[type=submit]').disabled = true;">
             <?= csrf_field() ?>
             <h3 class="stand-add-form__title">Ajouter un stand</h3>
             <div class="form-group">
@@ -338,11 +345,19 @@ document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
 (function () {
     var btn      = document.getElementById('copy-link-btn');
     var feedback = document.getElementById('copy-link-feedback');
-    if (!btn || !feedback || !navigator.clipboard) return;
+    if (!btn || !feedback) return;
     btn.addEventListener('click', function () {
+        if (!navigator.clipboard) {
+            alert('Copie manuelle requise : votre navigateur ne supporte pas la copie automatique.');
+            return;
+        }
         navigator.clipboard.writeText(btn.getAttribute('data-copy-url')).then(function () {
             feedback.hidden = false;
-            setTimeout(function () { feedback.hidden = true; }, 2500);
+            if (btn.timer) clearTimeout(btn.timer);
+            btn.timer = setTimeout(function () { feedback.hidden = true; }, 2500);
+        }).catch(function(err) {
+            console.error('Erreur lors de la copie du lien:', err);
+            alert('Erreur lors de la copie. Copie manuelle requise.');
         });
     });
 }());

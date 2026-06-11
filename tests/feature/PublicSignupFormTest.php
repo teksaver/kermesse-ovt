@@ -813,7 +813,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     // Story 3.4 — AC4: Closed kermesse shows service message on POST
     // ------------------------------------------------------------------
 
-    public function testPostToClosedKermesseShowsNotOpenMessage(): void
+    public function testPostToClosedKermesseRedirectsToPublicPage(): void
     {
         $kermesseId = $this->insertKermesse('ecole-closed-post', 'closed');
         $standId    = $this->insertStand($kermesseId);
@@ -826,10 +826,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'phone'      => '',
         ]);
 
-        $result->assertOK();
-        $body = $result->response()->getBody();
-
-        $this->assertStringContainsString('Les inscriptions ne sont pas ouvertes pour cette kermesse.', $body);
+        $result->assertRedirectTo(site_url('k/ecole-closed-post'));
     }
 
     // ------------------------------------------------------------------
