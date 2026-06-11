@@ -2,49 +2,87 @@
 
 namespace App\Controllers\Ops;
 
-use CodeIgniter\RESTful\ResourceController;
+use App\Controllers\BaseController;
+use App\Services\MigrationRunnerService;
+use CodeIgniter\HTTP\ResponseInterface;
 
-class MigrationController extends ResourceController
+/**
+ * Ops endpoint for applying database migrations.
+ *
+ * Protected by OpsAuthFilter (HMAC-SHA256) via route configuration.
+ */
+class MigrationController extends BaseController
 {
-    public function migrate()
+    /**
+     * POST /ops/migrate/status
+     *
+     * Read-only migration state: classifies each discovered migration as pending/applied/failed.
+     * Never acquires a lock, never applies anything, never modifies data.
+     * Any DB exception bubbles up as a 500 (fail-fast rule).
+     */
+    public function status(): ResponseInterface
     {
-        $secret = getenv('OPS_HMAC_SECRET');
-        if (empty($secret)) {
-            return $this->failServerError('Missing HMAC secret');
-        }
-
-        $hmac = $this->request->getHeaderLine('X-Ops-Signature');
-        $timestamp = $this->request->getHeaderLine('X-Ops-Timestamp');
-        $nonce = $this->request->getHeaderLine('X-Ops-Nonce');
-
-        if (!$hmac || !$timestamp || !$nonce) {
-            return $this->failUnauthorized('Missing security headers');
-        }
-
-        if (time() - $timestamp > 300) {
-            return $this->failUnauthorized('Timestamp expired');
-        }
-
-        $payload = $timestamp . '.' . $nonce;
-        $expectedHmac = hash_hmac('sha256', $payload, $secret);
-
-        if (!hash_equals($expectedHmac, $hmac)) {
-            return $this->failUnauthorized('Invalid HMAC');
-        }
-        
-        $db = \Config\Database::connect();
         try {
-            $db->query("INSERT INTO ops_nonces (nonce_hash, expires_at) VALUES (?, ?)", [hash('sha256', $nonce), date('Y-m-d H:i:s', time() + 600)]);
-        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
-            return $this->failUnauthorized('Replayed nonce');
-        }
+            $runner = new MigrationRunnerService();
+            $result = $runner->status();
 
-        // Simplistic stub for Story 1.1 Greenfield
-        return $this->respond(['status' => 'success', 'message' => 'Migration runner initialized']);
+            return $this->response
+                ->setStatusCode(200)
+                ->setJSON([
+                    'ok'      => true,
+                    'pending' => $result['pending'],
+                    'applied' => $result['applied'],
+                    'failed'  => $result['failed'],
+                ]);
+        } catch (\Throwable $e) {
+            log_message('critical', 'MigrationController::status: unhandled error: {message}', [
+                'message' => $e,
+            ]);
+
+            return $this->response
+                ->setStatusCode(500)
+                ->setJSON([
+                    'ok'    => false,
+                    'error' => 'status_error',
+                ]);
+        }
     }
 
-    public function status()
+    /**
+     * POST /ops/migrate
+     *
+     * Runs pending SQL migrations and returns a minimal JSON summary.
+     * Never exposes raw SQL, stack traces, secrets or environment variables.
+     */
+    public function migrate(): ResponseInterface
     {
-        return $this->respond(['status' => 'idle']);
+        try {
+            $runner = new MigrationRunnerService();
+            $result = $runner->run();
+
+            $statusCode = $result['ok'] ? 200 : 500;
+
+            return $this->response
+                ->setStatusCode($statusCode)
+                ->setJSON([
+                    'ok'      => $result['ok'],
+                    'applied' => count($result['applied']),
+                    'skipped' => count($result['skipped']),
+                    'failed'  => count($result['failed']),
+                ]);
+        } catch (\Throwable $e) {
+            log_message('critical', 'MigrationController: unhandled error: {message}', [
+                'message' => $e,
+            ]);
+
+            return $this->response
+                ->setStatusCode(500)
+                ->setJSON([
+                    'ok'      => false,
+                    'applied' => 0,
+                    'skipped' => 0,
+                    'failed'  => 1,
+                ]);
+        }
     }
 }

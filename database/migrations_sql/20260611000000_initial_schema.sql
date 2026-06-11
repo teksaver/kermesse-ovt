@@ -1,5 +1,7 @@
--- Migration: 000_initial_schema
--- Description: Unified greenfield schema for Kermesse.
+-- Migration: 20260611000000_initial_schema
+-- Description: Unified greenfield baseline schema for Kermesse (Story 1.1).
+-- This is the genesis migration applied by MigrationRunnerService on a fresh DB;
+-- subsequent EPIC changes are added as incremental migrations_sql/*.sql on top.
 -- Engine: InnoDB | Charset: utf8mb4 | Collation: utf8mb4_general_ci
 
 -- -----------------------------------------------------

@@ -178,11 +178,10 @@ class MigrationRunnerService
             SQL;
 
         // Use the same cross-database DDL as OpsAuthFilter::bootstrapNonceTable().
-        // The old schema with AUTO_INCREMENT `id` has been superseded by migration
-        // 20260607183000_update_ops_nonces_schema.sql. Keeping this DDL aligned avoids
-        // an unnecessary DROP+CREATE on fresh installs where bootstrapTechnicalTables()
-        // runs before the migration. nonce_hash is the natural key and the PRIMARY KEY
-        // used for duplicate-INSERT replay detection.
+        // nonce_hash is the natural key and the PRIMARY KEY used for duplicate-INSERT
+        // replay detection. Kept aligned with the greenfield baseline migration
+        // (20260611000000_initial_schema.sql) so this idempotent bootstrap, which runs
+        // before migrations on a fresh install, never conflicts with it.
         $nonceSql = <<<'SQL'
             CREATE TABLE IF NOT EXISTS ops_nonces (
                 nonce_hash   VARCHAR(64)  NOT NULL,
