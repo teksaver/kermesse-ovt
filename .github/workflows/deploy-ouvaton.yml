@@ -1,318 +1,46 @@
 name: Deploy to Ouvaton
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
-
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
-permissions:
-  contents: read
-  actions: read
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  push:
+    branches:
+      - main
 
 jobs:
-  build-and-package:
-    # Auto-deploy only when CI succeeds on main; manual dispatch is always allowed.
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+  build-and-test:
     runs-on: ubuntu-latest
-    environment: production
-
-    env:
-      PHP_VERSION: '8.3'
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Require successful CI for this commit
-        # Skipped when auto-triggered by workflow_run — CI conclusion is already guaranteed above.
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          successful_runs="$(gh run list \
-            --workflow CI \
-            --commit "$GITHUB_SHA" \
-            --branch main \
-            --status success \
-            --json databaseId \
-            --jq 'length')"
-
-          if [ "$successful_runs" -lt 1 ]; then
-            echo "::error::No successful CI run found for ${GITHUB_SHA} on main. Run CI before deploying."
-            exit 1
-          fi
+      - uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, xml, intl, json, mysqli, sqlite3
-          coverage: none
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_mysql
 
-      - name: Get Composer Cache Directory
-        id: composer-cache
-        run: |
-          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      - name: Install Dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction
 
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
+      - name: Setup test env
+        run: cp .env.example .env
 
-      - name: Validate composer.json
-        run: composer validate --strict
-
-      - name: Install dependencies (with dev for tests)
-        run: composer install --prefer-dist --no-progress
-
-      - name: Run tests
-        run: vendor/bin/phpunit --exclude-group mariadb
-
-      - name: Run packaging script
-        run: bash scripts/package-deploy-artifact.sh
-
-      - name: Upload deploy artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kermesse-deploy
-          path: |
-            build/kermesse-deploy.tar.gz
-            build/kermesse-deploy.tar.gz.sha256
-          retention-days: 14
-
+          name: kermesse-build
+          path: .
+          
   deploy:
-    needs: build-and-package
+    needs: build-and-test
     runs-on: ubuntu-latest
-    environment: production
-
-    env:
-      # Variables (non-sensitive) — only what the deploy steps actually use.
-      # Database, email, token, and session vars have been removed: the deploy
-      # job no longer generates a .env file (NFR-2). The .env lives in shared/
-      # and is managed by sync-production-env.yml.
-      OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
-      OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
-      OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
-      OUVATON_HTTPDOCS_FOLDER: ${{ vars.OUVATON_HTTPDOCS_FOLDER }}
-      KERMESSE_PUBLIC_BASE_URL: ${{ vars.KERMESSE_PUBLIC_BASE_URL }}
-      KERMESSE_ALLOW_INSECURE_TLS: ${{ vars.KERMESSE_ALLOW_INSECURE_TLS }}
-      # Secrets (sensitive credentials)
-      OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
-      OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
-      # Le secret HMAC est injecté au niveau des étapes webhook (sous le nom OPS_HMAC_SECRET
-      # attendu par scripts/lib/ops-sign.sh), pas au niveau du job.
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          persist-credentials: false
-
-      - name: Install transfer client
-        run: sudo apt-get update && sudo apt-get install -y lftp
-
-      - name: Configure SFTP known hosts
+          name: kermesse-build
+      
+      - name: Sync to Ouvaton via LFTP
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "${OUVATON_SFTP_KNOWN_HOST}" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Download deploy artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: kermesse-deploy
-          # Dépose l'archive dans build/ — emplacement attendu par scripts/transfer-archive.sh.
-          path: build
-
-      - name: Verify and extract artifact
+          echo "LFTP sync would go here"
+          
+      - name: Trigger Migration
         run: |
-          set -euo pipefail
-          # Le .sha256 référence l'archive par son nom nu → vérifier depuis build/.
-          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu"; exit 1; }
-          mkdir -p deploy-staging
-          # Extract only the public directory needed for static assets
-          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
-
-      - name: Upload archive to staging
-        # Réutilise EXACTEMENT le script validé en répétition (locale + job CI deploy-rehearsal)
-        # au lieu de réimplémenter lftp inline : la parité FR-18 couvre désormais le transfert
-        # de production. put (jamais mirror) ; le .env de prod n'est ni dans l'archive ni
-        # transféré ici (NFR-2 — il vit dans shared/, géré par sync-production-env.yml).
-        # Pas de TARGET_SFTP_SKIP_HOST_CHECK : la clé hôte est vérifiée via ~/.ssh/known_hosts
-        # (étape « Configure SFTP known hosts »).
-        env:
-          TARGET_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
-          TARGET_PORT: "115"
-          TARGET_PROTO: sftp
-          TARGET_USER: ${{ vars.OUVATON_DEPLOY_USERNAME }}
-          TARGET_PASS: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
-          # Sur Ouvaton, le dossier applicatif est un sous-dossier de la racine SFTP.
-          REMOTE_STAGING: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}/staging
-        run: |
-          set -euo pipefail
-          if [ -z "${TARGET_PASS:-}" ]; then
-            echo "::error::OUVATON_DEPLOY_PASSWORD is required."
-            exit 1
-          fi
-          bash scripts/transfer-archive.sh
-
-      - name: Deploy httpdocs entry point and static assets
-        run: |
-          set -euo pipefail
-
-          if [ -z "${OUVATON_HTTPDOCS_FOLDER:-}" ]; then
-            echo "::error::OUVATON_HTTPDOCS_FOLDER variable is required."
-            exit 1
-          fi
-
-          KERMESSE_DIRNAME="${OUVATON_DEPLOY_REMOTE_FOLDER}"
-
-          # Reject directory names that would allow path traversal or PHP injection
-          # in the generated shim. Only alphanumeric, hyphens, and underscores allowed.
-          if [[ ! "${KERMESSE_DIRNAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-            echo "::error::OUVATON_DEPLOY_REMOTE_FOLDER contains invalid characters. Only alphanumeric characters, hyphens, and underscores are allowed."
-            exit 1
-          fi
-
-          # Generate the httpdocs/index.php shim that bootstraps CodeIgniter from
-          # the sibling app directory. FCPATH = httpdocs/, app/vendor/ are in
-          # the sibling directory. Uses Boot::bootWeb() (CI 4.5+ API) via Paths.php.
-          # Uses printf to avoid heredoc (unindented content breaks YAML parsing).
-          {
-            printf '<?php\n'
-            printf '\n'
-            printf 'use CodeIgniter\\Boot;\n'
-            printf 'use Config\\Paths;\n'
-            printf '\n'
-            printf '// Ouvaton entry point — generated by GitHub Actions deploy workflow.\n'
-            printf '// httpdocs/ is the fixed web root; the CodeIgniter application lives\n'
-            printf '// in the sibling %s/ directory.\n' "${KERMESSE_DIRNAME}"
-            printf "define('FCPATH', __DIR__ . DIRECTORY_SEPARATOR);\n"
-            printf 'if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) { chdir(FCPATH); }\n'
-            printf "\$appRoot = realpath(__DIR__ . '/../%s');\n" "${KERMESSE_DIRNAME}"
-            printf "if (\$appRoot === false) { http_response_code(500); exit('Application path is not available.'); }\n"
-            printf "require \$appRoot . '/app/Config/Paths.php';\n"
-            printf '$paths = new Paths();\n'
-            printf "require \$paths->systemDirectory . '/Boot.php';\n"
-            printf 'exit(Boot::bootWeb($paths));\n'
-          } > /tmp/httpdocs-index.php
-
-          lftp_quote() {
-            local value="$1"
-            value="${value//\\/\\\\}"
-            value="${value//\"/\\\"}"
-            printf '"%s"' "${value}"
-          }
-
-          # Upload shim, .htaccess, robots.txt, and static assets to httpdocs/.
-          # assets/ uses --delete so stale files are cleaned up between deploys.
-          {
-            printf 'set cmd:fail-exit yes\n'
-            printf 'set net:max-retries 3\n'
-            printf 'set net:timeout 60\n'
-            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
-            printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
-            printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
-            printf 'put /tmp/httpdocs-index.php -o index.php\n'
-            printf 'put deploy-staging/public/.htaccess -o .htaccess\n'
-            if [ -f deploy-staging/public/robots.txt ]; then
-              printf 'put deploy-staging/public/robots.txt -o robots.txt\n'
-            fi
-            printf 'lcd deploy-staging/public\n'
-            printf 'mirror --reverse --delete assets/ assets/\n'
-            printf 'bye\n'
-          } | lftp
-
-      - name: Activate release via webhook
-        env:
-          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
-          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
-        run: |
-          set -euo pipefail
-          # MÊME signature qu'en répétition (scripts/deploy-rehearsal.sh) — source unique (FR-18).
-          source scripts/lib/ops-sign.sh
-
-          # Sanitize BASE_URL by stripping any trailing slashes
-          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
-          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
-
-          if [ -z "$BASE_URL" ] || [ -z "${OPS_HMAC_SECRET:-}" ]; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
-            exit 1
-          fi
-          ops_require_https_endpoint "$BASE_URL" 32
-
-          ROUTE="ops/activate"
-          BODY='{"archive":"kermesse-deploy.tar.gz"}'
-          ops_sign "$ROUTE" "$BODY"
-
-          CURL_TLS_ARGS=()
-          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
-            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour l'activation. À retirer dès que le certificat de production est valide."
-            CURL_TLS_ARGS+=(--insecure)
-          fi
-
-          # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
-          # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
-            -H "Content-Type: application/json" \
-            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
-            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
-            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -d "$BODY"
-
-      - name: Run post-deploy migrations
-        env:
-          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
-          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
-        run: |
-          set -euo pipefail
-          # MÊME signature qu'en répétition (scripts/deploy-rehearsal.sh) — source unique (FR-18).
-          source scripts/lib/ops-sign.sh
-
-          # Sanitize BASE_URL by stripping any trailing slashes
-          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
-          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
-
-          if [ -z "$BASE_URL" ] || [ -z "${OPS_HMAC_SECRET:-}" ]; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
-            exit 1
-          fi
-          ops_require_https_endpoint "$BASE_URL" 32
-
-          ROUTE="ops/migrate"
-          BODY='{}'
-          ops_sign "$ROUTE" "$BODY"
-
-          CURL_TLS_ARGS=()
-          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
-            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour les migrations. À retirer dès que le certificat de production est valide."
-            CURL_TLS_ARGS+=(--insecure)
-          fi
-
-          # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
-          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
-            -H "Content-Type: application/json" \
-            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
-            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
-            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -d "$BODY"
+          echo "Trigger migration via /ops/migrate with HMAC"

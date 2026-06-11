@@ -43,20 +43,26 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $db->query('DROP TABLE IF EXISTS `second_table`');
         $db->query('DROP TABLE IF EXISTS `test_table`');
 
-        // Schema tables: drop order must be reverse-FK order for the whole schema
-        // (signups → slots/volunteers, volunteers → kermesses, slots → stands,
-        // stands → kermesses, access_tokens → owners/kermesses, kermesses → owners).
-        // Update this list whenever a migration adds a table — see database/migrations_sql/.
-        $db->query('DROP TABLE IF EXISTS `signups`');
-        $db->query('DROP TABLE IF EXISTS `volunteers`');
-        $db->query('DROP TABLE IF EXISTS `slots`');
-        $db->query('DROP TABLE IF EXISTS `stands`');
-        $db->query('DROP TABLE IF EXISTS `email_events`');
-        $db->query('DROP TABLE IF EXISTS `access_tokens`');
-        $db->query('DROP TABLE IF EXISTS `kermesses`');
-        $db->query('DROP TABLE IF EXISTS `owners`');
-        $db->query('DROP TABLE IF EXISTS `ops_nonces`');
-        $db->query('DROP TABLE IF EXISTS `schema_versions`');
+        // Schema tables: drop with FK checks disabled so order is irrelevant and the
+        // list stays robust as the greenfield schema evolves. Keep this list in sync
+        // with database/migrations_sql/ — see the baseline initial_schema migration.
+        $db->query('SET FOREIGN_KEY_CHECKS = 0');
+        foreach ([
+            'signups',
+            'slots',
+            'stands',
+            'profile_divergences',
+            'access_tokens',
+            'email_events',
+            'kermesse_user_roles',
+            'kermesses',
+            'users',
+            'ops_nonces',
+            'schema_versions',
+        ] as $table) {
+            $db->query("DROP TABLE IF EXISTS `{$table}`");
+        }
+        $db->query('SET FOREIGN_KEY_CHECKS = 1');
 
         // Set up temp migrations directory
         $this->tempMigrationsDir = sys_get_temp_dir() . '/kermesse_test_migrations_' . uniqid();
@@ -276,87 +282,44 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $this->assertNotEmpty($row['checksum']);
     }
 
-    public function testInitialSchemaMigrationRunsSuccessfully(): void
+    public function testBaselineSchemaMigrationRunsSuccessfully(): void
     {
-        // Use the actual initial schema migration
-        $schemaFile = ROOTPATH . 'database/migrations_sql/20260602161500_initial_schema.sql';
-        $this->assertTrue(file_exists($schemaFile), 'Initial schema file must exist');
+        // Apply the actual greenfield baseline migration (genesis schema). Stands and
+        // slots are folded into this baseline since the Story 1.1 greenfield reset.
+        $schemaFile = ROOTPATH . 'database/migrations_sql/20260611000000_initial_schema.sql';
+        $this->assertTrue(file_exists($schemaFile), 'Baseline schema file must exist');
 
-        copy($schemaFile, $this->tempMigrationsDir . '/20260602161500_initial_schema.sql');
+        copy($schemaFile, $this->tempMigrationsDir . '/20260611000000_initial_schema.sql');
 
         $runner = $this->createRunner();
         $result = $runner->run();
 
         $this->assertTrue($result['ok']);
-        $this->assertContains('20260602161500_initial_schema', $result['applied']);
+        $this->assertContains('20260611000000_initial_schema', $result['applied']);
 
-        // Verify all expected tables exist
         $db = db_connect('tests');
-        $expectedTables = ['schema_versions', 'ops_nonces', 'owners', 'kermesses', 'access_tokens', 'email_events'];
 
+        // All 11 greenfield tables must exist.
+        $expectedTables = [
+            'schema_versions', 'ops_nonces', 'users', 'kermesses', 'kermesse_user_roles',
+            'access_tokens', 'email_events', 'profile_divergences', 'stands', 'slots', 'signups',
+        ];
         foreach ($expectedTables as $table) {
             $found = $db->query('SHOW TABLES LIKE ?', [$table])->getResultArray();
-            $this->assertNotEmpty($found, "Table '{$table}' should exist after initial migration");
+            $this->assertNotEmpty($found, "Table '{$table}' should exist after baseline migration");
         }
-    }
 
-    public function testStandsMigrationRunsAfterInitialSchema(): void
-    {
-        $initialSchemaFile = ROOTPATH . 'database/migrations_sql/20260602161500_initial_schema.sql';
-        $standsSchemaFile  = ROOTPATH . 'database/migrations_sql/20260605180000_create_stands.sql';
-        $this->assertTrue(file_exists($initialSchemaFile), 'Initial schema file must exist');
-        $this->assertTrue(file_exists($standsSchemaFile), 'Stands schema file must exist');
+        // Stands: active-name unique index.
+        $standsIndex = $db->query('SHOW INDEX FROM `stands` WHERE `Key_name` = "uq_stands_active_name"')->getResultArray();
+        $this->assertNotEmpty($standsIndex, 'Baseline should create the stands active-name unique index');
 
-        copy($initialSchemaFile, $this->tempMigrationsDir . '/20260602161500_initial_schema.sql');
-        copy($standsSchemaFile, $this->tempMigrationsDir . '/20260605180000_create_stands.sql');
+        // Slots: stand + display-order indexes.
+        $slotsStandIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand"')->getResultArray();
+        $this->assertNotEmpty($slotsStandIndex, 'Baseline should create the slots stand index');
+        $slotsOrderIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand_order"')->getResultArray();
+        $this->assertNotEmpty($slotsOrderIndex, 'Baseline should create the slots display-order index');
 
-        $runner = $this->createRunner();
-        $result = $runner->run();
-
-        $this->assertTrue($result['ok']);
-        $this->assertContains('20260605180000_create_stands', $result['applied']);
-
-        $db = db_connect('tests');
-        $this->assertNotEmpty($db->query('SHOW TABLES LIKE "stands"')->getResultArray());
-
-        $index = $db->query('SHOW INDEX FROM `stands` WHERE `Key_name` = "uq_stands_active_name"')->getResultArray();
-        $this->assertNotEmpty($index, 'Stands migration should add the active-name unique index');
-
-        $row = $db->query(
-            'SELECT `status` FROM `schema_versions` WHERE `version` = ?',
-            ['20260605180000_create_stands']
-        )->getRowArray();
-        $this->assertSame('success', $row['status'] ?? null);
-    }
-
-    public function testSlotsMigrationRunsAfterStandsAndCreatesExpectedIndexesAndForeignKey(): void
-    {
-        $initialSchemaFile = ROOTPATH . 'database/migrations_sql/20260602161500_initial_schema.sql';
-        $standsSchemaFile  = ROOTPATH . 'database/migrations_sql/20260605180000_create_stands.sql';
-        $slotsSchemaFile   = ROOTPATH . 'database/migrations_sql/20260606090000_create_slots.sql';
-        $this->assertTrue(file_exists($initialSchemaFile), 'Initial schema file must exist');
-        $this->assertTrue(file_exists($standsSchemaFile), 'Stands schema file must exist');
-        $this->assertTrue(file_exists($slotsSchemaFile), 'Slots schema file must exist');
-
-        copy($initialSchemaFile, $this->tempMigrationsDir . '/20260602161500_initial_schema.sql');
-        copy($standsSchemaFile, $this->tempMigrationsDir . '/20260605180000_create_stands.sql');
-        copy($slotsSchemaFile, $this->tempMigrationsDir . '/20260606090000_create_slots.sql');
-
-        $runner = $this->createRunner();
-        $result = $runner->run();
-
-        $this->assertTrue($result['ok']);
-        $this->assertContains('20260606090000_create_slots', $result['applied']);
-
-        $db = db_connect('tests');
-        $this->assertNotEmpty($db->query('SHOW TABLES LIKE "slots"')->getResultArray());
-
-        $standIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand"')->getResultArray();
-        $this->assertNotEmpty($standIndex, 'Slots migration should add the stand index');
-
-        $orderIndex = $db->query('SHOW INDEX FROM `slots` WHERE `Key_name` = "idx_slots_stand_order"')->getResultArray();
-        $this->assertNotEmpty($orderIndex, 'Slots migration should add the display-order index');
-
+        // Slots → stands foreign key with RESTRICT on delete.
         $foreignKey = $db->query(
             'SELECT `CONSTRAINT_NAME`, `DELETE_RULE`
              FROM `information_schema`.`REFERENTIAL_CONSTRAINTS`
@@ -367,9 +330,10 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         $this->assertSame('fk_slots_stand', $foreignKey['CONSTRAINT_NAME'] ?? null);
         $this->assertSame('RESTRICT', $foreignKey['DELETE_RULE'] ?? null);
 
+        // Baseline recorded as a successful migration in schema_versions.
         $row = $db->query(
             'SELECT `status` FROM `schema_versions` WHERE `version` = ?',
-            ['20260606090000_create_slots']
+            ['20260611000000_initial_schema']
         )->getRowArray();
         $this->assertSame('success', $row['status'] ?? null);
     }

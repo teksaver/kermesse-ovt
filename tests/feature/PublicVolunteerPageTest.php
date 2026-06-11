@@ -7,7 +7,7 @@ use CodeIgniter\Test\FeatureTestTrait;
  * Feature tests for the public volunteer page GET /k/{public_slug} (Story 3.1).
  *
  * Focus: per-status rendering (preparation/open/closed), full-slot handling, and
- * the hard privacy boundary — no volunteer/owner/admin data, no management links.
+ * the hard privacy boundary — no user/admin data, no management links.
  *
  * @internal
  */
@@ -21,13 +21,13 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
 
         $db = db_connect();
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_owners (
+            CREATE TABLE IF NOT EXISTS db_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL,
                 email_hash TEXT NOT NULL UNIQUE,
-                display_name TEXT NOT NULL DEFAULT \'\',
-                status TEXT NOT NULL DEFAULT \'owner_pending\',
-                email_verified_at DATETIME,
+                first_name TEXT NOT NULL DEFAULT \'\',
+                last_name TEXT NOT NULL DEFAULT \'\',
+                phone TEXT NOT NULL DEFAULT \'\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -35,7 +35,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $db->query('
             CREATE TABLE IF NOT EXISTS db_kermesses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
                 public_slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 event_date TEXT NOT NULL,
@@ -74,7 +74,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id INTEGER NOT NULL,
-                volunteer_id INTEGER NOT NULL DEFAULT 0,
+                user_id INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT \'active\',
                 deleted_at DATETIME,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -90,7 +90,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
-        $db->query('DELETE FROM db_owners');
+        $db->query('DELETE FROM db_users');
         parent::tearDown();
     }
 
@@ -102,11 +102,11 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
     {
         $db    = db_connect();
         $email = "owner-{$slug}@secret-owner.example";
-        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, email_verified_at, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Secret Owner Name', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Secret', 'Owner', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $ownerId = (int) $db->insertID();
 
-        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
+        $db->query("INSERT INTO db_kermesses (created_by, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
             VALUES ({$ownerId}, '{$slug}', 'Kermesse de printemps', '2026-09-12', 'Cour centrale', 'Venez nombreux', 'Europe/Paris', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         return (int) $db->insertID();
@@ -132,7 +132,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
     {
         $db = db_connect();
         $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, 0, '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         return (int) $db->insertID();
     }
@@ -284,10 +284,10 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // AC5 — privacy: no volunteer/owner/admin data, no management link
+    // AC5 — privacy: no user/admin data, no management link
     // ------------------------------------------------------------------
 
-    public function testPublicPageDoesNotLeakVolunteerOrOwnerOrAdminData(): void
+    public function testPublicPageDoesNotLeakUserOrAdminData(): void
     {
         $kermesseId = $this->insertKermesse('ecole-privacy', 'open');
         $standId    = $this->insertStand($kermesseId, 'Buvette');
@@ -300,7 +300,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         // No volunteer identity
         $this->assertStringNotContainsString('Jean Dupont', $body);
         // No owner identity / email
-        $this->assertStringNotContainsString('Secret Owner Name', $body);
+        $this->assertStringNotContainsString('Secret Owner', $body);
         $this->assertStringNotContainsString('secret-owner.example', $body);
         // No admin or management surfaces
         $this->assertStringNotContainsString('/admin/', $body);

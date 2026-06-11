@@ -18,6 +18,7 @@ class AccessTokenModel extends Model
     protected $allowedFields = [
         'token_hash',
         'token_type',
+        'user_id',
         'owner_id',
         'kermesse_id',
         'email',
@@ -28,7 +29,7 @@ class AccessTokenModel extends Model
 
     protected $validationRules = [
         'token_hash' => 'required|max_length[64]',
-        'token_type' => 'required|in_list[owner_validation,owner_login,volunteer_management]',
+        'token_type' => 'required|in_list[magic_link,role_invitation,signup_management,owner_validation,owner_login,volunteer_management]',
         'expires_at' => 'required',
     ];
 }

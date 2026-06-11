@@ -7,7 +7,7 @@ use CodeIgniter\Test\FeatureTestTrait;
  * Feature tests for the public signup form GET/POST /k/{slug}/slots/{id}/signup (Stories 3.2 & 3.3).
  *
  * Focus: slot link on volunteer page, form display, server-side validation, 404 boundaries,
- * the hard privacy boundary (no volunteer/owner/admin data exposed), volunteer create/reuse,
+ * the hard privacy boundary (no user/admin data exposed), user create/reuse,
  * email normalization, and signup confirmation page.
  *
  * @internal
@@ -22,13 +22,13 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $db = db_connect();
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_owners (
+            CREATE TABLE IF NOT EXISTS db_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL,
                 email_hash TEXT NOT NULL UNIQUE,
-                display_name TEXT NOT NULL DEFAULT \'\',
-                status TEXT NOT NULL DEFAULT \'owner_pending\',
-                email_verified_at DATETIME,
+                first_name TEXT NOT NULL DEFAULT \'\',
+                last_name TEXT NOT NULL DEFAULT \'\',
+                phone TEXT NOT NULL DEFAULT \'\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -36,7 +36,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query('
             CREATE TABLE IF NOT EXISTS db_kermesses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
                 public_slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 event_date TEXT NOT NULL,
@@ -72,22 +72,10 @@ final class PublicSignupFormTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_volunteers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                kermesse_id INTEGER NOT NULL,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                phone TEXT NOT NULL DEFAULT \'\',
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        ');
-        $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id INTEGER NOT NULL,
-                volunteer_id INTEGER NOT NULL DEFAULT 0,
+                user_id INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT \'active\',
                 deleted_at DATETIME,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -113,11 +101,10 @@ final class PublicSignupFormTest extends CIUnitTestCase
     {
         $db = db_connect();
         $db->query('DELETE FROM db_signups');
-        $db->query('DELETE FROM db_volunteers');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
-        $db->query('DELETE FROM db_owners');
+        $db->query('DELETE FROM db_users');
         $db->query('DELETE FROM db_email_events');
         parent::tearDown();
     }
@@ -130,11 +117,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
     {
         $db    = db_connect();
         $email = "owner-{$slug}@secret-owner.example";
-        $db->query("INSERT INTO db_owners (email, email_hash, display_name, status, email_verified_at, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Secret Owner Name', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Secret', 'Owner', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $ownerId = (int) $db->insertID();
 
-        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
+        $db->query("INSERT INTO db_kermesses (created_by, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
             VALUES ({$ownerId}, '{$slug}', 'Kermesse de test', '2026-09-12', 'Cour centrale', 'Venez nombreux', 'Europe/Paris', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         return (int) $db->insertID();
@@ -192,12 +179,13 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId, 1);
 
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Test', 'Bénévole', 'benevole@test.example', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $volunteerIdFull = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$volunteerIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'benevole@test.example';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Test', 'Bénévole', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userIdFull = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$userIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->get('k/ecole-full-link');
         $body   = $result->response()->getBody();
@@ -405,7 +393,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Privacy — form must not expose volunteer/owner/admin data
+    // Privacy — form must not expose user/admin data
     // ------------------------------------------------------------------
 
     public function testSignupFormDoesNotLeakInternalData(): void
@@ -418,7 +406,6 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $result->assertOK();
         $body = $result->response()->getBody();
 
-        $this->assertStringNotContainsString('Secret Owner Name', $body);
         $this->assertStringNotContainsString('secret-owner.example', $body);
         $this->assertStringNotContainsString('/admin/', $body);
         $this->assertStringNotContainsString('owner_id', $body);
@@ -428,16 +415,16 @@ final class PublicSignupFormTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Story 3.3 — AC1: valid POST creates volunteer + signup, redirects
+    // Story 3.3 — AC1: valid POST creates user + signup, redirects
     // ------------------------------------------------------------------
 
-    public function testValidSubmitCreatesVolunteerRowInDb(): void
+    public function testValidSubmitCreatesUserRowInDb(): void
     {
-        $kermesseId = $this->insertKermesse('ecole-create-vol');
+        $kermesseId = $this->insertKermesse('ecole-create-user');
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-create-vol/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-create-user/slots/{$slotId}/signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@exemple.fr',
@@ -445,9 +432,9 @@ final class PublicSignupFormTest extends CIUnitTestCase
         ]);
 
         $db  = db_connect();
-        $row = $db->query("SELECT * FROM db_volunteers WHERE email = 'marie@exemple.fr'")->getRowArray();
+        $row = $db->query("SELECT * FROM db_users WHERE email = 'marie@exemple.fr'")->getRowArray();
 
-        $this->assertNotNull($row, 'A volunteer row must be created after successful signup');
+        $this->assertNotNull($row, 'A user row must be created after successful signup');
         $this->assertSame('Marie', $row['first_name']);
         $this->assertSame('Dupont', $row['last_name']);
     }
@@ -472,29 +459,30 @@ final class PublicSignupFormTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Story 3.3 — AC2: existing email reuses volunteer row
+    // Story 3.3 — AC2: existing email reuses user row
     // ------------------------------------------------------------------
 
-    public function testExistingEmailReusesVolunteerRow(): void
+    public function testExistingEmailReusesUserRow(): void
     {
-        $kermesseId = $this->insertKermesse('ecole-reuse-vol');
+        $kermesseId = $this->insertKermesse('ecole-reuse-user');
         $standId    = $this->insertStand($kermesseId);
         $slotIdA    = $this->insertSlot($standId, 5);
         $slotIdB    = $this->insertSlot($standId, 5);
 
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'reuse@exemple.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'reuse@exemple.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
-        $this->csrfPost("k/ecole-reuse-vol/slots/{$slotIdB}/signup", [
+        $this->csrfPost("k/ecole-reuse-user/slots/{$slotIdB}/signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'reuse@exemple.fr',
             'phone'      => '',
         ]);
 
-        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_volunteers WHERE email = 'reuse@exemple.fr'")->getRowArray()['cnt'];
-        $this->assertSame(1, $count, 'Only one volunteer row must exist; duplicates are not created');
+        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_users WHERE email = 'reuse@exemple.fr'")->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'Only one user row must exist; duplicates are not created');
     }
 
     // ------------------------------------------------------------------
@@ -515,7 +503,9 @@ final class PublicSignupFormTest extends CIUnitTestCase
         ]);
 
         $db  = db_connect();
-        $row = $db->query("SELECT email FROM db_volunteers WHERE kermesse_id = {$kermesseId}")->getRowArray();
+        $row = $db->query(
+            "SELECT email FROM db_users WHERE email_hash = '" . hash('sha256', 'marie@exemple.fr') . "'"
+        )->getRowArray();
 
         $this->assertNotNull($row);
         $this->assertSame('marie@exemple.fr', $row['email'], 'Stored email must be normalized to lowercase');
@@ -617,6 +607,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $body   = $result->response()->getBody();
 
         $this->assertStringNotContainsString('volunteer_id', $body);
+        $this->assertStringNotContainsString('user_id', $body);
         $this->assertStringNotContainsString('/admin/', $body);
         $this->assertStringNotContainsString('management', $body);
     }
@@ -796,11 +787,12 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 1); // capacity = 1
 
         // Pre-fill the single spot with an existing active signup
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Alice', 'Martin', 'alice@full.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'alice@full.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, {$aliceId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->csrfPost("k/ecole-slot-full/slots/{$slotId}/signup", [
@@ -851,11 +843,12 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 5);
 
         // Pre-register Marie on this slot
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'marie@dup.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'marie@dup.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $marieId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Same email tries to sign up for the same slot again
@@ -888,11 +881,12 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotB = $this->insertSlotWithTimes($standId, '2026-09-12 10:00:00', '2026-09-12 11:30:00', 5);
 
         // Pre-register Marie on slot A
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Marie', 'Dupont', 'marie@overlap.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'marie@overlap.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $marieId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotA}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Same email tries to sign up for slot B (overlapping)
@@ -923,11 +917,12 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 1); // capacity = 1
 
         // Insert a CANCELLED signup — must not count toward capacity
-        $db = db_connect();
-        $db->query("INSERT INTO db_volunteers (kermesse_id, first_name, last_name, email, phone, created_at, updated_at)
-            VALUES ({$kermesseId}, 'Alice', 'Martin', 'alice@cancel.fr', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db    = db_connect();
+        $email = 'alice@cancel.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, volunteer_id, status, deleted_at, created_at, updated_at)
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, {$aliceId}, 'cancelled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->csrfPost("k/ecole-cancelled-cap/slots/{$slotId}/signup", [

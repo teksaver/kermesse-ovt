@@ -3,53 +3,43 @@
 use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
-$routes->get('/', '\App\Controllers\Owner\CreateKermesseController::showCreateForm');
 
-// Owner creation routes
-$routes->get('create', '\App\Controllers\Owner\CreateKermesseController::showCreateForm');
-$routes->post('kermesses', '\App\Controllers\Owner\CreateKermesseController::create');
+// ---------------------------------------------------------------------------
+// Home
+// ---------------------------------------------------------------------------
+$routes->get('/', '\App\Controllers\Home\HomeController::index');
 
-// Owner validation — token comes from the email link (GET only, no CSRF needed)
-$routes->get('owner/validate/(:segment)', '\App\Controllers\Owner\ValidationController::handleValidation/$1');
+// ---------------------------------------------------------------------------
+// Auth — universal Magic Link (Stories 1.3, 1.4, 1.5, 3.6)
+// ---------------------------------------------------------------------------
+$routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm');
+$routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
+$routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
+$routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
+$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show');
+$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve');
 
-// Owner login / resend validation link (CSRF active on POST)
-$routes->get('owner/login', '\App\Controllers\Owner\LoginController::showLoginForm');
-$routes->post('owner/login', '\App\Controllers\Owner\LoginController::requestLink');
-// Owner login token consumption — GET validates and shows confirmation (prevents prefetch consumption).
-// POST /owner/login/confirm performs the actual session-based consumption (no token in HTML).
-// POST /owner/login/(:segment) kept for direct invocation (tests, API callers).
-$routes->get('owner/login/(:segment)', '\App\Controllers\Owner\LoginController::showLoginConfirm/$1');
-$routes->post('owner/login/confirm', '\App\Controllers\Owner\LoginController::confirmLogin');
-$routes->post('owner/login/(:segment)', '\App\Controllers\Owner\LoginController::consumeLoginToken/$1');
+// ---------------------------------------------------------------------------
+// Connected home — kermesse list (Story 1.5)
+// ---------------------------------------------------------------------------
+$routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => 'auth']);
 
-// Public volunteer page — privacy-safe, no auth. Slug comes from the public link.
-$routes->get('k/(:segment)', '\App\Controllers\Public\VolunteerPageController::index/$1');
+// ---------------------------------------------------------------------------
+// Kermesse dashboard — admin/management (Stories 2.x, 4.x)
+// ---------------------------------------------------------------------------
+$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
 
-// Public signup form — GET shows form, POST creates inscription (Story 3.3).
-$routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Public\SignupController::show/$1/$2');
-$routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Public\SignupController::submit/$1/$2');
-$routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Public\SignupController::confirm/$1/$2');
+// ---------------------------------------------------------------------------
+// Public volunteer page & signup (Stories 3.1–3.5)
+// ---------------------------------------------------------------------------
+$routes->get('k/(:segment)', '\App\Controllers\Kermesse\Public\PublicController::index/$1');
+$routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::show/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::submit/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Kermesse\Public\SignupController::confirm/$1/$2');
 
-// Admin minimal — protected by session-based checks in DashboardController
-$routes->get('admin/kermesses/(:num)', '\App\Controllers\Admin\DashboardController::show/$1');
-
-// Admin lifecycle — open/close signups, CSRF active on POST
-$routes->post('admin/kermesses/(:num)/open', '\App\Controllers\Admin\KermesseController::open/$1');
-$routes->post('admin/kermesses/(:num)/close', '\App\Controllers\Admin\KermesseController::close/$1');
-
-// Admin read-only preview of the planning (not the public volunteer page)
-$routes->get('admin/kermesses/(:num)/preview', '\App\Controllers\Admin\PreviewController::show/$1');
-
-// Admin stands — state-changing routes, CSRF active
-$routes->post('admin/kermesses/(:num)/stands', '\App\Controllers\Admin\StandController::create/$1');
-$routes->post('admin/kermesses/(:num)/stands/(:num)', '\App\Controllers\Admin\StandController::update/$1/$2');
-$routes->post('admin/kermesses/(:num)/stands/(:num)/delete', '\App\Controllers\Admin\StandController::delete/$1/$2');
-
-// Admin slots — state-changing routes, CSRF active
-$routes->post('admin/kermesses/(:num)/stands/(:num)/slots', '\App\Controllers\Admin\SlotController::create/$1/$2');
-$routes->post('admin/kermesses/(:num)/stands/(:num)/slots/(:num)', '\App\Controllers\Admin\SlotController::update/$1/$2/$3');
-
+// ---------------------------------------------------------------------------
 // Ops endpoints — protected by HMAC authentication, CSRF excluded
+// ---------------------------------------------------------------------------
 $routes->post('ops/migrate',        '\App\Controllers\Ops\MigrationController::migrate',   ['filter' => 'ops-auth']);
 $routes->post('ops/migrate/status', '\App\Controllers\Ops\MigrationController::status',    ['filter' => 'ops-auth']);
 $routes->post('ops/probe',          '\App\Controllers\Ops\ProbeController::probe',          ['filter' => 'ops-auth']);

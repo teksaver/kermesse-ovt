@@ -60,8 +60,8 @@ Le `index.php` déposé dans `httpdocs/` est un shim généré par le workflow q
 - `public/` — point d'entrée, `.htaccess`, assets statiques (`css/app.css`, `js/app.js`)
 - `vendor/` — dépendances de production (Composer `--no-dev`)
 - `writable/` — placeholders uniquement (`index.html`, `.htaccess` par sous-dossier)
-- `database/schema/` — fichiers SQL du schéma
-- `database/migrations_sql/` — fichiers SQL de migrations
+- `database/schema/` — réservé (le schéma de référence est désormais la migration baseline dans `database/migrations_sql/`)
+- `database/migrations_sql/` — fichiers SQL de migrations (baseline greenfield + incréments par EPIC)
 - `composer.json`, `composer.lock` — références des dépendances
 - `.env.example` — modèle de configuration
 - `docs/` — documentation de déploiement

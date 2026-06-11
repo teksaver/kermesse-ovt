@@ -185,6 +185,110 @@ class TokenService
     }
 
     // ------------------------------------------------------------------
+    // magic_link token methods (Story 1.3 — universal login)
+    // ------------------------------------------------------------------
+
+    /**
+     * Issue a magic_link token tied to an email address.
+     *
+     * The user may not exist yet at request time, so no user_id is stored.
+     * The raw token is returned once for link construction and must never
+     * be logged or persisted in plain text.
+     */
+    public function issueMagicLink(string $email): IssuedToken
+    {
+        if ($this->config->magicLinkTokenTTL <= 0) {
+            throw new \InvalidArgumentException('Invalid magic link token TTL');
+        }
+
+        $rawBytes = random_bytes(32);
+        $rawToken = rtrim(strtr(base64_encode($rawBytes), '+/', '-_'), '=');
+        $hash     = hash('sha256', $rawToken);
+
+        $ttl       = $this->config->magicLinkTokenTTL;
+        $expiresAt = date('Y-m-d H:i:s', time() + $ttl);
+
+        try {
+            $this->tokenModel->skipValidation(true);
+            $tokenId = $this->tokenModel->insert([
+                'token_hash'  => $hash,
+                'token_type'  => 'magic_link',
+                'user_id'     => null,
+                'email'       => $email,
+                'expires_at'  => $expiresAt,
+                'used_at'     => null,
+                'revoked_at'  => null,
+            ]);
+            if ($tokenId === false) {
+                throw new \RuntimeException('Magic link token insert failed');
+            }
+        } finally {
+            $this->tokenModel->skipValidation(false);
+        }
+
+        return new IssuedToken($rawToken, (int) $tokenId);
+    }
+
+    /**
+     * Validate a raw magic_link token.
+     *
+     * Hashes the raw token and looks it up in the DB.
+     * Does NOT consume the token — call markMagicLinkTokenAsUsed after validating.
+     */
+    public function validateMagicLink(string $rawToken): TokenValidationResult
+    {
+        $hash  = hash('sha256', $rawToken);
+        $token = $this->tokenModel
+            ->where('token_hash', $hash)
+            ->where('token_type', 'magic_link')
+            ->first();
+
+        if ($token === null) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN);
+        }
+
+        if ($token['revoked_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::REVOKED_TOKEN, $token);
+        }
+
+        if ($token['used_at'] !== null) {
+            return new TokenValidationResult(TokenValidationResult::USED_TOKEN, $token);
+        }
+
+        $expiresAt = strtotime((string) $token['expires_at']);
+        if ($expiresAt === false) {
+            return new TokenValidationResult(TokenValidationResult::INVALID_TOKEN, $token);
+        }
+
+        if ($expiresAt <= time()) {
+            return new TokenValidationResult(TokenValidationResult::EXPIRED_TOKEN, $token);
+        }
+
+        return new TokenValidationResult(TokenValidationResult::VALID, $token);
+    }
+
+    /**
+     * Mark a magic_link token as used (atomic: WHERE token_type + used_at IS NULL + not expired).
+     *
+     * Returns false if the row was already claimed (concurrent request), in which
+     * case the caller must abort session creation and show the neutral error view.
+     */
+    public function markMagicLinkTokenAsUsed(int $tokenId): bool
+    {
+        $now = \CodeIgniter\I18n\Time::now()->format('Y-m-d H:i:s');
+        $this->tokenModel
+            ->where('id', $tokenId)
+            ->where('token_type', 'magic_link')
+            ->where('used_at', null)
+            ->where('revoked_at', null)
+            ->where('expires_at >', $now)
+            ->set(['used_at' => $now])
+            ->update();
+
+        return $this->tokenModel->affectedRows() === 1;
+    }
+
+    // ------------------------------------------------------------------
     // owner_login token methods (Story 1.6)
     // ------------------------------------------------------------------
 

@@ -262,7 +262,7 @@ p {
 
 /* ----- Status badge ----- */
 
-.status-badge {
+.kermesse-status-badge {
     display: inline-block;
     margin-top: 12px;
     padding: 6px 12px;
@@ -274,7 +274,7 @@ p {
     color: var(--color-muted-text);
 }
 
-.status-badge--preparation {
+.kermesse-status-badge--preparation {
 	    background: var(--color-success-surface);
 	    border-color: var(--color-success-border);
 	    color: var(--color-primary);
@@ -294,13 +294,13 @@ p {
 
 /* ----- Status badge variants ----- */
 
-.status-badge--open {
+.kermesse-status-badge--open {
     background: var(--color-success-surface);
     border-color: var(--color-success-border);
     color: var(--color-primary);
 }
 
-.status-badge--closed {
+.kermesse-status-badge--closed {
     background: var(--color-muted-surface);
     border-color: var(--color-border);
     color: var(--color-muted-text);
@@ -312,7 +312,7 @@ p {
     margin-bottom: 20px;
 }
 
-.admin-header .status-badge {
+.admin-header .kermesse-status-badge {
     margin-top: 8px;
 }
 
@@ -596,7 +596,7 @@ p {
 
 /* ----- Empty state ----- */
 
-.empty-state {
+.kermesse-empty-state {
     border: 1px dashed var(--color-border);
     border-radius: var(--radius-default);
     background: var(--color-muted-surface);
@@ -607,7 +607,7 @@ p {
     overflow-wrap: break-word;
 }
 
-.empty-state__title {
+.kermesse-empty-state__title {
     margin: 0 0 8px;
     font-weight: 700;
     font-size: 16px;
@@ -615,7 +615,7 @@ p {
     max-width: none;
 }
 
-.empty-state__text {
+.kermesse-empty-state__text {
     margin: 0 0 20px;
     font-size: 14px;
     color: var(--color-muted-text);
@@ -686,7 +686,7 @@ p {
 
 /* ----- Slot empty state (per stand) ----- */
 
-.slot-empty-state {
+.slot-kermesse-empty-state {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -698,7 +698,7 @@ p {
     background: var(--color-muted-surface);
 }
 
-.slot-empty-state__text {
+.slot-kermesse-empty-state__text {
     margin: 0;
     font-size: 14px;
     color: var(--color-muted-text);
@@ -900,4 +900,212 @@ p {
     .admin-actions .admin-action-form .btn {
         width: auto;
     }
+}
+/* ----- Connected app nav ----- */
+
+.app-nav {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.app-nav__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.app-nav__brand {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.app-nav__brand:hover {
+    opacity: 0.85;
+}
+
+.app-nav__logout {
+    margin: 0;
+}
+
+/* ----- Connected home ----- */
+
+.home-connected {
+    padding: 24px 0;
+}
+
+.kermesse-list {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.kermesse-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-default);
+    background: var(--color-surface);
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.kermesse-card__name {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.home-connected__actions {
+    margin-top: 8px;
+}
+
+.home-connected__actions .btn {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (min-width: 520px) {
+    .home-connected__actions .btn {
+        width: auto;
+    }
+}
+
+/* public/assets/css/app.css */
+:root {
+    --color-primary: #2563EB;
+    --color-primary-dark: #1D4ED8;
+    --color-success: #16A34A;
+    --color-danger: #DC2626;
+    --color-bg: #F8FAFC;
+    --color-surface: #FFFFFF;
+    --color-text: #111827;
+    --color-text-muted: #6B7280;
+    --color-border: #E5E7EB;
+    
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    
+    --space-2: 0.5rem;
+    --space-4: 1rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.5;
+}
+
+.container {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: var(--space-4);
+    box-sizing: border-box;
+}
+
+.btn {
+    display: inline-block;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+}
+.btn--primary {
+    background-color: var(--color-primary);
+    color: white;
+}
+.btn--primary:hover {
+    background-color: var(--color-primary-dark);
+}
+
+.kermesse-status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background-color: var(--color-border);
+}
+.kermesse-status-badge--active, .kermesse-status-badge--open {
+    background-color: #DCFCE7;
+    color: #166534;
+}
+
+/* Button variants */
+.btn--secondary {
+    background-color: var(--color-surface);
+    color: var(--color-primary);
+    border: 2px solid var(--color-primary);
+}
+.btn--secondary:hover {
+    background-color: var(--color-border);
+}
+.btn--large {
+    padding: var(--space-4) var(--space-6);
+    font-size: 1.125rem;
+    min-height: 44px;
+}
+.btn--block {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Public home page */
+.home-public {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-8) 0;
+    gap: var(--space-8);
+}
+.home-public__header {
+    text-align: center;
+}
+.home-public__title {
+    margin: 0 0 var(--space-2);
+    font-size: 2rem;
+    font-weight: 700;
+}
+.home-public__subtitle {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 1rem;
+}
+.home-public__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+    max-width: 360px;
+}
+
+.form-error-banner {
+    background-color: #FEE2E2;
+    color: var(--color-danger);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+}
+.form-error-list {
+    color: var(--color-danger);
+    margin-bottom: var(--space-4);
 }

@@ -692,4 +692,271 @@ final class TokenServiceTest extends CIUnitTestCase
         $this->assertArrayHasKey('revoked_at', $capturedSetData);
         $this->assertNotNull($capturedSetData['revoked_at']);
     }
+
+    // ==================================================================
+    // issueMagicLink (Story 1.3 — magic_link token)
+    // ==================================================================
+
+    public function testIssueMagicLinkReturnsIssuedToken(): void
+    {
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturn(77);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueMagicLink('test@example.com');
+
+        $this->assertInstanceOf(IssuedToken::class, $result);
+        $this->assertSame(77, $result->tokenId);
+        $this->assertNotEmpty($result->rawToken);
+    }
+
+    public function testIssueMagicLinkStoresHashNotRawToken(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueMagicLink('test@example.com');
+
+        $this->assertNotNull($capturedData);
+        // Hash must be 64 hex chars (SHA-256)
+        $this->assertSame(64, strlen($capturedData['token_hash']));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $capturedData['token_hash']);
+        // Hash must match SHA-256 of the raw token
+        $this->assertSame(hash('sha256', $result->rawToken), $capturedData['token_hash']);
+        // Raw token must not appear in any stored field
+        foreach ($capturedData as $value) {
+            $this->assertNotSame($result->rawToken, $value, 'Raw token must not be stored');
+        }
+    }
+
+    public function testIssueMagicLinkTypeIsMagicLink(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->issueMagicLink('user@example.com');
+
+        $this->assertSame('magic_link', $capturedData['token_type']);
+        $this->assertNull($capturedData['user_id'], 'user_id must be null — user may not exist yet');
+        $this->assertSame('user@example.com', $capturedData['email']);
+    }
+
+    public function testIssueMagicLinkRejectsNonPositiveTtl(): void
+    {
+        $config = clone config('Kermesse');
+        $config->magicLinkTokenTTL = 0;
+
+        $service = new TokenService($this->createMock(AccessTokenModel::class), $config);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $service->issueMagicLink('test@example.com');
+    }
+
+    // ==================================================================
+    // validateMagicLink (Story 1.4)
+    // ==================================================================
+
+    public function testValidateMagicLinkReturnsInvalidWhenNotFound(): void
+    {
+        $mockModel = $this->buildTokenModelMock(null);
+        $service   = new TokenService($mockModel, config('Kermesse'));
+        $result    = $service->validateMagicLink('non-existent-token');
+
+        $this->assertSame(TokenValidationResult::INVALID_TOKEN, $result->status);
+        $this->assertFalse($result->isValid());
+    }
+
+    public function testValidateMagicLinkFiltersTokenType(): void
+    {
+        $capturedFilters = [];
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['first'])
+            ->getMock();
+        $mockModel->method('where')->willReturnCallback(
+            function (string $field, $value) use (&$capturedFilters, $mockModel) {
+                $capturedFilters[$field] = $value;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('first')->willReturn(null);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->validateMagicLink('any-raw-token');
+
+        $this->assertArrayHasKey('token_type', $capturedFilters);
+        $this->assertSame('magic_link', $capturedFilters['token_type']);
+    }
+
+    public function testValidateMagicLinkHashesInputBeforeQuery(): void
+    {
+        $capturedHash = null;
+        $rawToken     = 'my-magic-raw-token';
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where'])
+            ->onlyMethods(['first'])
+            ->getMock();
+        $mockModel->method('where')->willReturnCallback(
+            function (string $field, $value) use (&$capturedHash, $mockModel) {
+                if ($field === 'token_hash') {
+                    $capturedHash = $value;
+                }
+                return $mockModel;
+            }
+        );
+        $mockModel->method('first')->willReturn(null);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->validateMagicLink($rawToken);
+
+        $this->assertSame(hash('sha256', $rawToken), $capturedHash);
+        $this->assertNotSame($rawToken, $capturedHash, 'Raw token must not be used in the query');
+    }
+
+    public function testValidateMagicLinkReturnsRevokedForRevokedRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'         => 1,
+            'revoked_at' => '2025-01-01 00:00:00',
+            'used_at'    => null,
+            'expires_at' => date('Y-m-d H:i:s', time() + 3600),
+            'email'      => 'u@example.com',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateMagicLink('any-token');
+
+        $this->assertSame(TokenValidationResult::REVOKED_TOKEN, $result->status);
+    }
+
+    public function testValidateMagicLinkReturnsUsedForUsedRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'         => 2,
+            'revoked_at' => null,
+            'used_at'    => '2025-01-01 00:00:00',
+            'expires_at' => date('Y-m-d H:i:s', time() + 3600),
+            'email'      => 'u@example.com',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateMagicLink('any-token');
+
+        $this->assertSame(TokenValidationResult::USED_TOKEN, $result->status);
+    }
+
+    public function testValidateMagicLinkReturnsExpiredForExpiredRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'         => 3,
+            'revoked_at' => null,
+            'used_at'    => null,
+            'expires_at' => '2020-01-01 00:00:00',
+            'email'      => 'u@example.com',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateMagicLink('any-token');
+
+        $this->assertSame(TokenValidationResult::EXPIRED_TOKEN, $result->status);
+    }
+
+    public function testValidateMagicLinkTreatsExpiredAtNowAsExpired(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'         => 4,
+            'revoked_at' => null,
+            'used_at'    => null,
+            'expires_at' => date('Y-m-d H:i:s', time()),
+            'email'      => 'u@example.com',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateMagicLink('any-token');
+
+        $this->assertSame(TokenValidationResult::EXPIRED_TOKEN, $result->status,
+            'A token expiring at the current second must be treated as expired');
+    }
+
+    public function testValidateMagicLinkReturnsValidForActiveRow(): void
+    {
+        $mockModel = $this->buildTokenModelMock([
+            'id'         => 5,
+            'revoked_at' => null,
+            'used_at'    => null,
+            'expires_at' => date('Y-m-d H:i:s', time() + 3600),
+            'email'      => 'u@example.com',
+        ]);
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->validateMagicLink('any-token');
+
+        $this->assertSame(TokenValidationResult::VALID, $result->status);
+        $this->assertTrue($result->isValid());
+        $this->assertNotNull($result->tokenRow);
+    }
+
+    // ==================================================================
+    // markMagicLinkTokenAsUsed (Story 1.4)
+    // ==================================================================
+
+    public function testMarkMagicLinkTokenAsUsedSetsUsedAt(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where', 'affectedRows'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnSelf();
+        $mockModel->method('set')->willReturnCallback(
+            function (array $data) use (&$capturedData, $mockModel) {
+                $capturedData = $data;
+                return $mockModel;
+            }
+        );
+        $mockModel->method('update')->willReturn(true);
+        $mockModel->method('affectedRows')->willReturn(1);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->markMagicLinkTokenAsUsed(55);
+
+        $this->assertTrue($result);
+        $this->assertArrayHasKey('used_at', $capturedData);
+        $this->assertNotNull($capturedData['used_at']);
+    }
+
+    public function testMarkMagicLinkTokenAsUsedReturnsFalseWhenZeroAffectedRows(): void
+    {
+        $mockModel = $this->getMockBuilder(AccessTokenModel::class)
+            ->disableOriginalConstructor()
+            ->addMethods(['where', 'affectedRows'])
+            ->onlyMethods(['set', 'update'])
+            ->getMock();
+        $mockModel->method('where')->willReturnSelf();
+        $mockModel->method('set')->willReturnSelf();
+        $mockModel->method('update')->willReturn(true);
+        $mockModel->method('affectedRows')->willReturn(0);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->markMagicLinkTokenAsUsed(55);
+
+        $this->assertFalse($result,
+            'markMagicLinkTokenAsUsed must return false when no row updated (concurrent claim)');
+    }
 }

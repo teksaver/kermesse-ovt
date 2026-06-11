@@ -122,8 +122,8 @@ Réponse JSON :
 ```json
 {
   "ok": true,
-  "pending": ["20260607000000_add_volunteers"],
-  "applied": ["20260602161500_initial_schema", "20260605180000_create_stands"],
+  "pending": ["20260720000000_add_example_table"],
+  "applied": ["20260611000000_initial_schema"],
   "failed":  []
 }
 ```

@@ -101,6 +101,27 @@ class EmailService
         );
     }
 
+    /**
+     * Send the universal Magic Link login email and record an email_event.
+     */
+    public function sendUserLoginEmail(
+        string $recipientEmail,
+        string $loginUrl,
+    ): EmailDeliveryResult {
+        return $this->deliver(
+            recipientEmail: $recipientEmail,
+            subject: 'Votre lien de connexion',
+            viewPath: 'emails/magic_link',
+            viewData: [
+                'loginUrl' => $loginUrl,
+                // max(1, …) : éviter d'afficher « 0 minute » si un TTL < 30 s est configuré.
+                'ttlMinutes' => max(1, (int) round(config('Kermesse')->magicLinkTokenTTL / 60)),
+            ],
+            eventType: 'magic_link',
+            metadata: [],
+        );
+    }
+
     public function hasRecentSuccessfulOwnerValidationEmail(string $recipientEmail, int $cooldownSeconds): bool
     {
         $recipientHash = hash('sha256', strtolower(trim($recipientEmail)));
@@ -148,7 +169,7 @@ class EmailService
             $email->setMessage($emailBody);
             $email->setMailType('html');
 
-            $sent = $email->send(false);
+            $sent = $email->send();
 
             if (! $sent) {
                 $errorMessage = 'Email send returned false';
