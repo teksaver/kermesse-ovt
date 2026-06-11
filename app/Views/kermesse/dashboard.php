@@ -19,6 +19,37 @@
         <?php if (! empty($kermesse['short_description'])): ?>
         <p class="kermesse-dashboard__description"><?= esc($kermesse['short_description']) ?></p>
         <?php endif; ?>
+
+        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
+        <?php if ($lifecycleError !== null): ?>
+        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
+        <?php endif; ?>
+
+        <!-- Actions lifecycle (UX-DR17) -->
+        <div class="kermesse-dashboard__lifecycle">
+            <?php if ($kermesse['status'] === 'open'): ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
+            </form>
+            <?php else: ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
+            </form>
+            <?php endif; ?>
+
+            <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="btn btn--secondary">Prévisualiser</a>
+
+            <button type="button"
+                    class="btn btn--secondary"
+                    data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>"
+                    id="copy-link-btn">Copier le lien</button>
+            <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" hidden>Lien copié.</span>
+        </div>
     </div>
 
     <!-- ------------------------------------------------------------------ -->
@@ -303,5 +334,17 @@ document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
         btn.disabled = this.value.trim().toUpperCase() !== 'SUPPRIMER';
     });
 });
+
+(function () {
+    var btn      = document.getElementById('copy-link-btn');
+    var feedback = document.getElementById('copy-link-feedback');
+    if (!btn || !feedback || !navigator.clipboard) return;
+    btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(btn.getAttribute('data-copy-url')).then(function () {
+            feedback.hidden = false;
+            setTimeout(function () { feedback.hidden = true; }, 2500);
+        });
+    });
+}());
 </script>
 <?= $this->endSection() ?>

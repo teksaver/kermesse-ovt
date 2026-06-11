@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Services\KermesseLifecycleService;
 use App\Services\StandDeletionService;
 
 /**
@@ -47,5 +48,47 @@ class KermesseAdminController extends BaseController
             'kermesse' => $kermesse,
             'stands'   => $stands,
         ]);
+    }
+
+    /** POST /kermesse/{id}/open */
+    public function open(string $kermesseId): mixed
+    {
+        $id       = (int) $kermesseId;
+        $kermesse = model(KermesseModel::class)->find($id);
+
+        if ($kermesse === null) {
+            return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
+        }
+
+        $result = (new KermesseLifecycleService())->open($id, (int) $kermesse['created_by']);
+
+        if ($result === KermesseLifecycleService::RESULT_SUCCESS) {
+            session()->setFlashdata('success', 'La kermesse est ouverte.');
+        } else {
+            session()->setFlashdata('lifecycle_error', KermesseLifecycleService::REASON_NOT_PUBLISHABLE);
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}"));
+    }
+
+    /** POST /kermesse/{id}/close */
+    public function close(string $kermesseId): mixed
+    {
+        $id       = (int) $kermesseId;
+        $kermesse = model(KermesseModel::class)->find($id);
+
+        if ($kermesse === null) {
+            return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
+        }
+
+        $result = (new KermesseLifecycleService())->close($id, (int) $kermesse['created_by']);
+
+        if ($result === KermesseLifecycleService::RESULT_SUCCESS) {
+            session()->setFlashdata('success', 'La kermesse est fermée.');
+        } else {
+            session()->setFlashdata('lifecycle_error', 'Impossible de fermer la kermesse dans son état actuel.');
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}"));
     }
 }

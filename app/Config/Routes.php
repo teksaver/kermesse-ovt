@@ -36,6 +36,12 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
 
 // ---------------------------------------------------------------------------
+// Lifecycle management — Owner/Admin only (Story 2.5)
+// ---------------------------------------------------------------------------
+$routes->post('kermesse/(:num)/open',  '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::open/$1',  ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/close', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::close/$1', ['filter' => 'role:owner,admin']);
+
+// ---------------------------------------------------------------------------
 // Stand management — Owner/Admin only (Stories 2.2, 2.4)
 // ---------------------------------------------------------------------------
 $routes->post('kermesse/(:num)/stands', '\App\Controllers\Kermesse\Dashboard\StandController::store/$1', ['filter' => 'role:owner,admin']);

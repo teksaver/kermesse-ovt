@@ -83,7 +83,7 @@ class KermesseLifecycleService
         $row = db_connect()->table('kermesses')
             ->select('status')
             ->where('id', $kermesseId)
-            ->where('owner_id', $ownerId)
+            ->where('created_by', $ownerId)
             ->get()
             ->getRowArray();
 
@@ -106,7 +106,7 @@ class KermesseLifecycleService
             "UPDATE {$kermesses}
              SET status = ?, updated_at = ?
              WHERE id = ?
-               AND owner_id = ?
+               AND created_by = ?
                AND EXISTS (
                    SELECT 1
                    FROM {$stands}
@@ -133,7 +133,7 @@ class KermesseLifecycleService
         $db      = db_connect();
         $builder = $db->table('kermesses')
             ->where('id', $kermesseId)
-            ->where('owner_id', $ownerId);
+            ->where('created_by', $ownerId);
 
         if ($expectedStatus !== null) {
             $builder->where('status', $expectedStatus);
