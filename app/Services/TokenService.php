@@ -185,6 +185,51 @@ class TokenService
     }
 
     // ------------------------------------------------------------------
+    // user_login / magic_link token methods (Story 1.3)
+    // ------------------------------------------------------------------
+
+    /**
+     * Issue a magic_link token tied to an email address.
+     *
+     * The user may not exist yet at request time, so no user_id is stored.
+     * The raw token is returned once for link construction and must never
+     * be logged or persisted in plain text.
+     */
+    public function issueUserLoginToken(string $email): IssuedToken
+    {
+        if ($this->config->magicLinkTokenTTL <= 0) {
+            throw new \InvalidArgumentException('Invalid magic link token TTL');
+        }
+
+        $rawBytes = random_bytes(32);
+        $rawToken = rtrim(strtr(base64_encode($rawBytes), '+/', '-_'), '=');
+        $hash     = hash('sha256', $rawToken);
+
+        $ttl       = $this->config->magicLinkTokenTTL;
+        $expiresAt = date('Y-m-d H:i:s', time() + $ttl);
+
+        try {
+            $this->tokenModel->skipValidation(true);
+            $tokenId = $this->tokenModel->insert([
+                'token_hash'  => $hash,
+                'token_type'  => 'magic_link',
+                'user_id'     => null,
+                'email'       => $email,
+                'expires_at'  => $expiresAt,
+                'used_at'     => null,
+                'revoked_at'  => null,
+            ]);
+            if ($tokenId === false) {
+                throw new \RuntimeException('Magic link token insert failed');
+            }
+        } finally {
+            $this->tokenModel->skipValidation(false);
+        }
+
+        return new IssuedToken($rawToken, (int) $tokenId);
+    }
+
+    // ------------------------------------------------------------------
     // owner_login token methods (Story 1.6)
     // ------------------------------------------------------------------
 

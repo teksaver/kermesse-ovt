@@ -692,4 +692,78 @@ final class TokenServiceTest extends CIUnitTestCase
         $this->assertArrayHasKey('revoked_at', $capturedSetData);
         $this->assertNotNull($capturedSetData['revoked_at']);
     }
+
+    // ==================================================================
+    // issueUserLoginToken (Story 1.3 — magic_link token)
+    // ==================================================================
+
+    public function testIssueUserLoginTokenReturnsIssuedToken(): void
+    {
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturn(77);
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueUserLoginToken('test@example.com');
+
+        $this->assertInstanceOf(IssuedToken::class, $result);
+        $this->assertSame(77, $result->tokenId);
+        $this->assertNotEmpty($result->rawToken);
+    }
+
+    public function testIssueUserLoginTokenStoresHashNotRawToken(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $result  = $service->issueUserLoginToken('test@example.com');
+
+        $this->assertNotNull($capturedData);
+        // Hash must be 64 hex chars (SHA-256)
+        $this->assertSame(64, strlen($capturedData['token_hash']));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $capturedData['token_hash']);
+        // Hash must match SHA-256 of the raw token
+        $this->assertSame(hash('sha256', $result->rawToken), $capturedData['token_hash']);
+        // Raw token must not appear in any stored field
+        foreach ($capturedData as $value) {
+            $this->assertNotSame($result->rawToken, $value, 'Raw token must not be stored');
+        }
+    }
+
+    public function testIssueUserLoginTokenTypeIsMagicLink(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(AccessTokenModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new TokenService($mockModel, config('Kermesse'));
+        $service->issueUserLoginToken('user@example.com');
+
+        $this->assertSame('magic_link', $capturedData['token_type']);
+        $this->assertNull($capturedData['user_id'], 'user_id must be null — user may not exist yet');
+        $this->assertSame('user@example.com', $capturedData['email']);
+    }
+
+    public function testIssueUserLoginTokenRejectsNonPositiveTtl(): void
+    {
+        $config = clone config('Kermesse');
+        $config->magicLinkTokenTTL = 0;
+
+        $service = new TokenService($this->createMock(AccessTokenModel::class), $config);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $service->issueUserLoginToken('test@example.com');
+    }
 }

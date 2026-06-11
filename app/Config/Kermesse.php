@@ -78,4 +78,7 @@ class Kermesse extends BaseConfig
     public int $ownerValidationTokenTTL = 86400;
     public int $ownerLoginTokenTTL = 900;
     public int $volunteerManagementTokenTTL = 1209600;
+
+    /** TTL in seconds for the universal Magic Link token. Default: 15 minutes. */
+    public int $magicLinkTokenTTL = 900;
 }
