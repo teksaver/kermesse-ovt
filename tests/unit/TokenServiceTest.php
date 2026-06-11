@@ -694,24 +694,24 @@ final class TokenServiceTest extends CIUnitTestCase
     }
 
     // ==================================================================
-    // issueUserLoginToken (Story 1.3 — magic_link token)
+    // issueMagicLink (Story 1.3 — magic_link token)
     // ==================================================================
 
-    public function testIssueUserLoginTokenReturnsIssuedToken(): void
+    public function testIssueMagicLinkReturnsIssuedToken(): void
     {
         $mockModel = $this->createMock(AccessTokenModel::class);
         $mockModel->method('skipValidation')->willReturnSelf();
         $mockModel->method('insert')->willReturn(77);
 
         $service = new TokenService($mockModel, config('Kermesse'));
-        $result  = $service->issueUserLoginToken('test@example.com');
+        $result  = $service->issueMagicLink('test@example.com');
 
         $this->assertInstanceOf(IssuedToken::class, $result);
         $this->assertSame(77, $result->tokenId);
         $this->assertNotEmpty($result->rawToken);
     }
 
-    public function testIssueUserLoginTokenStoresHashNotRawToken(): void
+    public function testIssueMagicLinkStoresHashNotRawToken(): void
     {
         $capturedData = null;
 
@@ -723,7 +723,7 @@ final class TokenServiceTest extends CIUnitTestCase
         });
 
         $service = new TokenService($mockModel, config('Kermesse'));
-        $result  = $service->issueUserLoginToken('test@example.com');
+        $result  = $service->issueMagicLink('test@example.com');
 
         $this->assertNotNull($capturedData);
         // Hash must be 64 hex chars (SHA-256)
@@ -737,7 +737,7 @@ final class TokenServiceTest extends CIUnitTestCase
         }
     }
 
-    public function testIssueUserLoginTokenTypeIsMagicLink(): void
+    public function testIssueMagicLinkTypeIsMagicLink(): void
     {
         $capturedData = null;
 
@@ -749,14 +749,14 @@ final class TokenServiceTest extends CIUnitTestCase
         });
 
         $service = new TokenService($mockModel, config('Kermesse'));
-        $service->issueUserLoginToken('user@example.com');
+        $service->issueMagicLink('user@example.com');
 
         $this->assertSame('magic_link', $capturedData['token_type']);
         $this->assertNull($capturedData['user_id'], 'user_id must be null — user may not exist yet');
         $this->assertSame('user@example.com', $capturedData['email']);
     }
 
-    public function testIssueUserLoginTokenRejectsNonPositiveTtl(): void
+    public function testIssueMagicLinkRejectsNonPositiveTtl(): void
     {
         $config = clone config('Kermesse');
         $config->magicLinkTokenTTL = 0;
@@ -764,6 +764,6 @@ final class TokenServiceTest extends CIUnitTestCase
         $service = new TokenService($this->createMock(AccessTokenModel::class), $config);
 
         $this->expectException(\InvalidArgumentException::class);
-        $service->issueUserLoginToken('test@example.com');
+        $service->issueMagicLink('test@example.com');
     }
 }

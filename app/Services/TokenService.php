@@ -185,7 +185,7 @@ class TokenService
     }
 
     // ------------------------------------------------------------------
-    // user_login / magic_link token methods (Story 1.3)
+    // magic_link token methods (Story 1.3 — universal login)
     // ------------------------------------------------------------------
 
     /**
@@ -195,7 +195,7 @@ class TokenService
      * The raw token is returned once for link construction and must never
      * be logged or persisted in plain text.
      */
-    public function issueUserLoginToken(string $email): IssuedToken
+    public function issueMagicLink(string $email): IssuedToken
     {
         if ($this->config->magicLinkTokenTTL <= 0) {
             throw new \InvalidArgumentException('Invalid magic link token TTL');

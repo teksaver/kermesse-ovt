@@ -31,7 +31,7 @@ class MagicLinkController extends BaseController
         }
 
         $email    = strtolower($raw);
-        $issued   = (new TokenService())->issueUserLoginToken($email);
+        $issued   = (new TokenService())->issueMagicLink($email);
         $loginUrl = site_url('auth/magic-link/' . $issued->rawToken);
 
         (new EmailService())->sendUserLoginEmail($email, $loginUrl);
