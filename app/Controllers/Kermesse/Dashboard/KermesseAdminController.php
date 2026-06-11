@@ -4,6 +4,7 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\SlotModel;
 use App\Models\StandModel;
 
 /**
@@ -22,7 +23,19 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
-        $stands = model(StandModel::class)->getActiveForKermesse($id);
+        $stands   = model(StandModel::class)->getActiveForKermesse($id);
+        $standIds = array_column($stands, 'id');
+        $allSlots = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
+
+        $slotsByStand = [];
+        foreach ($allSlots as $slot) {
+            $slotsByStand[(int) $slot['stand_id']][] = $slot;
+        }
+
+        foreach ($stands as &$stand) {
+            $stand['slots'] = $slotsByStand[(int) $stand['id']] ?? [];
+        }
+        unset($stand);
 
         return view('kermesse/dashboard', [
             'title'    => esc($kermesse['name']),
