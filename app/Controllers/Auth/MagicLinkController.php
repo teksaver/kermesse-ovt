@@ -95,6 +95,8 @@ class MagicLinkController extends BaseController
         $redirectUrl = site_url('/');
         if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
             $redirectUrl = $url;
+        } elseif (! empty($tokenRow['kermesse_id'])) {
+            $redirectUrl = site_url('kermesse/' . (int) $tokenRow['kermesse_id']);
         }
 
         return redirect()->to($redirectUrl);

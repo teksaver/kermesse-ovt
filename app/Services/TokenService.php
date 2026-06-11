@@ -192,10 +192,11 @@ class TokenService
      * Issue a magic_link token tied to an email address.
      *
      * The user may not exist yet at request time, so no user_id is stored.
+     * A kermesse_id may be stored to carry post-login intent across browsers.
      * The raw token is returned once for link construction and must never
      * be logged or persisted in plain text.
      */
-    public function issueMagicLink(string $email): IssuedToken
+    public function issueMagicLink(string $email, ?int $kermesseId = null): IssuedToken
     {
         if ($this->config->magicLinkTokenTTL <= 0) {
             throw new \InvalidArgumentException('Invalid magic link token TTL');
@@ -214,6 +215,7 @@ class TokenService
                 'token_hash'  => $hash,
                 'token_type'  => 'magic_link',
                 'user_id'     => null,
+                'kermesse_id' => $kermesseId,
                 'email'       => $email,
                 'expires_at'  => $expiresAt,
                 'used_at'     => null,

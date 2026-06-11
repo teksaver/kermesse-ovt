@@ -25,6 +25,12 @@ $routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutio
 $routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => 'auth']);
 
 // ---------------------------------------------------------------------------
+// Kermesse creation — open to all (Story 2.1)
+// ---------------------------------------------------------------------------
+$routes->get('kermesse/create', '\App\Controllers\Kermesse\KermesseController::create');
+$routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store');
+
+// ---------------------------------------------------------------------------
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);

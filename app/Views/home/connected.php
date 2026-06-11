@@ -26,7 +26,7 @@
     <?php endif; ?>
 
     <div class="home-connected__actions">
-        <a href="<?= site_url('create') ?>" class="btn btn--primary btn--large">
+        <a href="<?= site_url('kermesse/create') ?>" class="btn btn--primary btn--large">
             Créer une nouvelle kermesse
         </a>
     </div>

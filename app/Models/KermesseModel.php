@@ -38,4 +38,16 @@ class KermesseModel extends Model
         'short_description' => 'max_length[500]',
         'status'            => 'required|in_list[preparation,open,closed]',
     ];
+
+    /**
+     * Generate a URL-safe slug from a kermesse name with a random suffix for uniqueness.
+     */
+    public static function generateSlug(string $name): string
+    {
+        $slug = strtolower($name);
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+        $slug = trim($slug, '-');
+        $slug = $slug !== '' ? $slug : 'kermesse';
+        return $slug . '-' . substr(bin2hex(random_bytes(4)), 0, 8);
+    }
 }

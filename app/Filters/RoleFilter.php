@@ -3,6 +3,7 @@
 namespace App\Filters;
 
 use App\Models\UserRoleModel;
+use App\Services\RoleService;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -19,12 +20,29 @@ class RoleFilter implements FilterInterface
      */
     public function before(RequestInterface $request, $arguments = null)
     {
-        $userId = session()->get('user_id');
+        $userId = (int) session()->get('user_id');
         if (! $userId) {
             return redirect()->to(site_url('auth/login'));
         }
 
-        // TODO: Stories 2.x — extract kermesse_id from route and enforce role
+        $segments   = $request->getUri()->getSegments();
+        $kermesseId = (int) ($segments[1] ?? 0);
+        if ($kermesseId <= 0) {
+            return $this->forbidden();
+        }
+
+        $roleService = new RoleService(model(UserRoleModel::class), model(\App\Models\UserModel::class));
+        $role        = $roleService->getRoleForUser($kermesseId, $userId);
+        $allowed     = $arguments ?: [
+            UserRoleModel::ROLE_OWNER,
+            UserRoleModel::ROLE_ADMIN,
+            UserRoleModel::ROLE_GESTIONNAIRE,
+        ];
+
+        if (! in_array($role, $allowed, true)) {
+            return $this->forbidden();
+        }
+
         return null;
     }
 
@@ -33,5 +51,10 @@ class RoleFilter implements FilterInterface
      */
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): void
     {
+    }
+
+    private function forbidden(): ResponseInterface
+    {
+        return service('response')->setStatusCode(403)->setBody('Accès refusé');
     }
 }
