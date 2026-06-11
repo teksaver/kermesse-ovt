@@ -9,19 +9,23 @@ use Config\Kermesse;
  * Applies SQL migration files from database/migrations_sql/ in lexical order.
  *
  * - Bootstraps schema_versions and ops_nonces tables if absent.
- * - Acquires a MariaDB named lock before applying migrations.
+ * - Acquires a named lock (via DatabaseLockStrategy) before applying migrations.
  * - Records version, checksum, status and timing in schema_versions.
  * - Refuses to apply a migration whose checksum has changed since it was last applied successfully.
  */
 class MigrationRunnerService
 {
     private BaseConnection $db;
+    private DatabaseLockStrategy $lockStrategy;
     private string $migrationsPath;
     private string $lockName;
 
-    public function __construct(?BaseConnection $db = null)
+    public function __construct(?BaseConnection $db = null, ?DatabaseLockStrategy $lockStrategy = null)
     {
         $this->db = $db ?? db_connect();
+
+        // Auto-detect lock strategy from driver when not explicitly provided.
+        $this->lockStrategy = $lockStrategy ?? $this->buildLockStrategy($this->db);
 
         $config = config(Kermesse::class);
         $this->lockName = $config->opsMigrationLockName;
@@ -29,6 +33,16 @@ class MigrationRunnerService
         $this->migrationsPath = $config->opsMigrationPath !== ''
             ? $config->opsMigrationPath
             : ROOTPATH . 'database/migrations_sql';
+    }
+
+    /**
+     * Build a lock strategy appropriate for the current database driver.
+     */
+    private function buildLockStrategy(BaseConnection $db): DatabaseLockStrategy
+    {
+        return ($db->DBDriver === 'MySQLi')
+            ? new MariaDBLockStrategy($db)
+            : new NullLockStrategy();
     }
 
     /**
@@ -98,8 +112,8 @@ class MigrationRunnerService
         // Bootstrap technical tables on a blank database
         $this->bootstrapTechnicalTables();
 
-        // Acquire named lock
-        if (!$this->acquireLock()) {
+        // Acquire named lock via strategy (MariaDB GET_LOCK or NullLock for SQLite)
+        if (!$this->lockStrategy->acquire($this->lockName, 10)) {
             $result['ok'] = false;
             $result['failed'][] = 'lock_acquisition_failed';
             return $result;
@@ -149,7 +163,7 @@ class MigrationRunnerService
                 }
             }
         } finally {
-            $this->releaseLock();
+            $this->lockStrategy->release($this->lockName);
         }
 
         return $result;
@@ -157,27 +171,51 @@ class MigrationRunnerService
 
     /**
      * Ensure schema_versions and ops_nonces exist (idempotent bootstrap).
+     *
+     * Uses driver detection to emit DDL compatible with both MariaDB/MySQL
+     * and SQLite, so the service can run in test environments without a
+     * MariaDB connection.
      */
     private function bootstrapTechnicalTables(): void
     {
-        $bootstrapSql = <<<'SQL'
-            CREATE TABLE IF NOT EXISTS `schema_versions` (
-                `id`                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                `version`            VARCHAR(255)    NOT NULL,
-                `checksum`           VARCHAR(64)     NOT NULL,
-                `status`             ENUM('pending','success','failed') NOT NULL DEFAULT 'pending',
-                `applied_at`         DATETIME        NULL     DEFAULT NULL,
-                `execution_time_ms`  INT UNSIGNED    NULL     DEFAULT NULL,
-                `error_code`         VARCHAR(10)     NULL     DEFAULT NULL,
-                `error_message`      TEXT            NULL     DEFAULT NULL,
-                `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `updated_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                PRIMARY KEY (`id`),
-                UNIQUE KEY `uq_schema_versions_version` (`version`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-            SQL;
+        $isMySQL = ($this->db->DBDriver === 'MySQLi');
 
-        // Use the same cross-database DDL as OpsAuthFilter::bootstrapNonceTable().
+        if ($isMySQL) {
+            $schemaVersionsSql = <<<'SQL'
+                CREATE TABLE IF NOT EXISTS `schema_versions` (
+                    `id`                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `version`            VARCHAR(255)    NOT NULL,
+                    `checksum`           VARCHAR(64)     NOT NULL,
+                    `status`             ENUM('pending','success','failed') NOT NULL DEFAULT 'pending',
+                    `applied_at`         DATETIME        NULL     DEFAULT NULL,
+                    `execution_time_ms`  INT UNSIGNED    NULL     DEFAULT NULL,
+                    `error_code`         VARCHAR(10)     NULL     DEFAULT NULL,
+                    `error_message`      TEXT            NULL     DEFAULT NULL,
+                    `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uq_schema_versions_version` (`version`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                SQL;
+        } else {
+            // SQLite-compatible DDL: no AUTO_INCREMENT, no ENGINE, no ENUM, no ON UPDATE.
+            $schemaVersionsSql = <<<'SQL'
+                CREATE TABLE IF NOT EXISTS `schema_versions` (
+                    `id`                 INTEGER      PRIMARY KEY AUTOINCREMENT,
+                    `version`            VARCHAR(255) NOT NULL UNIQUE,
+                    `checksum`           VARCHAR(64)  NOT NULL,
+                    `status`             VARCHAR(10)  NOT NULL DEFAULT 'pending',
+                    `applied_at`         DATETIME     NULL     DEFAULT NULL,
+                    `execution_time_ms`  INTEGER      NULL     DEFAULT NULL,
+                    `error_code`         VARCHAR(10)  NULL     DEFAULT NULL,
+                    `error_message`      TEXT         NULL     DEFAULT NULL,
+                    `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                SQL;
+        }
+
+        // Cross-database DDL aligned with OpsAuthFilter::bootstrapNonceTable().
         // nonce_hash is the natural key and the PRIMARY KEY used for duplicate-INSERT
         // replay detection. Kept aligned with the greenfield baseline migration
         // (20260611000000_initial_schema.sql) so this idempotent bootstrap, which runs
@@ -191,12 +229,20 @@ class MigrationRunnerService
             )
             SQL;
 
-        $this->db->query($bootstrapSql);
+        $this->db->query($schemaVersionsSql);
         $this->db->query($nonceSql);
 
-        $indexExists = $this->db->query("SHOW INDEX FROM ops_nonces WHERE Key_name = 'idx_ops_nonces_expires'")->getNumRows() > 0;
+        // Cross-database index check: use CI4's getIndexData() instead of SHOW INDEX.
+        $indexes = $this->db->getIndexData('ops_nonces');
+        $indexExists = false;
+        foreach ($indexes as $index) {
+            if ($index->name === 'idx_ops_nonces_expires') {
+                $indexExists = true;
+                break;
+            }
+        }
         if (!$indexExists) {
-            $this->db->query('CREATE INDEX idx_ops_nonces_expires ON ops_nonces (expires_at)');
+            $this->db->query('CREATE INDEX IF NOT EXISTS idx_ops_nonces_expires ON ops_nonces (expires_at)');
         }
     }
 
@@ -483,27 +529,4 @@ class MigrationRunnerService
         return $statements;
     }
 
-    /**
-     * Acquire a MariaDB named lock.
-     */
-    private function acquireLock(): bool
-    {
-        $result = $this->db->query(
-            'SELECT GET_LOCK(?, 10) AS `acquired`',
-            [$this->lockName]
-        )->getRowArray();
-
-        return ($result['acquired'] ?? 0) == 1;
-    }
-
-    /**
-     * Release the MariaDB named lock.
-     */
-    private function releaseLock(): void
-    {
-        $this->db->query(
-            'SELECT RELEASE_LOCK(?) AS `released`',
-            [$this->lockName]
-        );
-    }
 }

@@ -25,9 +25,34 @@ $routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutio
 $routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => 'auth']);
 
 // ---------------------------------------------------------------------------
+// Kermesse creation — open to all (Story 2.1)
+// ---------------------------------------------------------------------------
+$routes->get('kermesse/create', '\App\Controllers\Kermesse\KermesseController::create');
+$routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store');
+
+// ---------------------------------------------------------------------------
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
+
+// ---------------------------------------------------------------------------
+// Lifecycle management — Owner/Admin only (Story 2.5)
+// ---------------------------------------------------------------------------
+$routes->post('kermesse/(:num)/open',  '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::open/$1',  ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/close', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::close/$1', ['filter' => 'role:owner,admin']);
+
+// ---------------------------------------------------------------------------
+// Stand management — Owner/Admin only (Stories 2.2, 2.4)
+// ---------------------------------------------------------------------------
+$routes->post('kermesse/(:num)/stands', '\App\Controllers\Kermesse\Dashboard\StandController::store/$1', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/stands/(:num)', '\App\Controllers\Kermesse\Dashboard\StandController::update/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/stands/(:num)/delete', '\App\Controllers\Kermesse\Dashboard\StandController::delete/$1/$2', ['filter' => 'role:owner,admin']);
+
+// ---------------------------------------------------------------------------
+// Slot management — Owner/Admin only (Story 2.3)
+// ---------------------------------------------------------------------------
+$routes->post('kermesse/(:num)/stands/(:num)/slots', '\App\Controllers\Kermesse\Dashboard\SlotController::store/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/slots/(:num)', '\App\Controllers\Kermesse\Dashboard\SlotController::update/$1/$2', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Public volunteer page & signup (Stories 3.1–3.5)

@@ -31,7 +31,7 @@ class SignupController extends BaseController
             return $this->neutral404();
         }
 
-        if ($summary['kermesseStatus'] === KermesseModel::STATUS_CLOSED) {
+        if ($summary['kermesseStatus'] !== KermesseModel::STATUS_OPEN) {
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
@@ -52,6 +52,10 @@ class SignupController extends BaseController
 
         if ($summary === null) {
             return $this->neutral404();
+        }
+
+        if ($summary['kermesseStatus'] !== KermesseModel::STATUS_OPEN) {
+            return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
         $getPostString = function (string $key): string {

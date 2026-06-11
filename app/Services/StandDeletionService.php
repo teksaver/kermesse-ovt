@@ -49,6 +49,44 @@ class StandDeletionService
         return $this->confirmationModeForCount($this->countActiveSignups($standId));
     }
 
+    /**
+     * Returns, for each given stand, whether deleting it requires strong confirmation
+     * (i.e. it has at least one active signup). Resolved in a constant number of queries
+     * regardless of the stand count, so the dashboard avoids an N+1 per stand.
+     *
+     * @param int[] $standIds
+     * @return array<int, bool> stand_id => requires strong confirmation
+     */
+    public function strongConfirmationByStand(array $standIds): array
+    {
+        $requiresStrong = array_fill_keys($standIds, false);
+        if ($standIds === []) {
+            return $requiresStrong;
+        }
+
+        $db = db_connect();
+        $db->resetDataCache();
+
+        // Pre-Epic-3: signups/slots tables may not exist yet — nothing can require strong confirm.
+        if (! $db->tableExists('slots') || ! $db->tableExists('signups')) {
+            return $requiresStrong;
+        }
+
+        $builder = $db->table('signups')
+            ->select('slots.stand_id')
+            ->join('slots', 'slots.id = signups.slot_id')
+            ->whereIn('slots.stand_id', $standIds)
+            ->groupBy('slots.stand_id');
+
+        $this->applyActiveSignupFilter($builder, $db);
+
+        foreach ($builder->get()->getResultArray() as $row) {
+            $requiresStrong[(int) $row['stand_id']] = true;
+        }
+
+        return $requiresStrong;
+    }
+
     // Deactivates stand and its active signups atomically.
     public function deactivate(int $standId, int $kermesseId, string $confirmedMode): string
     {
@@ -98,6 +136,13 @@ class StandDeletionService
 
             $this->applyActiveSignupFilter($builder, $db);
             $builder->update();
+
+            $db->table('slots')
+                ->where('stand_id', $standId)
+                ->where('status', 'active')
+                ->set('status', 'deactivated')
+                ->set('updated_at', date('Y-m-d H:i:s'))
+                ->update();
         }
 
         $db->transCommit();
@@ -131,10 +176,10 @@ class StandDeletionService
 
     private function applyActiveSignupFilter(object $builder, object $db): void
     {
-        $builder->whereNotIn('status', ['cancelled', 'deactivated', 'deleted']);
+        $builder->whereNotIn('signups.status', ['cancelled', 'deactivated', 'deleted']);
 
         if ($db->fieldExists('deleted_at', 'signups')) {
-            $builder->where('deleted_at', null);
+            $builder->where('signups.deleted_at', null);
         }
     }
 }

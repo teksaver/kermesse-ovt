@@ -21,16 +21,81 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->setUpTables();
     }
 
     protected function tearDown(): void
     {
+        $db = db_connect();
+        $db->query('DELETE FROM db_kermesse_user_roles');
+        $db->query('DELETE FROM db_kermesses');
+        $db->query('DELETE FROM db_access_tokens');
+        $db->query('DELETE FROM db_users');
         parent::tearDown();
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private function setUpTables(): void
+    {
+        $db = db_connect();
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                email      TEXT    NOT NULL,
+                email_hash TEXT    NOT NULL UNIQUE,
+                first_name TEXT    NOT NULL DEFAULT "",
+                last_name  TEXT    NOT NULL DEFAULT "",
+                phone      TEXT    NOT NULL DEFAULT "",
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesses (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_by        INTEGER NOT NULL,
+                public_slug       TEXT    NOT NULL UNIQUE,
+                name              TEXT    NOT NULL,
+                event_date        TEXT,
+                location          TEXT    NOT NULL DEFAULT "",
+                short_description TEXT    NOT NULL DEFAULT "",
+                timezone          TEXT    NOT NULL DEFAULT "Europe/Paris",
+                status            TEXT    NOT NULL DEFAULT "preparation",
+                created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id  INTEGER NOT NULL,
+                user_id      INTEGER NOT NULL,
+                role         TEXT    NOT NULL,
+                invited_by   INTEGER,
+                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_access_tokens (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash  TEXT NOT NULL UNIQUE,
+                token_type  TEXT NOT NULL,
+                user_id     INTEGER,
+                owner_id    INTEGER,
+                kermesse_id INTEGER,
+                email       TEXT,
+                expires_at  DATETIME NOT NULL,
+                used_at     DATETIME,
+                revoked_at  DATETIME,
+                created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+    }
 
     /**
      * Insert a magic_link token directly into the DB and return the raw token.
@@ -68,6 +133,43 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
         $result->assertRedirectTo(site_url('/'));
+    }
+
+    public function testValidTokenWithKermesseIntentRedirectsToDashboard(): void
+    {
+        $db    = db_connect();
+        $email = 'owner-intent@example.com';
+
+        $db->table('users')->insert([
+            'email'      => $email,
+            'email_hash' => hash('sha256', $email),
+            'first_name' => 'Owner',
+            'last_name'  => 'Intent',
+            'phone'      => '',
+        ]);
+        $userId = (int) $db->insertID();
+
+        $db->table('kermesses')->insert([
+            'created_by'        => $userId,
+            'public_slug'       => 'intent-kermesse',
+            'name'              => 'Kermesse Intent',
+            'event_date'        => '2026-09-15',
+            'location'          => 'Salle',
+            'short_description' => '',
+            'status'            => 'preparation',
+        ]);
+        $kermesseId = (int) $db->insertID();
+
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => 'owner',
+        ]);
+
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertRedirectTo(site_url('kermesse/' . $kermesseId));
     }
 
     public function testValidTokenEstablishesSession(): void

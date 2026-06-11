@@ -103,6 +103,53 @@ class UserModel extends Model
     }
 
     /**
+     * Find the global user by email or create one with the provided profile data.
+     *
+     * Unlike findOrCreateByEmail(), this preserves first_name / last_name when creating;
+     * if the user already exists, their profile is left unchanged.
+     */
+    public function findOrCreateWithProfile(string $email, string $firstName, string $lastName): ?int
+    {
+        $emailHash = hash('sha256', $email);
+
+        $existing = $this->findByEmailHash($emailHash);
+        if ($existing !== null) {
+            return (int) $existing['id'];
+        }
+
+        try {
+            $this->skipValidation(true);
+            $inserted = $this->insert([
+                'email'      => $email,
+                'email_hash' => $emailHash,
+                'first_name' => $firstName,
+                'last_name'  => $lastName,
+                'phone'      => '',
+            ]);
+
+            if ($inserted !== false) {
+                return (int) $inserted;
+            }
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            $msg       = $e->getMessage();
+            $isDuplicate = $e->getCode() === 1062 || $e->getCode() === 23505
+                || str_contains($msg, 'Duplicate entry')
+                || str_contains($msg, 'UNIQUE constraint failed');
+            if ($isDuplicate && str_contains(strtolower($msg), 'email')) {
+                log_message('info', 'UserModel: concurrent email insert race, reusing existing row');
+            } else {
+                throw $e;
+            }
+        } finally {
+            $this->skipValidation(false);
+        }
+
+        $existing = $this->findByEmailHash($emailHash);
+
+        return $existing !== null ? (int) $existing['id'] : null;
+    }
+
+    /**
      * Lock the user row to serialize concurrent overlap checks.
      */
     public function lockForOverlapCheck(int $userId, ConnectionInterface $db): void
