@@ -29,7 +29,7 @@ class SignupModel extends Model
 
     protected $allowedFields = [
         'slot_id',
-        'volunteer_id',
+        'user_id',
         'status',
         'deleted_at',
     ];
@@ -64,14 +64,14 @@ class SignupModel extends Model
     }
 
     /**
-     * Return an active signup for the given volunteer on the given slot, or null.
+     * Return an active signup for the given user on the given slot, or null.
      *
      * Used for duplicate-signup detection inside a transaction. On MySQLi this is a
      * locking read: it must see signups committed by concurrent transactions after
-     * this transaction's snapshot (the volunteer-row lock alone does not refresh
+     * this transaction's snapshot (the user-row lock alone does not refresh
      * plain reads under REPEATABLE READ).
      */
-    public function findActiveByVolunteerAndSlot(int $volunteerId, int $slotId, ?ConnectionInterface $db = null): ?array
+    public function findActiveByUserAndSlot(int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
     {
         $conn  = $db ?? $this->db;
         $table = $conn->prefixTable('signups');
@@ -79,10 +79,10 @@ class SignupModel extends Model
 
         $result = $conn->query(
             "SELECT id, status FROM {$table}
-             WHERE volunteer_id = ? AND slot_id = ?
+             WHERE user_id = ? AND slot_id = ?
                AND status NOT IN ({$inact}) AND deleted_at IS NULL
              LIMIT 1" . $this->forUpdateSuffix($conn),
-            array_merge([$volunteerId, $slotId], self::INACTIVE_STATUSES),
+            array_merge([$userId, $slotId], self::INACTIVE_STATUSES),
         );
 
         if ($result === false) {
@@ -94,14 +94,14 @@ class SignupModel extends Model
 
     /**
      * Return the first active signup whose slot overlaps [$startsAt, $endsAt) for
-     * the given volunteer, excluding $excludeSlotId (the target slot).
+     * the given user, excluding $excludeSlotId (the target slot).
      *
      * Two intervals overlap when: existing.starts_at < endsAt AND existing.ends_at > startsAt.
      * Used for overlap detection inside a transaction. On MySQLi this is a locking read
-     * for the same snapshot-freshness reason as findActiveByVolunteerAndSlot.
+     * for the same snapshot-freshness reason as findActiveByUserAndSlot.
      */
-    public function findOverlappingActiveByVolunteer(
-        int    $volunteerId,
+    public function findOverlappingActiveByUser(
+        int    $userId,
         string $startsAt,
         string $endsAt,
         int    $excludeSlotId,
@@ -113,7 +113,7 @@ class SignupModel extends Model
         $inact   = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
         $params = array_merge(
-            [$volunteerId, $excludeSlotId],
+            [$userId, $excludeSlotId],
             self::INACTIVE_STATUSES,
             [$endsAt, $startsAt]
         );
@@ -122,7 +122,7 @@ class SignupModel extends Model
             "SELECT {$tSign}.id, {$tSlots}.starts_at, {$tSlots}.ends_at
              FROM {$tSign}
              JOIN {$tSlots} ON {$tSlots}.id = {$tSign}.slot_id
-             WHERE {$tSign}.volunteer_id = ?
+             WHERE {$tSign}.user_id = ?
                AND {$tSign}.slot_id != ?
                AND {$tSign}.status NOT IN ({$inact})
                AND {$tSign}.deleted_at IS NULL

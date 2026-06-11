@@ -6,7 +6,7 @@ use App\Models\KermesseModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
-use App\Models\VolunteerModel;
+use App\Models\UserModel;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
@@ -26,12 +26,12 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
  * MariaDB rolls one transaction back, which we map to transaction_failed (retryable).
  *
  * BOUNDARY: this service owns all signup state mutations and all business invariants.
- * Controllers must never call VolunteerModel or SignupModel insert/update directly.
+ * Controllers must never call UserModel or SignupModel insert/update directly.
  */
 class SignupService
 {
     public function __construct(
-        private readonly VolunteerModel       $volunteerModel,
+        private readonly UserModel            $userModel,
         private readonly SignupModel          $signupModel,
         private readonly ?KermesseModel       $kermesseModel = null,
         private readonly ?SlotModel           $slotModel = null,
@@ -139,21 +139,21 @@ class SignupService
             return SignupResult::failure('slot_full');
         }
 
-        $volunteerId = $this->findOrCreateVolunteer($db, $kermesseId, $email, $fields);
-        if ($volunteerId === null) {
+        $userId = $this->findOrCreateUser($db, $email, $fields);
+        if ($userId === null) {
             return SignupResult::failure('volunteer_insert_failed');
         }
 
-        // Lock the volunteer row so same-volunteer submissions serialize before the
+        // Lock the user row so same-user submissions serialize before the
         // duplicate/overlap checks (which are locking reads — see SignupModel).
-        $this->volunteerModel->lockForOverlapCheck($volunteerId, $db);
+        $this->userModel->lockForOverlapCheck($userId, $db);
 
-        if ($this->signupModel->findActiveByVolunteerAndSlot($volunteerId, $slotId, $db) !== null) {
+        if ($this->signupModel->findActiveByUserAndSlot($userId, $slotId, $db) !== null) {
             return SignupResult::failure('duplicate_signup');
         }
 
-        $overlap = $this->signupModel->findOverlappingActiveByVolunteer(
-            $volunteerId,
+        $overlap = $this->signupModel->findOverlappingActiveByUser(
+            $userId,
             (string) $slot['starts_at'],
             (string) $slot['ends_at'],
             $slotId,
@@ -167,9 +167,9 @@ class SignupService
         }
 
         $signupId = $this->signupModel->skipValidation(true)->insert([
-            'slot_id'      => $slotId,
-            'volunteer_id' => $volunteerId,
-            'status'       => SignupModel::STATUS_ACTIVE,
+            'slot_id' => $slotId,
+            'user_id' => $userId,
+            'status'  => SignupModel::STATUS_ACTIVE,
         ]);
 
         if ($signupId === false) {
@@ -178,7 +178,7 @@ class SignupService
 
         // Internal result: the slot row rides in context so the caller can build
         // the confirmation email after commit; signup() rebuilds the public result.
-        return new SignupResult(true, (int) $signupId, $volunteerId, null, ['slot' => $slot]);
+        return new SignupResult(true, (int) $signupId, $userId, null, ['slot' => $slot]);
     }
 
     /**
@@ -213,23 +213,25 @@ class SignupService
     }
 
     /**
-     * Find the volunteer for (kermesse, normalized email) or create it, surviving the
-     * concurrent-creation race on the uq_volunteers_kermesse_email unique key.
+     * Find the global user by normalized email or create it, surviving the
+     * concurrent-creation race on the uq_users_email_hash unique key.
      */
-    private function findOrCreateVolunteer(ConnectionInterface $db, int $kermesseId, string $email, array $fields): ?int
+    private function findOrCreateUser(ConnectionInterface $db, string $email, array $fields): ?int
     {
-        $existing = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email, $db);
+        $emailHash = hash('sha256', $email);
+
+        $existing = $this->userModel->findByEmailHash($emailHash, $db);
         if ($existing !== null) {
             return (int) $existing['id'];
         }
 
         try {
-            $inserted = $this->volunteerModel->skipValidation(true)->insert([
-                'kermesse_id' => $kermesseId,
-                'first_name'  => (string) ($fields['first_name'] ?? ''),
-                'last_name'   => (string) ($fields['last_name'] ?? ''),
-                'email'       => $email,
-                'phone'       => (string) ($fields['phone'] ?? ''),
+            $inserted = $this->userModel->skipValidation(true)->insert([
+                'email'      => $email,
+                'email_hash' => $emailHash,
+                'first_name' => (string) ($fields['first_name'] ?? ''),
+                'last_name'  => (string) ($fields['last_name'] ?? ''),
+                'phone'      => (string) ($fields['phone'] ?? ''),
             ]);
 
             if ($inserted !== false) {
@@ -239,10 +241,10 @@ class SignupService
             // A concurrent request won the insert race on the unique key. Manual
             // transaction mode keeps this transaction usable; fall through to the
             // locking re-read, which sees the competitor's committed row.
-            log_message('info', 'Volunteer insert race, falling back to reuse: ' . $e->getMessage());
+            log_message('info', 'User insert race, falling back to reuse: ' . $e->getMessage());
         }
 
-        $existing = $this->volunteerModel->findByKermesseAndEmail($kermesseId, $email, $db, true);
+        $existing = $this->userModel->findByEmailHash($emailHash, $db, true);
 
         return $existing !== null ? (int) $existing['id'] : null;
     }
@@ -254,7 +256,7 @@ class SignupService
      */
     private function assertSharedConnection(ConnectionInterface $db): void
     {
-        foreach ([$this->volunteerModel, $this->signupModel] as $model) {
+        foreach ([$this->userModel, $this->signupModel] as $model) {
             $modelDb = $model->db ?? null;
             if ($modelDb instanceof ConnectionInterface && $modelDb !== $db) {
                 throw new DatabaseException(
