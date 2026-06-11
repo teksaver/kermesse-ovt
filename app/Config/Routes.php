@@ -36,10 +36,11 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
 
 // ---------------------------------------------------------------------------
-// Stand management — Owner/Admin only (Story 2.2)
+// Stand management — Owner/Admin only (Stories 2.2, 2.4)
 // ---------------------------------------------------------------------------
 $routes->post('kermesse/(:num)/stands', '\App\Controllers\Kermesse\Dashboard\StandController::store/$1', ['filter' => 'role:owner,admin']);
 $routes->post('kermesse/(:num)/stands/(:num)', '\App\Controllers\Kermesse\Dashboard\StandController::update/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/stands/(:num)/delete', '\App\Controllers\Kermesse\Dashboard\StandController::delete/$1/$2', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Slot management — Owner/Admin only (Story 2.3)

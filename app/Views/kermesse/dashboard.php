@@ -52,6 +52,57 @@
             <li class="stands-list__item" id="slots-stand-<?= $sid ?>">
                 <span class="stands-list__name"><?= esc($stand['name']) ?></span>
 
+                <!-- Suppression du stand (UX-DR12) -->
+                <?php
+                    $requiresStrong = ! empty($stand['requires_strong_confirm']);
+                    $deleteError    = session()->getFlashdata('delete_error_' . $sid);
+                    $hasDeleteError = $deleteError !== null;
+                ?>
+                <details class="stand-delete"<?= $hasDeleteError ? ' open' : '' ?>>
+                    <summary class="btn btn--danger btn--sm">Supprimer</summary>
+                    <div class="stand-delete__confirm">
+                        <?php if ($requiresStrong): ?>
+                        <p class="stand-delete__warning">
+                            Ce stand a des bénévoles inscrits. Saisissez <strong>SUPPRIMER</strong> pour confirmer :
+                        </p>
+                        <?php else: ?>
+                        <p class="stand-delete__warning">Confirmer la suppression du stand « <?= esc($stand['name']) ?> » ?</p>
+                        <?php endif; ?>
+
+                        <?php if ($hasDeleteError): ?>
+                        <p class="form-error" role="alert" id="delete-error-<?= $sid ?>"><?= esc($deleteError) ?></p>
+                        <?php endif; ?>
+
+                        <form method="post"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/delete") ?>"
+                              class="stand-delete__form">
+                            <?= csrf_field() ?>
+                            <?php if ($requiresStrong): ?>
+                            <div class="form-group">
+                                <label for="confirm-delete-<?= $sid ?>" class="form-label">Confirmation</label>
+                                <input type="text"
+                                       id="confirm-delete-<?= $sid ?>"
+                                       name="confirm"
+                                       class="form-control"
+                                       placeholder="SUPPRIMER"
+                                       autocomplete="off"
+                                       <?= $hasDeleteError ? 'aria-describedby="delete-error-' . $sid . '"' : '' ?>
+                                       data-delete-confirm="delete-btn-<?= $sid ?>">
+                            </div>
+                            <button type="submit"
+                                    id="delete-btn-<?= $sid ?>"
+                                    class="btn btn--danger">
+                                Supprimer définitivement
+                            </button>
+                            <?php else: ?>
+                            <button type="submit" class="btn btn--danger">
+                                Supprimer définitivement
+                            </button>
+                            <?php endif; ?>
+                        </form>
+                    </div>
+                </details>
+
                 <!-- Formulaire de renommage -->
                 <form method="post"
                       action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}") ?>"
@@ -239,4 +290,18 @@
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
+    var btnId = input.getAttribute('data-delete-confirm');
+    var btn   = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = input.value.trim().toUpperCase() !== 'SUPPRIMER';
+    input.addEventListener('input', function () {
+        btn.disabled = this.value.trim().toUpperCase() !== 'SUPPRIMER';
+    });
+});
+</script>
 <?= $this->endSection() ?>

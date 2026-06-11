@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Services\StandDeletionService;
 
 /**
  * Kermesse admin dashboard: stands, slots, lifecycle, participants.
@@ -23,17 +24,21 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
-        $stands   = model(StandModel::class)->getActiveForKermesse($id);
-        $standIds = array_column($stands, 'id');
-        $allSlots = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
+        $standModel = model(StandModel::class);
+        $stands     = $standModel->getActiveForKermesse($id);
+        $standIds   = array_column($stands, 'id');
+        $allSlots   = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
 
         $slotsByStand = [];
         foreach ($allSlots as $slot) {
             $slotsByStand[(int) $slot['stand_id']][] = $slot;
         }
 
+        $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
+
         foreach ($stands as &$stand) {
-            $stand['slots'] = $slotsByStand[(int) $stand['id']] ?? [];
+            $stand['slots']                  = $slotsByStand[(int) $stand['id']] ?? [];
+            $stand['requires_strong_confirm'] = $requiresStrong[(int) $stand['id']];
         }
         unset($stand);
 
