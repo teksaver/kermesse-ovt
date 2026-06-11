@@ -113,8 +113,9 @@ class EmailService
             subject: 'Votre lien de connexion',
             viewPath: 'emails/magic_link',
             viewData: [
-                'loginUrl'   => $loginUrl,
-                'ttlMinutes' => (int) round(config('Kermesse')->magicLinkTokenTTL / 60),
+                'loginUrl' => $loginUrl,
+                // max(1, …) : éviter d'afficher « 0 minute » si un TTL < 30 s est configuré.
+                'ttlMinutes' => max(1, (int) round(config('Kermesse')->magicLinkTokenTTL / 60)),
             ],
             eventType: 'magic_link',
             metadata: [],

@@ -132,6 +132,23 @@ final class MagicLinkRequestTest extends CIUnitTestCase
             'The entered email value must be preserved in the form on error (UX-DR27)');
     }
 
+    public function testPostArrayShapedEmailIsRejectedWithoutFatal(): void
+    {
+        // email[]=... must not trigger "Array to string conversion"; it is treated as
+        // empty and rejected with a field error (no token, no 500).
+        $result = $this->csrfPost('auth/login', ['email' => ['a@b.com', 'c@d.com']]);
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('form-error-list', $body,
+            'An array-shaped email must be rejected as invalid, not crash');
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_access_tokens"
+        )->getRowArray()['cnt'];
+        $this->assertSame(0, $count, 'No token must be issued for an array-shaped email');
+    }
+
     // ------------------------------------------------------------------
     // POST with valid email — AC1
     // ------------------------------------------------------------------
