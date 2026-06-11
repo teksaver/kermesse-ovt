@@ -1,17 +1,11 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connexion — Kermesse</title>
-    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
-</head>
-<body>
+<?= $this->extend('layouts/public') ?>
+<?= $this->section('content') ?>
 <main class="container container--narrow">
     <h1 class="page-title">Se connecter</h1>
     <p>Saisissez votre adresse email pour recevoir un lien de connexion.</p>
     <!-- TODO: Story 1.3 — formulaire Magic Link request -->
-    <form method="post" action="<?= site_url('auth/login') ?>">
+    <?= view('partials/form_errors', ['errors' => $errors ?? []]) ?>
+<form method="post" action="<?= site_url('auth/login') ?>">
         <?= csrf_field() ?>
         <div class="form-group">
             <label for="email" class="form-label">Adresse email</label>
@@ -20,5 +14,4 @@
         <button type="submit" class="btn btn--primary">Recevoir le lien</button>
     </form>
 </main>
-</body>
-</html>
+<?= $this->endSection() ?>

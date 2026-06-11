@@ -1,14 +1,5 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>Inscription confirmée – <?= esc($kermesseName) ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex">
-    <link rel="shortcut icon" type="image/png" href="<?= base_url('favicon.ico') ?>">
-    <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
-</head>
-<body>
+<?= $this->extend('layouts/public') ?>
+<?= $this->section('content') ?>
 <main class="app-shell app-shell--public">
     <section class="form-panel public-page" aria-labelledby="confirmation-title">
 
@@ -38,5 +29,4 @@
 
     </section>
 </main>
-</body>
-</html>
+<?= $this->endSection() ?>

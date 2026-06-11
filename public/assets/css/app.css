@@ -66,6 +66,55 @@ body {
     color: #166534;
 }
 
+/* Button variants */
+.btn--secondary {
+    background-color: var(--color-surface);
+    color: var(--color-primary);
+    border: 2px solid var(--color-primary);
+}
+.btn--secondary:hover {
+    background-color: var(--color-border);
+}
+.btn--large {
+    padding: var(--space-4) var(--space-6);
+    font-size: 1.125rem;
+    min-height: 44px;
+}
+.btn--block {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Public home page */
+.home-public {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-8) 0;
+    gap: var(--space-8);
+}
+.home-public__header {
+    text-align: center;
+}
+.home-public__title {
+    margin: 0 0 var(--space-2);
+    font-size: 2rem;
+    font-weight: 700;
+}
+.home-public__subtitle {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 1rem;
+}
+.home-public__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+    max-width: 360px;
+}
+
 .form-error-banner {
     background-color: #FEE2E2;
     color: var(--color-danger);

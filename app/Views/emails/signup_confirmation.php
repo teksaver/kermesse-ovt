@@ -7,7 +7,7 @@ try {
         . ' - ' . \CodeIgniter\I18n\Time::parse((string) $slotEndsAt)->format('H:i');
 } catch (\Exception $e) {
     $slotDate  = (string) $slotStartsAt;
-    $slotHours = (string) $slotEndsAt;
+    $slotHours = '? - ' . (string) $slotEndsAt;
 }
 ?>
 <!DOCTYPE html>

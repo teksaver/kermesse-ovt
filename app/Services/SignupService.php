@@ -51,7 +51,7 @@ class SignupService
      */
     public function signup(int $slotId, int $kermesseId, array $fields): SignupResult
     {
-        $email = mb_strtolower(trim((string) ($fields['email'] ?? '')), 'UTF-8');
+        $email = strtolower(trim((string) ($fields['email'] ?? '')));
 
         if ($email === '') {
             return SignupResult::failure('volunteer_insert_failed');
@@ -130,7 +130,7 @@ class SignupService
         // owns the invariant: direct callers and admin-deactivation races must not
         // bypass it.
         if (($slot['status'] ?? null) !== SlotModel::STATUS_ACTIVE
-            || (string) $slot['ends_at'] < date('Y-m-d H:i:s')) {
+            || (string) $slot['ends_at'] < (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('Y-m-d H:i:s')) {
             return SignupResult::failure('slot_unavailable');
         }
 
@@ -241,7 +241,11 @@ class SignupService
             // A concurrent request won the insert race on the unique key. Manual
             // transaction mode keeps this transaction usable; fall through to the
             // locking re-read, which sees the competitor's committed row.
-            log_message('info', 'User insert race, falling back to reuse: ' . $e->getMessage());
+            if ($e->getCode() === 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
+                log_message('info', 'User insert race, falling back to reuse: ' . $e->getMessage());
+            } else {
+                throw $e;
+            }
         }
 
         $existing = $this->userModel->findByEmailHash($emailHash, $db, true);

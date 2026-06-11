@@ -13,7 +13,7 @@ class HomeController extends BaseController
     /** GET / */
     public function index(): mixed
     {
-        // TODO: Story 1.2 (public) / Story 1.5 (connected)
-        return view('dashboard/index');
+        // Story 1.5 will add session check to redirect connected users to dashboard.
+        return view('home/public', ['title' => 'Kermesse']);
     }
 }

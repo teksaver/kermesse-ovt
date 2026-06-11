@@ -1,0 +1,344 @@
+diff --git a/app/Views/auth/login.php b/app/Views/auth/login.php
+new file mode 100644
+index 0000000..aa8ead0
+--- /dev/null
++++ b/app/Views/auth/login.php
+@@ -0,0 +1,24 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Connexion — Kermesse</title>
++    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
++</head>
++<body>
++<main class="container container--narrow">
++    <h1 class="page-title">Se connecter</h1>
++    <p>Saisissez votre adresse email pour recevoir un lien de connexion.</p>
++    <!-- TODO: Story 1.3 — formulaire Magic Link request -->
++    <form method="post" action="<?= site_url('auth/login') ?>">
++        <?= csrf_field() ?>
++        <div class="form-group">
++            <label for="email" class="form-label">Adresse email</label>
++            <input type="email" id="email" name="email" class="form-input" required autocomplete="email">
++        </div>
++        <button type="submit" class="btn btn--primary">Recevoir le lien</button>
++    </form>
++</main>
++</body>
++</html>
+diff --git a/app/Views/auth/magic_link_sent.php b/app/Views/auth/magic_link_sent.php
+new file mode 100644
+index 0000000..ab80900
+--- /dev/null
++++ b/app/Views/auth/magic_link_sent.php
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Lien envoyé — Kermesse</title>
++    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
++</head>
++<body>
++<main class="container container--narrow">
++    <h1 class="page-title">Vérifiez votre boîte mail</h1>
++    <p>Un lien de connexion a été envoyé à <strong><?= esc($email ?? '') ?></strong>.</p>
++    <p>Le lien est valable 15 minutes. Si vous ne le trouvez pas, vérifiez vos spams.</p>
++</main>
++</body>
++</html>
+diff --git a/app/Views/dashboard/index.php b/app/Views/dashboard/index.php
+new file mode 100644
+index 0000000..a46f5e6
+--- /dev/null
++++ b/app/Views/dashboard/index.php
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Mes kermesses — Kermesse</title>
++    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
++</head>
++<body>
++<main class="container">
++    <h1 class="page-title">Mes kermesses</h1>
++    <!-- TODO: Story 1.5 — liste des kermesses de l'utilisateur avec rôle -->
++    <p>Bienvenue.</p>
++</main>
++</body>
++</html>
+diff --git a/app/Views/emails/signup_confirmation.php b/app/Views/emails/signup_confirmation.php
+new file mode 100644
+index 0000000..0f360e2
+--- /dev/null
++++ b/app/Views/emails/signup_confirmation.php
+@@ -0,0 +1,59 @@
++<?php
++// Slot times are rendered defensively: a malformed datetime must not break the
++// email (the signup is already recorded) — fall back to the raw string.
++try {
++    $slotDate  = \CodeIgniter\I18n\Time::parse((string) $slotStartsAt)->format('d/m/Y');
++    $slotHours = \CodeIgniter\I18n\Time::parse((string) $slotStartsAt)->format('H:i')
++        . ' - ' . \CodeIgniter\I18n\Time::parse((string) $slotEndsAt)->format('H:i');
++} catch (\Exception $e) {
++    $slotDate  = (string) $slotStartsAt;
++    $slotHours = (string) $slotEndsAt;
++}
++?>
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <title>Votre inscription est confirmée</title>
++</head>
++<body style="margin:0; padding:0; background:#F8FAFC; font-family:system-ui,-apple-system,sans-serif; font-size:16px; line-height:1.5; color:#111827;">
++<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#F8FAFC;">
++<tr><td align="center" style="padding:32px 16px;">
++    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:8px;">
++    <tr><td style="padding:32px 24px;">
++        <h1 style="margin:0 0 16px; font-size:24px; font-weight:700; color:#111827;">
++            Merci, <?= esc($firstName) ?> !
++        </h1>
++        <p style="margin:0 0 16px; color:#475569;">
++            Votre inscription à la kermesse <strong>« <?= esc($kermesseName) ?> »</strong>
++            est bien confirmée. Voici le récapitulatif de votre créneau :
++        </p>
++        <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
++               style="margin:0 0 24px; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px;">
++        <tr><td style="padding:16px 24px;">
++            <p style="margin:0 0 8px; color:#111827;">
++                <strong>Stand :</strong> <?= esc($standName) ?>
++            </p>
++            <p style="margin:0 0 8px; color:#111827;">
++                <strong>Date :</strong> <?= esc($slotDate) ?>
++            </p>
++            <p style="margin:0; color:#111827;">
++                <strong>Horaires :</strong> <?= esc($slotHours) ?>
++            </p>
++        </td></tr>
++        </table>
++        <p style="margin:0 0 16px; color:#475569;">
++            Pensez à noter ce créneau dans votre agenda. Toute l'équipe compte sur vous !
++        </p>
++        <hr style="border:none; border-top:1px solid #CBD5E1; margin:24px 0;">
++        <p style="margin:0; color:#475569; font-size:13px;">
++            Vous recevez cet email parce que cette adresse a été utilisée pour
++            s'inscrire comme bénévole. Si vous n'êtes pas à l'origine de cette
++            inscription, vous pouvez ignorer cet email.
++        </p>
++    </td></tr>
++    </table>
++</td></tr>
++</table>
++</body>
++</html>
+diff --git a/app/Views/kermesse/public/signup_confirmation.php b/app/Views/kermesse/public/signup_confirmation.php
+new file mode 100644
+index 0000000..11f4166
+--- /dev/null
++++ b/app/Views/kermesse/public/signup_confirmation.php
+@@ -0,0 +1,42 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <title>Inscription confirmée – <?= esc($kermesseName) ?></title>
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <meta name="robots" content="noindex">
++    <link rel="shortcut icon" type="image/png" href="<?= base_url('favicon.ico') ?>">
++    <link rel="stylesheet" href="<?= base_url('assets/css/app.css') ?>">
++</head>
++<body>
++<main class="app-shell app-shell--public">
++    <section class="form-panel public-page" aria-labelledby="confirmation-title">
++
++        <h1 id="confirmation-title" class="page-title">Inscription confirmée !</h1>
++
++        <div class="confirmation-panel" role="status" aria-live="polite">
++            <p class="confirmation-message">
++                Votre inscription à <strong><?= esc($kermesseName) ?></strong> est bien enregistrée.
++            </p>
++            <?php if (($emailSent ?? null) === false): ?>
++            <p class="confirmation-email-notice">
++                Votre inscription est bien enregistrée, mais l'email de confirmation
++                n'a pas pu être envoyé. Notez bien votre créneau&nbsp;; en cas de doute,
++                contactez l'organisateur de la kermesse.
++            </p>
++            <?php else: ?>
++            <p class="confirmation-email-notice">
++                Un email de confirmation vous a été envoyé. Si vous ne le recevez pas
++                d'ici quelques minutes, vérifiez vos courriers indésirables.
++            </p>
++            <?php endif; ?>
++        </div>
++
++        <div class="signup-back">
++            <a href="<?= esc(site_url('k/' . $publicSlug), 'attr') ?>" class="back-link">← Retour aux créneaux</a>
++        </div>
++
++    </section>
++</main>
++</body>
++</html>
+diff --git a/app/Views/public/signup_form.php b/app/Views/kermesse/public/signup_form.php
+similarity index 96%
+rename from app/Views/public/signup_form.php
+rename to app/Views/kermesse/public/signup_form.php
+index 6e509ba..1fa9c34 100644
+--- a/app/Views/public/signup_form.php
++++ b/app/Views/kermesse/public/signup_form.php
+@@ -38,6 +38,12 @@
+ 
+ 
+ 
++        <?php if (isset($errors['_service'])): ?>
++        <div class="form-service-error" role="alert">
++            <?= esc($errors['_service']) ?>
++        </div>
++        <?php endif; ?>
++
+         <form method="post"
+             action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>"
+             novalidate>
+diff --git a/app/Views/public/volunteer_page.php b/app/Views/kermesse/public/volunteer_page.php
+similarity index 100%
+rename from app/Views/public/volunteer_page.php
+rename to app/Views/kermesse/public/volunteer_page.php
+diff --git a/app/Views/layouts/app.php b/app/Views/layouts/app.php
+new file mode 100644
+index 0000000..4124836
+--- /dev/null
++++ b/app/Views/layouts/app.php
+@@ -0,0 +1,14 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title><?= esc($title ?? 'Kermesse') ?></title>
++    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
++</head>
++<body>
++    <main class="container">
++        <?= $this->renderSection('content') ?>
++    </main>
++</body>
++</html>
+diff --git a/app/Views/layouts/email.php b/app/Views/layouts/email.php
+new file mode 100644
+index 0000000..fbeab56
+--- /dev/null
++++ b/app/Views/layouts/email.php
+@@ -0,0 +1,11 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title><?= esc($title ?? 'Kermesse') ?></title>
++</head>
++<body style="margin:0;padding:16px;font-family:system-ui,-apple-system,sans-serif;background:#F8FAFC;color:#111827;">
++    <?= $this->renderSection('content') ?>
++</body>
++</html>
+diff --git a/app/Views/layouts/public.php b/app/Views/layouts/public.php
+new file mode 100644
+index 0000000..4124836
+--- /dev/null
++++ b/app/Views/layouts/public.php
+@@ -0,0 +1,14 @@
++<!DOCTYPE html>
++<html lang="fr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title><?= esc($title ?? 'Kermesse') ?></title>
++    <link rel="stylesheet" href="<?= site_url('assets/css/app.css') ?>">
++</head>
++<body>
++    <main class="container">
++        <?= $this->renderSection('content') ?>
++    </main>
++</body>
++</html>
+diff --git a/app/Views/partials/confirmation_panel.php b/app/Views/partials/confirmation_panel.php
+new file mode 100644
+index 0000000..a30bbe0
+--- /dev/null
++++ b/app/Views/partials/confirmation_panel.php
+@@ -0,0 +1,16 @@
++<?php
++/**
++ * Confirmation panel — rendered after a destructive or important action.
++ *
++ * Expected variables:
++ *   $message (string)  — main confirmation message
++ *   $action  (string)  — URL for the primary action button
++ *   $label   (string)  — button label
++ */
++?>
++<div class="confirmation-panel" role="region" aria-label="Confirmation">
++    <p class="confirmation-panel__message"><?= esc($message ?? '') ?></p>
++    <?php if (!empty($action)): ?>
++    <a href="<?= esc($action, 'url') ?>" class="btn btn--primary"><?= esc($label ?? 'Confirmer') ?></a>
++    <?php endif; ?>
++</div>
+diff --git a/app/Views/partials/form_errors.php b/app/Views/partials/form_errors.php
+new file mode 100644
+index 0000000..512aa27
+--- /dev/null
++++ b/app/Views/partials/form_errors.php
+@@ -0,0 +1,25 @@
++<?php
++/**
++ * Form error summary.
++ *
++ * Expected variables:
++ *   $errors (array<string, string>)  — field name => error message
++ *
++ * The service error key '_service' is displayed as a standalone banner.
++ */
++if (empty($errors)) return;
++?>
++<?php if (!empty($errors['_service'])): ?>
++<div class="form-error-banner" role="alert">
++    <?= esc($errors['_service']) ?>
++</div>
++<?php endif; ?>
++<?php if (count($errors) > (isset($errors['_service']) ? 1 : 0)): ?>
++<ul class="form-error-list" role="alert">
++    <?php foreach ($errors as $field => $msg): ?>
++        <?php if ($field !== '_service'): ?>
++        <li class="form-error-list__item"><?= esc($msg) ?></li>
++        <?php endif; ?>
++    <?php endforeach; ?>
++</ul>
++<?php endif; ?>
+diff --git a/app/Views/partials/status_badge.php b/app/Views/partials/status_badge.php
+new file mode 100644
+index 0000000..b076caf
+--- /dev/null
++++ b/app/Views/partials/status_badge.php
+@@ -0,0 +1,17 @@
++<?php
++/**
++ * Status badge for kermesse lifecycle, slot, or signup state.
++ *
++ * Expected variables:
++ *   $status (string)  — 'preparation' | 'open' | 'closed' | 'active' | 'full'
++ */
++$labels = [
++    'preparation' => 'Préparation',
++    'open'        => 'Inscriptions ouvertes',
++    'closed'      => 'Inscriptions fermées',
++    'active'      => 'Actif',
++    'full'        => 'Complet',
++];
++$label = $labels[$status ?? ''] ?? esc($status ?? '');
++?>
++<span class="status-badge status-badge--<?= esc($status ?? 'unknown') ?>"><?= $label ?></span>

@@ -12,6 +12,6 @@ $labels = [
     'active'      => 'Actif',
     'full'        => 'Complet',
 ];
-$label = $labels[$status ?? ''] ?? esc($status ?? '');
+$label = $labels[$status ?? ''] ?? esc($status ?? 'Inconnu');
 ?>
 <span class="status-badge status-badge--<?= esc($status ?? 'unknown') ?>"><?= $label ?></span>

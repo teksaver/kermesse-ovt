@@ -52,7 +52,7 @@ class SignupModel extends Model
 
         $result = $db->query(
             "SELECT COUNT(*) AS cnt FROM {$table}
-             WHERE slot_id = ? AND status NOT IN ({$inact}) AND deleted_at IS NULL",
+             WHERE slot_id = ? AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($db),
             array_merge([$slotId], self::INACTIVE_STATUSES),
         );
 
@@ -118,26 +118,34 @@ class SignupModel extends Model
             [$endsAt, $startsAt]
         );
 
-        $result = $conn->query(
-            "SELECT {$tSign}.id, {$tSlots}.starts_at, {$tSlots}.ends_at
-             FROM {$tSign}
-             JOIN {$tSlots} ON {$tSlots}.id = {$tSign}.slot_id
-             WHERE {$tSign}.user_id = ?
-               AND {$tSign}.slot_id != ?
-               AND {$tSign}.status NOT IN ({$inact})
-               AND {$tSign}.deleted_at IS NULL
-               AND {$tSlots}.starts_at < ?
-               AND {$tSlots}.ends_at > ?
-             LIMIT 1" . $this->forUpdateSuffix($conn),
-            $params,
-        );
+        $signups = $conn->query(
+            "SELECT id, slot_id FROM {$tSign}
+             WHERE user_id = ? AND slot_id != ? AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
+            array_merge([$userId, $excludeSlotId], self::INACTIVE_STATUSES)
+        )->getResultArray();
 
-        if ($result === false) {
-            // Fail closed: a failed check must never be read as "no overlap".
-            throw new DatabaseException('Overlap check failed; refusing to continue (fail-closed).');
+        if (empty($signups)) {
+            return null;
         }
 
-        return $result->getRowArray() ?: null;
+        $slotIds = array_column($signups, 'slot_id');
+        $placeholders = implode(',', array_fill(0, count($slotIds), '?'));
+        
+        $overlaps = $conn->query(
+            "SELECT id, starts_at, ends_at FROM {$tSlots}
+             WHERE id IN ({$placeholders}) AND starts_at < ? AND ends_at > ?
+             LIMIT 1",
+            array_merge($slotIds, [$endsAt, $startsAt])
+        )->getRowArray();
+
+        if ($overlaps) {
+            foreach ($signups as $s) {
+                if ($s['slot_id'] == $overlaps['id']) {
+                    return ['id' => $s['id'], 'starts_at' => $overlaps['starts_at'], 'ends_at' => $overlaps['ends_at']];
+                }
+            }
+        }
+        return null;
     }
 
     /**

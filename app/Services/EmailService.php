@@ -148,7 +148,7 @@ class EmailService
             $email->setMessage($emailBody);
             $email->setMailType('html');
 
-            $sent = $email->send(false);
+            $sent = $email->send();
 
             if (! $sent) {
                 $errorMessage = 'Email send returned false';

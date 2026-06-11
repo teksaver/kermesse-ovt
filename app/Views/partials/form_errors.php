@@ -7,7 +7,7 @@
  *
  * The service error key '_service' is displayed as a standalone banner.
  */
-if (empty($errors)) return;
+if (empty($errors) || !is_array($errors)) return;
 ?>
 <?php if (!empty($errors['_service'])): ?>
 <div class="form-error-banner" role="alert">
