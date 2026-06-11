@@ -11,9 +11,9 @@ use App\Controllers\BaseController;
 class HomeController extends BaseController
 {
     /** GET / */
-    public function index(): mixed
+    public function index(): string
     {
-        // Story 1.5 will add session check to redirect connected users to dashboard.
+        // @todo Add session check to redirect connected users to dashboard.
         return view('home/public', ['title' => 'Kermesse']);
     }
 }

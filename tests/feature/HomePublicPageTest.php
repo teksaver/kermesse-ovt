@@ -37,6 +37,13 @@ class HomePublicPageTest extends CIUnitTestCase
     {
         $result = $this->get('/');
 
-        $result->assertSee('auth/login');
+        $result->assertSee(site_url('auth/login'));
+    }
+
+    public function testRootPageLinksToCreate(): void
+    {
+        $result = $this->get('/');
+
+        $result->assertSee(site_url('create'));
     }
 }
