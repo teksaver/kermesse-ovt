@@ -55,6 +55,6 @@ class RoleFilter implements FilterInterface
 
     private function forbidden(): ResponseInterface
     {
-        return service('response')->setStatusCode(403)->setBody('Accès refusé');
+        return service('response')->setStatusCode(403)->setBody('unauthorized_role');
     }
 }

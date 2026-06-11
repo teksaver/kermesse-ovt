@@ -101,6 +101,7 @@ final class CreateKermesseTest extends CIUnitTestCase
                 updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('CREATE UNIQUE INDEX IF NOT EXISTS uq_stands_active_name ON db_stands (kermesse_id, name) WHERE status = "active"');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_access_tokens (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,

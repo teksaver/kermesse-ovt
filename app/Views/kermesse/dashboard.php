@@ -32,11 +32,11 @@
         <?php endif; ?>
 
         <?php
-            $standError    = $stand_error    ?? null;
-            $standForm     = $stand_form     ?? null;
-            $standName     = $stand_name     ?? '';
-            $editingStandId = $editing_stand_id ?? null;
-            $stands        = $stands          ?? [];
+            $standError     = session()->getFlashdata('stand_error')    ?? ($stand_error ?? null);
+            $standForm      = session()->getFlashdata('stand_form')     ?? ($stand_form ?? null);
+            $standName      = session()->getFlashdata('stand_name')     ?? ($stand_name ?? '');
+            $editingStandId = session()->getFlashdata('editing_stand_id') ?? ($editing_stand_id ?? null);
+            $stands         = $stands ?? [];
         ?>
 
         <!-- Liste des stands actifs -->

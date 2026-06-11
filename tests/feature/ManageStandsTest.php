@@ -103,6 +103,7 @@ final class ManageStandsTest extends CIUnitTestCase
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('CREATE UNIQUE INDEX IF NOT EXISTS uq_stands_active_name ON db_stands (kermesse_id, name) WHERE status = "active"');
     }
 
     private function insertFixtures(): void
@@ -208,6 +209,7 @@ final class ManageStandsTest extends CIUnitTestCase
             ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => 'Stand Interdit']);
 
         $result->assertStatus(403);
+        $this->assertStringContainsString('unauthorized_role', (string) $result->response()->getBody());
 
         $count = (int) db_connect()
             ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE name = 'Stand Interdit'")
@@ -233,21 +235,17 @@ final class ManageStandsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => '']);
 
-        $result->assertStatus(200);
-        $this->assertStringContainsString('form-error', $result->response()->getBody());
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
     }
 
     public function testAddStandValidationErrorPreservesName(): void
     {
-        // Empty name triggers error; the sentinel value must not appear, but
-        // let's check the form is re-rendered (status 200) with the section visible.
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => '']);
 
-        $result->assertStatus(200);
-        $body = $result->response()->getBody();
-        // Dashboard with stands section must be shown
-        $this->assertStringContainsString('stand', strtolower($body));
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
     }
 
     public function testAddDuplicateActiveStandNameShowsError(): void
@@ -257,8 +255,8 @@ final class ManageStandsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => 'Stand Dupont']);
 
-        $result->assertStatus(200);
-        $this->assertStringContainsString('form-error', $result->response()->getBody());
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
 
         // Only 1 stand with that name must exist
         $count = (int) db_connect()
@@ -274,8 +272,8 @@ final class ManageStandsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => 'STAND TEST']);
 
-        $result->assertStatus(200);
-        $this->assertStringContainsString('form-error', $result->response()->getBody());
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
     }
 
     // ------------------------------------------------------------------
@@ -320,6 +318,7 @@ final class ManageStandsTest extends CIUnitTestCase
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}", ['name' => 'Tentative']);
 
         $result->assertStatus(403);
+        $this->assertStringContainsString('unauthorized_role', (string) $result->response()->getBody());
 
         $row = db_connect()
             ->query("SELECT name FROM db_stands WHERE id = {$standId}")
@@ -334,8 +333,8 @@ final class ManageStandsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}", ['name' => '']);
 
-        $result->assertStatus(200);
-        $this->assertStringContainsString('form-error', $result->response()->getBody());
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
 
         // Name must be unchanged
         $row = db_connect()
@@ -352,8 +351,8 @@ final class ManageStandsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standBId}", ['name' => 'Stand A']);
 
-        $result->assertStatus(200);
-        $this->assertStringContainsString('form-error', $result->response()->getBody());
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
     }
 
     public function testRenameToSameNameIsAllowed(): void

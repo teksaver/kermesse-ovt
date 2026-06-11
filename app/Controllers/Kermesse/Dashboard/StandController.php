@@ -22,24 +22,27 @@ class StandController extends BaseController
             return $this->response->setStatusCode(404);
         }
 
-        $name = trim((string) $this->request->getPost('name'));
+        $p    = $this->request->getPost('name');
+        $name = is_string($p) ? trim($p) : '';
 
         if ($name === '') {
-            return $this->redirectWithError($id, 'Le nom du stand est obligatoire.', 'add', $name);
+            return $this->redirectWithError('Le nom du stand est obligatoire.', 'add', $name);
         }
 
         $standModel = model(StandModel::class);
 
         if ($standModel->hasActiveDuplicate($id, $name)) {
-            return $this->redirectWithError($id, 'Un stand actif avec ce nom existe déjà.', 'add', $name);
+            return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'add', $name);
         }
 
-        $standModel->insert([
+        if (!$standModel->insert([
             'kermesse_id'   => $id,
             'name'          => $name,
             'display_order' => $standModel->nextDisplayOrder($id),
             'status'        => StandModel::STATUS_ACTIVE,
-        ]);
+        ])) {
+            return $this->redirectWithError('Erreur système lors de l\'ajout.', 'add', $name);
+        }
 
         session()->setFlashdata('success', 'Stand « ' . esc($name) . ' » ajouté avec succès.');
 
@@ -59,17 +62,20 @@ class StandController extends BaseController
             return $this->response->setStatusCode(404);
         }
 
-        $name = trim((string) $this->request->getPost('name'));
+        $p    = $this->request->getPost('name');
+        $name = is_string($p) ? trim($p) : '';
 
         if ($name === '') {
-            return $this->redirectWithError($id, 'Le nom du stand est obligatoire.', 'edit', $name, $standId);
+            return $this->redirectWithError('Le nom du stand est obligatoire.', 'edit', $name, $standId);
         }
 
         if ($standModel->hasActiveDuplicate($id, $name, $standId)) {
-            return $this->redirectWithError($id, 'Un stand actif avec ce nom existe déjà.', 'edit', $name, $standId);
+            return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'edit', $name, $standId);
         }
 
-        $standModel->update($standId, ['name' => $name]);
+        if (!$standModel->update($standId, ['name' => $name])) {
+            return $this->redirectWithError('Erreur système lors de la modification.', 'edit', $name, $standId);
+        }
 
         session()->setFlashdata('success', 'Stand renommé en « ' . esc($name) . ' ».');
 
@@ -77,27 +83,19 @@ class StandController extends BaseController
     }
 
     /**
-     * Re-render the dashboard with an error for the stands section.
-     * Preserves entered name and marks which form (add or edit) is in error.
+     * Redirects back with input and flashdata for the dashboard stands section.
      */
     private function redirectWithError(
-        int $kermesseId,
         string $message,
         string $formContext,
         string $enteredName,
         ?int $editingStandId = null,
     ): mixed {
-        $kermesse = model(KermesseModel::class)->find($kermesseId);
-        $stands   = model(StandModel::class)->getActiveForKermesse($kermesseId);
-
-        return $this->response->setStatusCode(200)->setBody(view('kermesse/dashboard', [
-            'title'           => esc($kermesse['name']),
-            'kermesse'        => $kermesse,
-            'stands'          => $stands,
-            'stand_error'     => $message,
-            'stand_form'      => $formContext,
-            'stand_name'      => $enteredName,
-            'editing_stand_id' => $editingStandId,
-        ]));
+        return redirect()->back()
+            ->withInput()
+            ->with('stand_error', $message)
+            ->with('stand_form', $formContext)
+            ->with('stand_name', $enteredName)
+            ->with('editing_stand_id', $editingStandId);
     }
 }
