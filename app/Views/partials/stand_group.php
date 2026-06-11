@@ -21,8 +21,8 @@
         <?php endforeach; ?>
     </div>
     <?php else: ?>
-    <div class="slot-empty-state" aria-label="Créneaux de <?= esc($stand['name']) ?>">
-        <p class="slot-empty-state__text">Aucun créneau disponible pour le moment</p>
+    <div class="slot-kermesse-empty-state" aria-label="Créneaux de <?= esc($stand['name']) ?>">
+        <p class="slot-kermesse-empty-state__text">Aucun créneau disponible pour le moment</p>
     </div>
     <?php endif; ?>
 </div>

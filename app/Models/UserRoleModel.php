@@ -42,4 +42,21 @@ class UserRoleModel extends Model
     {
         return $this->where('kermesse_id', $kermesseId)->findAll();
     }
+
+    /**
+     * Returns all kermesses for a given user, each row including the user's role.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findKermessesForUser(int $userId): array
+    {
+        return $this->db
+            ->table('kermesse_user_roles kur')
+            ->select('k.id, k.name, k.public_slug, k.event_date, k.status, kur.role')
+            ->join('kermesses k', 'k.id = kur.kermesse_id')
+            ->where('kur.user_id', $userId)
+            ->orderBy('k.name', 'ASC')
+            ->get()
+            ->getResultArray();
+    }
 }

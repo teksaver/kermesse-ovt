@@ -35,7 +35,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $db->query('
             CREATE TABLE IF NOT EXISTS db_kermesses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
                 public_slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
                 event_date TEXT NOT NULL,
@@ -106,7 +106,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Secret', 'Owner', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $ownerId = (int) $db->insertID();
 
-        $db->query("INSERT INTO db_kermesses (owner_id, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
+        $db->query("INSERT INTO db_kermesses (created_by, public_slug, name, event_date, location, short_description, timezone, status, created_at, updated_at)
             VALUES ({$ownerId}, '{$slug}', 'Kermesse de printemps', '2026-09-12', 'Cour centrale', 'Venez nombreux', 'Europe/Paris', '{$status}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         return (int) $db->insertID();

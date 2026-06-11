@@ -14,48 +14,17 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
+    protected $migrate     = true;
+    protected $migrateOnce = true;
+    protected $refresh     = true;
+
     protected function setUp(): void
     {
         parent::setUp();
-
-        $db = db_connect();
-
-        $db->query('
-            CREATE TABLE IF NOT EXISTS db_access_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                token_hash TEXT NOT NULL UNIQUE,
-                token_type TEXT NOT NULL,
-                user_id INTEGER,
-                owner_id INTEGER,
-                kermesse_id INTEGER,
-                email TEXT,
-                expires_at DATETIME NOT NULL,
-                used_at DATETIME,
-                revoked_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        ');
-
-        $db->query('
-            CREATE TABLE IF NOT EXISTS db_users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT NOT NULL UNIQUE,
-                email_hash TEXT NOT NULL UNIQUE,
-                first_name TEXT NOT NULL DEFAULT \'\',
-                last_name TEXT NOT NULL DEFAULT \'\',
-                phone TEXT NOT NULL DEFAULT \'\',
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        ');
     }
 
     protected function tearDown(): void
     {
-        $db = db_connect();
-        $db->query('DELETE FROM db_access_tokens');
-        $db->query('DELETE FROM db_users');
         parent::tearDown();
     }
 
@@ -106,8 +75,10 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
         $rawToken = $this->insertMagicLinkToken('bob@example.com');
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
+        $user = db_connect()->table('users')->where('email', 'bob@example.com')->get()->getRowArray();
+
         $result->assertSessionHas('is_logged_in', true);
-        $result->assertSessionHas('user_id');
+        $result->assertSessionHas('user_id', (int) $user['id']);
     }
 
     public function testValidTokenCreatesUserWhenUnknown(): void

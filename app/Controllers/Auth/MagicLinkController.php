@@ -51,36 +51,52 @@ class MagicLinkController extends BaseController
     }
 
     /** GET /auth/magic-link/{token} — valide le token et crée la session (Story 1.4) */
-    public function consume(string $token): mixed
+    public function verify(string $token): mixed
     {
         $tokenService = new TokenService();
         $result       = $tokenService->validateMagicLink($token);
 
         if (! $result->isValid()) {
-            return view('auth/magic_link_invalid');
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
         }
 
         $tokenRow = $result->tokenRow;
         $tokenId  = (int) $tokenRow['id'];
-        $email    = (string) $tokenRow['email'];
+        $email    = strtolower(trim((string) $tokenRow['email']));
+
+        $db = \Config\Database::connect();
+        $db->transStart();
 
         // Atomic single-use guard against concurrent claims
         if (! $tokenService->markMagicLinkTokenAsUsed($tokenId)) {
-            return view('auth/magic_link_invalid');
+            $db->transRollback();
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
         }
 
         $userId = (new UserModel())->findOrCreateByEmail($email);
 
         if ($userId === null) {
+            $db->transRollback();
             log_message('error', 'MagicLink: findOrCreateByEmail returned null for token ' . $tokenId);
-            return view('auth/magic_link_invalid');
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
         }
 
+        $db->transComplete();
+
+        session()->regenerate();
         session()->set([
             'user_id'      => $userId,
             'is_logged_in' => true,
         ]);
 
-        return redirect()->to(site_url('/'));
+        $url = session('redirect_url');
+        session()->remove('redirect_url');
+
+        $redirectUrl = site_url('/');
+        if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
+            $redirectUrl = $url;
+        }
+
+        return redirect()->to($redirectUrl);
     }
 }

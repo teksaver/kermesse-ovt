@@ -20,7 +20,7 @@ class KermesseModel extends Model
     protected $updatedField  = 'updated_at';
 
     protected $allowedFields = [
-        'owner_id',
+        'created_by',
         'public_slug',
         'name',
         'event_date',
@@ -31,7 +31,7 @@ class KermesseModel extends Model
     ];
 
     protected $validationRules = [
-        'owner_id'          => 'required|is_natural_no_zero',
+        'created_by'        => 'required|is_natural_no_zero',
         'public_slug'       => 'required|max_length[255]',
         'name'              => 'required|max_length[255]',
         'location'          => 'required|max_length[255]',

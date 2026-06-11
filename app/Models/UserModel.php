@@ -72,27 +72,29 @@ class UserModel extends Model
         }
 
         try {
-            $inserted = $this->skipValidation(true)->insert([
+            $this->skipValidation(true);
+            $inserted = $this->insert([
                 'email'      => $email,
                 'email_hash' => $emailHash,
                 'first_name' => '',
                 'last_name'  => '',
                 'phone'      => '',
             ]);
-            $this->skipValidation(false);
 
             if ($inserted !== false) {
                 return (int) $inserted;
             }
         } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
             // Concurrent insert raced on the unique key — fall through to re-read.
-            if ($e->getCode() === 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
+            $msg = $e->getMessage();
+            $isDuplicate = $e->getCode() === 1062 || $e->getCode() === 23505 || str_contains($msg, 'Duplicate entry') || str_contains($msg, 'UNIQUE constraint failed');
+            if ($isDuplicate && str_contains(strtolower($msg), 'email')) {
                 log_message('info', 'UserModel: concurrent email insert race, reusing existing row');
-                $this->skipValidation(false);
             } else {
-                $this->skipValidation(false);
                 throw $e;
             }
+        } finally {
+            $this->skipValidation(false);
         }
 
         $existing = $this->findByEmailHash($emailHash);

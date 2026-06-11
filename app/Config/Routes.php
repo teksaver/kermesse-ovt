@@ -14,7 +14,7 @@ $routes->get('/', '\App\Controllers\Home\HomeController::index');
 // ---------------------------------------------------------------------------
 $routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm');
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
-$routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::consume/$1');
+$routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
 $routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show');
 $routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve');

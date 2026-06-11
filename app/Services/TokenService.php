@@ -275,13 +275,14 @@ class TokenService
      */
     public function markMagicLinkTokenAsUsed(int $tokenId): bool
     {
+        $now = \CodeIgniter\I18n\Time::now()->format('Y-m-d H:i:s');
         $this->tokenModel
             ->where('id', $tokenId)
             ->where('token_type', 'magic_link')
             ->where('used_at', null)
             ->where('revoked_at', null)
-            ->where('expires_at >', date('Y-m-d H:i:s'))
-            ->set(['used_at' => date('Y-m-d H:i:s')])
+            ->where('expires_at >', $now)
+            ->set(['used_at' => $now])
             ->update();
 
         return $this->tokenModel->affectedRows() === 1;

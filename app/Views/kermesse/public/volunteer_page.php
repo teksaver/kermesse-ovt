@@ -15,7 +15,7 @@
 
         <div class="admin-header">
             <h1 id="public-title" class="page-title"><?= esc($kermesse['name']) ?></h1>
-            <span class="status-badge <?= esc($statusClass) ?>" aria-label="Statut : <?= esc($statusLabel) ?>">
+            <span class="kermesse-status-badge <?= esc($statusClass) ?>" aria-label="Statut : <?= esc($statusLabel) ?>">
                 <?= esc($statusLabel) ?>
             </span>
         </div>
@@ -56,15 +56,15 @@
         <?php endif; ?>
 
         <?php if ($status === 'preparation'): ?>
-        <div class="empty-state" role="status" aria-label="Inscriptions à venir">
-            <p class="empty-state__title">Les inscriptions ne sont pas encore ouvertes</p>
-            <p class="empty-state__text">Revenez bientôt : les créneaux seront affichés ici dès l'ouverture des inscriptions.</p>
+        <div class="kermesse-empty-state" role="status" aria-label="Inscriptions à venir">
+            <p class="kermesse-empty-state__title">Les inscriptions ne sont pas encore ouvertes</p>
+            <p class="kermesse-empty-state__text">Revenez bientôt : les créneaux seront affichés ici dès l'ouverture des inscriptions.</p>
         </div>
 
         <?php elseif ($status === 'closed'): ?>
-        <div class="empty-state" role="status" aria-label="Inscriptions clôturées">
-            <p class="empty-state__title">Les inscriptions sont clôturées</p>
-            <p class="empty-state__text">Il n'est plus possible de s'inscrire pour cette kermesse. Merci de votre intérêt !</p>
+        <div class="kermesse-empty-state" role="status" aria-label="Inscriptions clôturées">
+            <p class="kermesse-empty-state__title">Les inscriptions sont clôturées</p>
+            <p class="kermesse-empty-state__text">Il n'est plus possible de s'inscrire pour cette kermesse. Merci de votre intérêt !</p>
         </div>
 
         <?php elseif ($hasSlots): ?>
@@ -76,9 +76,9 @@
         </div>
 
         <?php else: ?>
-        <div class="empty-state" role="status" aria-label="Aucun créneau">
-            <p class="empty-state__title">Aucun créneau disponible pour le moment</p>
-            <p class="empty-state__text">Les créneaux seront bientôt mis en ligne. Revenez un peu plus tard.</p>
+        <div class="kermesse-empty-state" role="status" aria-label="Aucun créneau">
+            <p class="kermesse-empty-state__title">Aucun créneau disponible pour le moment</p>
+            <p class="kermesse-empty-state__text">Les créneaux seront bientôt mis en ligne. Revenez un peu plus tard.</p>
         </div>
         <?php endif; ?>
 
