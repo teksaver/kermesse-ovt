@@ -21,13 +21,17 @@ use Config\Kermesse;
 class ReleaseActivationService
 {
     protected ?BaseConnection $db;
+    protected DatabaseLockStrategy $lockStrategy;
     protected string $basePath;
     protected string $lockName;
     protected int $releasesRetention;
 
-    public function __construct(?BaseConnection $db = null, ?string $basePath = null)
+    public function __construct(?BaseConnection $db = null, ?string $basePath = null, ?DatabaseLockStrategy $lockStrategy = null)
     {
         $this->db = $db ?? db_connect();
+
+        // Auto-detect lock strategy from driver when not explicitly provided.
+        $this->lockStrategy = $lockStrategy ?? $this->buildLockStrategy($this->db);
 
         $config = config(Kermesse::class);
 
@@ -42,20 +46,30 @@ class ReleaseActivationService
     }
 
     /**
+     * Build a lock strategy appropriate for the current database driver.
+     */
+    private function buildLockStrategy(BaseConnection $db): DatabaseLockStrategy
+    {
+        return ($db->DBDriver === 'MySQLi')
+            ? new MariaDBLockStrategy($db)
+            : new NullLockStrategy();
+    }
+
+    /**
      * Activate the named archive from staging.
      *
      * @return array{ok: bool, release?: string, pruned?: int, error?: string}
      */
     public function activate(string $archiveName): array
     {
-        if (!$this->acquireLock()) {
+        if (!$this->lockStrategy->acquire($this->lockName, 0)) {
             return ['ok' => false, 'error' => 'activation_locked'];
         }
 
         try {
             return $this->doActivate($archiveName);
         } finally {
-            $this->releaseLock();
+            $this->lockStrategy->release($this->lockName);
         }
     }
 
@@ -222,50 +236,6 @@ class ReleaseActivationService
         return $pruned;
     }
 
-    /**
-     * Acquire a non-blocking named DB lock.
-     *
-     * Returns true if acquired; false if another process holds the lock (→ 409).
-     * Exceptions are caught and treated as acquired — non-MariaDB environments
-     * (e.g., SQLite in CI tests) do not support GET_LOCK.
-     */
-    protected function acquireLock(): bool
-    {
-        try {
-            $result = $this->db->query(
-                'SELECT GET_LOCK(?, 0) AS `acquired`',
-                [$this->lockName]
-            )->getRowArray();
-
-            return ($result['acquired'] ?? 0) == 1;
-        } catch (\Throwable $e) {
-            $msg = strtolower($e->getMessage());
-            if (str_contains($msg, 'no such function: get_lock') || str_contains($msg, 'syntax error')) {
-                log_message('debug', 'ReleaseActivationService: GET_LOCK unsupported, proceeding unlocked: {msg}', [
-                    'msg' => $e->getMessage(),
-                ]);
-                return true;
-            }
-
-            log_message('error', 'ReleaseActivationService: database error acquiring lock: {msg}', [
-                'msg' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
-    }
-
-    /**
-     * Release the named DB lock.
-     */
-    protected function releaseLock(): void
-    {
-        try {
-            $this->db->query('SELECT RELEASE_LOCK(?) AS `released`', [$this->lockName]);
-        } catch (\Throwable $e) {
-            // Non-MariaDB environments — ignore silently
-        }
-    }
 
     // -----------------------------------------------------------------------
     // Private helpers

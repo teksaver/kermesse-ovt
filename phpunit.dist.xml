@@ -12,8 +12,14 @@
     cacheDirectory="build/.phpunit.cache"
 >
     <testsuites>
-        <testsuite name="App">
-            <directory>./tests</directory>
+        <testsuite name="Unit">
+            <directory>./tests/unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>./tests/feature</directory>
+        </testsuite>
+        <testsuite name="Database">
+            <directory>./tests/database</directory>
         </testsuite>
     </testsuites>
 

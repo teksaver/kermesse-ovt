@@ -3,6 +3,8 @@
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+
 /**
  * Feature tests for POST /ops/migrate/status endpoint.
  *
@@ -15,31 +17,25 @@ use CodeIgniter\Test\FeatureTestTrait;
 final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
 
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
-
-    private bool $originalOpsMigrationProductionOnly;
-    private string $originalOpsMigrationHmacSecret;
-    private int $originalOpsMigrationAllowedTimestampSkew;
+    private \Config\Kermesse $originalConfig;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->originalOpsMigrationProductionOnly       = config('Kermesse')->opsMigrationProductionOnly;
-        $this->originalOpsMigrationHmacSecret           = config('Kermesse')->opsMigrationHmacSecret;
-        $this->originalOpsMigrationAllowedTimestampSkew = config('Kermesse')->opsMigrationAllowedTimestampSkew;
-
-        config('Kermesse')->opsMigrationProductionOnly        = false;
-        config('Kermesse')->opsMigrationHmacSecret            = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew  = 300;
+        $config = config('Kermesse');
+        $this->originalConfig = clone $config;
+        $this->setUpOpsConfig();
     }
 
     protected function tearDown(): void
     {
-        config('Kermesse')->opsMigrationProductionOnly       = $this->originalOpsMigrationProductionOnly;
-        config('Kermesse')->opsMigrationHmacSecret           = $this->originalOpsMigrationHmacSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = $this->originalOpsMigrationAllowedTimestampSkew;
+        $config = config('Kermesse');
+        foreach (get_object_vars($this->originalConfig) as $key => $value) {
+            $config->$key = $value;
+        }
 
         parent::tearDown();
     }
@@ -78,17 +74,8 @@ final class OpsMigrateStatusEndpointTest extends CIUnitTestCase
 
     public function testCrossRouteReplayIsRejected(): void
     {
-        $timestamp = (string) time();
-        $nonce     = bin2hex(random_bytes(16));
-        $bodyHash  = hash('sha256', '');
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/migrate', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        $result = $this->withHeaders([
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ])->post('ops/migrate/status');
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/migrate', ''))
+            ->post('ops/migrate/status');
 
         $result->assertStatus(403);
         $result->assertJSONExact(['error' => 'ops_unauthorized']);

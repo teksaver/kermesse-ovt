@@ -4,6 +4,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
 require_once __DIR__ . '/../_support/TmpDirTrait.php';
 
 /**
@@ -20,9 +21,9 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
     use TmpDirTrait;
 
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
     private string $tmpBase;
     private \Config\Kermesse $originalConfig;
 
@@ -52,9 +53,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
         $config = config('Kermesse');
         $this->originalConfig = clone $config;
 
-        $config->opsMigrationProductionOnly = false;
-        $config->opsMigrationHmacSecret     = $this->testSecret;
-        $config->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
         $config->opsActivateBasePath        = $this->tmpBase;
         $config->opsActivateLockName        = 'kermesse_ops_activate_lock_feat_test_' . uniqid();
         $config->releasesRetention          = 3;
@@ -78,7 +77,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
     {
         $jsonBody = json_encode(['archive' => 'kermesse-deploy.tar.gz']);
 
-        $result = $this->withHeaders($this->buildValidHeaders($jsonBody))
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/activate', $jsonBody))
             ->withBody($jsonBody)
             ->post('ops/activate');
 
@@ -95,7 +94,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
 
         $jsonBody = json_encode(['archive' => 'kermesse-deploy.tar.gz']);
 
-        $result = $this->withHeaders($this->buildValidHeaders($jsonBody))
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/activate', $jsonBody))
             ->withBody($jsonBody)
             ->post('ops/activate');
 
@@ -108,7 +107,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
     {
         $jsonBody = json_encode(['archive' => '']);
 
-        $result = $this->withHeaders($this->buildValidHeaders($jsonBody))
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/activate', $jsonBody))
             ->withBody($jsonBody)
             ->post('ops/activate');
 
@@ -121,7 +120,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
     {
         $jsonBody = json_encode(['archive' => '../etc/passwd']);
 
-        $result = $this->withHeaders($this->buildValidHeaders($jsonBody))
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/activate', $jsonBody))
             ->withBody($jsonBody)
             ->post('ops/activate');
 
@@ -135,7 +134,7 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
         $archiveName = $this->createValidArchive();
         $jsonBody    = json_encode(['archive' => $archiveName]);
 
-        $result = $this->withHeaders($this->buildValidHeaders($jsonBody))
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/activate', $jsonBody))
             ->withBody($jsonBody)
             ->post('ops/activate');
 
@@ -145,24 +144,6 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
         $this->assertTrue($json['ok']);
         $this->assertNotEmpty($json['release']);
         $this->assertIsInt($json['pruned']);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function buildValidHeaders(string $body = ''): array
-    {
-        $timestamp = (string) time();
-        $nonce     = bin2hex(random_bytes(16));
-        $bodyHash  = hash('sha256', $body);
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/activate', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        return [
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ];
     }
 
     private function createValidArchive(): string

@@ -3,6 +3,8 @@
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+
 /**
  * DB-free feature tests for POST /ops/probe.
  *
@@ -16,8 +18,7 @@ use CodeIgniter\Test\FeatureTestTrait;
 final class OpsProbeEndpointTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
-
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
+    use OpsTestHelperTrait;
 
     private \Config\Kermesse $originalConfig;
 
@@ -28,9 +29,7 @@ final class OpsProbeEndpointTest extends CIUnitTestCase
         $config = config('Kermesse');
         $this->originalConfig = clone $config;
 
-        $config->opsMigrationProductionOnly = false;
-        $config->opsMigrationHmacSecret     = $this->testSecret;
-        $config->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
         // Probe enabled so any rejection is proven to come from the HMAC filter,
         // not from the feature gate.
         $config->opsProbeEnabled = true;
@@ -61,17 +60,8 @@ final class OpsProbeEndpointTest extends CIUnitTestCase
      */
     public function testMigrateSignatureReplayedOnProbeIsRejected(): void
     {
-        $timestamp = (string) time();
-        $nonce     = bin2hex(random_bytes(16));
-        $bodyHash  = hash('sha256', '');
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/migrate', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        $result = $this->withHeaders([
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ])->post('ops/probe');
+        $result = $this->withHeaders($this->buildOpsHeaders('ops/migrate', ''))
+            ->post('ops/probe');
 
         $result->assertStatus(403);
         $result->assertJSONExact(['error' => 'ops_unauthorized']);

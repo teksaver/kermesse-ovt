@@ -144,7 +144,7 @@ jobs:
           kermesse.opsMigrationProductionOnly: 'false'
           kermesse.opsMigrationHmacSecret: ci_test_hmac_secret_32_bytes_min
           kermesse.opsMigrationLockName: kermesse_ci_migration_lock
-        run: vendor/bin/phpunit --testsuite App --group mariadb
+        run: vendor/bin/phpunit --testsuite Database --group mariadb
 
   deploy-rehearsal:
     runs-on: ubuntu-latest
