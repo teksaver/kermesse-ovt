@@ -1,22 +1,30 @@
 <?php
 
 use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
+
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+require_once __DIR__ . '/../_support/TmpDirTrait.php';
 
 /**
  * Feature tests for POST /ops/activate endpoint.
  *
- * These tests cover DB-free auth rejection and sanitisation paths that fail
- * before OpsAuthFilter writes the nonce. Valid HMAC activation paths live in
- * OpsActivateEndpointMariaDBTest with @group mariadb.
+ * Auth rejection paths are DB-free (HMAC fails before nonce write).
+ * Valid HMAC paths require DatabaseTestTrait because consumeNonce() writes
+ * to ops_nonces — the cross-database DDL in OpsAuthFilter lets these run
+ * on both SQLite and MariaDB.
+ *
+ * MariaDB-specific paths (real named lock, nonce replay with persistent DB)
+ * remain in OpsActivateEndpointMariaDBTest with @group mariadb.
  *
  * @internal
  */
 final class OpsActivateEndpointTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
 
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
     private \Config\Kermesse $originalConfig;
 
     protected function setUp(): void
@@ -26,9 +34,7 @@ final class OpsActivateEndpointTest extends CIUnitTestCase
         $config = config('Kermesse');
         $this->originalConfig = clone $config;
 
-        $config->opsMigrationProductionOnly = false;
-        $config->opsMigrationHmacSecret     = $this->testSecret;
-        $config->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
     }
 
     protected function tearDown(): void

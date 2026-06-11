@@ -3,6 +3,8 @@
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+
 /**
  * Feature tests for POST /ops/migrate endpoint.
  *
@@ -16,36 +18,13 @@ use CodeIgniter\Test\FeatureTestTrait;
 final class OpsMigrateEndpointTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
-
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
+    use OpsTestHelperTrait;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        config('Kermesse')->opsMigrationProductionOnly = false;
-        config('Kermesse')->opsMigrationHmacSecret = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = 300;
-    }
-
-    /**
-     * Build valid HMAC headers for testing.
-     *
-     * @return array<string, string>
-     */
-    private function buildValidHeaders(string $body = ''): array
-    {
-        $timestamp = (string) time();
-        $nonce     = bin2hex(random_bytes(16));
-        $bodyHash  = hash('sha256', $body);
-        $payload   = implode("\n", [$timestamp, $nonce, 'POST', 'ops/migrate', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        return [
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce'     => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ];
+        $this->setUpOpsConfig();
     }
 
     public function testResponseShapeOnRejectedRequest(): void

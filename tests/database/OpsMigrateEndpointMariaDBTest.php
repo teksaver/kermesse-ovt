@@ -4,6 +4,8 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
 
+require_once __DIR__ . '/../_support/OpsTestHelperTrait.php';
+
 /**
  * MariaDB-backed feature tests for POST /ops/migrate.
  *
@@ -14,9 +16,9 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use OpsTestHelperTrait;
 
     private string $tempMigrationsDir;
-    private string $testSecret = 'test_hmac_secret_32_bytes_minimum_value';
 
     protected $DBGroup = 'tests';
 
@@ -41,9 +43,7 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         $this->tempMigrationsDir = sys_get_temp_dir() . '/kermesse_endpoint_migrations_' . uniqid();
         mkdir($this->tempMigrationsDir, 0755, true);
 
-        config('Kermesse')->opsMigrationProductionOnly = false;
-        config('Kermesse')->opsMigrationHmacSecret = $this->testSecret;
-        config('Kermesse')->opsMigrationAllowedTimestampSkew = 300;
+        $this->setUpOpsConfig();
         config('Kermesse')->opsMigrationLockName = 'kermesse_endpoint_lock_' . uniqid();
         config('Kermesse')->opsMigrationPath = $this->tempMigrationsDir;
     }
@@ -63,23 +63,6 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         parent::tearDown();
     }
 
-    /**
-     * @return array<string, string>
-     */
-    private function buildValidHeaders(string $nonce, string $body = ''): array
-    {
-        $timestamp = (string) time();
-        $bodyHash = hash('sha256', $body);
-        $payload = implode("\n", [$timestamp, $nonce, 'POST', 'ops/migrate', $bodyHash]);
-        $signature = hash_hmac('sha256', $payload, $this->testSecret);
-
-        return [
-            'X-Kermesse-Timestamp' => $timestamp,
-            'X-Kermesse-Nonce' => $nonce,
-            'X-Kermesse-Signature' => $signature,
-        ];
-    }
-
     private function writeMigration(string $filename, string $sql): void
     {
         file_put_contents($this->tempMigrationsDir . '/' . $filename, $sql);
@@ -96,7 +79,7 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         );
 
         $body = '';
-        $headers = $this->buildValidHeaders('endpoint-valid-nonce', $body);
+        $headers = $this->buildOpsHeaders('ops/migrate', $body, 'endpoint-valid-nonce');
 
         $result = $this->withBody($body)
             ->withHeaders($headers)
@@ -124,7 +107,7 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         );
 
         $body = '';
-        $headers = $this->buildValidHeaders('endpoint-replay-nonce', $body);
+        $headers = $this->buildOpsHeaders('ops/migrate', $body, 'endpoint-replay-nonce');
 
         $this->withBody($body)
             ->withHeaders($headers)
@@ -144,7 +127,7 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
         $this->writeMigration('20260601000000_bad.sql', 'THIS IS NOT VALID SQL;');
 
         $body = '';
-        $headers = $this->buildValidHeaders('endpoint-failure-nonce', $body);
+        $headers = $this->buildOpsHeaders('ops/migrate', $body, 'endpoint-failure-nonce');
 
         $result = $this->withBody($body)
             ->withHeaders($headers)

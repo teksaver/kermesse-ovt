@@ -1,6 +1,8 @@
 <?php
 
 use App\Services\ReleaseActivationService;
+use App\Services\DatabaseLockStrategy;
+use App\Services\NullLockStrategy;
 use CodeIgniter\Test\CIUnitTestCase;
 
 require_once __DIR__ . '/../_support/TmpDirTrait.php';
@@ -45,17 +47,13 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
 
     public function testActivateReturnActivationLockedWhenLockBusy(): void
     {
-        $service = new class ($this->tmpBase) extends ReleaseActivationService {
-            public function __construct(string $basePath)
-            {
-                config('Kermesse')->opsActivateLockName = 'kermesse_ops_activate_lock_test';
-                config('Kermesse')->releasesRetention   = 3;
-                parent::__construct(null, $basePath);
-            }
-
-            protected function acquireLock(): bool { return false; }
-            protected function releaseLock(): void {}
+        // Inject a lock strategy that always fails to acquire.
+        $failingLock = new class implements DatabaseLockStrategy {
+            public function acquire(string $name, int $timeout): bool { return false; }
+            public function release(string $name): void {}
         };
+
+        $service = new ReleaseActivationService(null, $this->tmpBase, $failingLock);
 
         $result = $service->activate('kermesse-deploy.tar.gz');
 
@@ -247,23 +245,11 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
     // -----------------------------------------------------------------------
 
     /**
-     * Retourne un service avec le lock toujours acquis (pas de DB requise).
+     * Retourne un service avec NullLockStrategy (pas de DB requise pour le lock).
      */
     private function makeService(): ReleaseActivationService
     {
-        $tmpBase = $this->tmpBase;
-
-        return new class ($tmpBase) extends ReleaseActivationService {
-            public function __construct(string $basePath)
-            {
-                config('Kermesse')->opsActivateLockName = 'kermesse_ops_activate_lock_test';
-                // releasesRetention is read from config each time activate() is called
-                parent::__construct(null, $basePath);
-            }
-
-            protected function acquireLock(): bool { return true; }
-            protected function releaseLock(): void {}
-        };
+        return new ReleaseActivationService(null, $this->tmpBase, new NullLockStrategy());
     }
 
     /**
