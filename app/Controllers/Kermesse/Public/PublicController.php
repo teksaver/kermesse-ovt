@@ -27,6 +27,8 @@ class PublicController extends BaseController
                 ]));
         }
 
-        return view('kermesse/public/volunteer_page', $viewModel);
+        return view('kermesse/public/volunteer_page', array_merge($viewModel, [
+            'isLoggedIn' => (bool) session()->get('is_logged_in'),
+        ]));
     }
 }

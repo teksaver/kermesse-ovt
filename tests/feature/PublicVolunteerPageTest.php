@@ -160,6 +160,8 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $this->assertStringNotContainsString('Barbe à papa', $body);
         $this->assertStringNotContainsString('09:00', $body);
         $this->assertStringNotContainsString('restante', $body);
+        // Login affordance still shown for anonymous visitor
+        $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }
 
     // ------------------------------------------------------------------
@@ -185,7 +187,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $this->assertStringContainsString('slot-row--available', $body);
         $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/signup"#', $body);
         $this->assertStringContainsString('Déjà inscrit', $body);
-        $this->assertStringContainsString('auth/login', $body);
+        $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }
 
     public function testOpenRemainingReflectsActiveSignups(): void
@@ -259,6 +261,8 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $this->assertStringNotContainsString('Tombola', $body);
         $this->assertStringNotContainsString('slot-row--available', $body);
         $this->assertStringNotContainsString('role="button"', $body);
+        // Login affordance still shown for anonymous visitor
+        $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }
 
     // ------------------------------------------------------------------
@@ -340,5 +344,36 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $body = $result->response()->getBody();
         $this->assertStringNotContainsString('SELECT', $body);
         $this->assertStringNotContainsString('.env', $body);
+    }
+
+    // ------------------------------------------------------------------
+    // Login affordance — visibility rules
+    // ------------------------------------------------------------------
+
+    public function testLoginAffordanceHiddenWhenAlreadyAuthenticated(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-hidden', 'open');
+        $standId    = $this->insertStand($kermesseId, 'Maquillage');
+        $this->insertSlot($standId, 5);
+
+        $result = $this->withSession(['is_logged_in' => true])->get('k/ecole-auth-hidden');
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringNotContainsString('Déjà inscrit', $body);
+        $this->assertStringContainsString('Maquillage', $body);
+    }
+
+    public function testOpenWithNoSlotsShowsLoginAffordanceForAnonymousUser(): void
+    {
+        $this->insertKermesse('ecole-no-slots', 'open');
+
+        $result = $this->get('k/ecole-no-slots');
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Aucun créneau disponible', $body);
+        $this->assertStringContainsString('Déjà inscrit', $body);
+        $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }
 }

@@ -12,7 +12,7 @@ $routes->get('/', '\App\Controllers\Home\HomeController::index');
 // ---------------------------------------------------------------------------
 // Auth — universal Magic Link (Stories 1.3, 1.4, 1.5, 3.6)
 // ---------------------------------------------------------------------------
-$routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm');
+$routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm', ['as' => 'auth.login']);
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
 $routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
