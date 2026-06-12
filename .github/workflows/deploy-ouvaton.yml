@@ -219,15 +219,23 @@ jobs:
           call_activate() {
             local signed_route="$1"
             local response_body="$2"
+            local target_route="${3:-${ROUTE}}"
 
             ops_sign "$signed_route" "$BODY"
-            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${target_route}" \
               -H "Content-Type: application/json" \
               -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
               -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
               -H "X-Kermesse-Signature: ${SIGN_SIG}" \
               -w "%{http_code}" -o "${response_body}" \
               -d "$BODY"
+          }
+
+          is_ops_unauthorized() {
+            local status_code="$1"
+            local response_body="$2"
+
+            [[ "$status_code" == "403" ]] && grep -Fq '"ops_unauthorized"' "${response_body}"
           }
 
           # Ne pas utiliser curl -f ici : sur HTTP 4xx/5xx il masque le body JSON
@@ -241,7 +249,7 @@ jobs:
             exit 1
           fi
 
-          if [[ "$HTTP_CODE" == "403" ]] && grep -Fq '"ops_unauthorized"' "${activate_response_body}"; then
+          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
             echo "::warning::Activation refusée avec routePath=${ROUTE}; retry compatibilité avec routePath historique ops/migrate."
             legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-legacy.json"
             if ! HTTP_CODE=$(call_activate "ops/migrate" "${legacy_activate_response_body}"); then
@@ -252,6 +260,32 @@ jobs:
               exit 1
             fi
             activate_response_body="${legacy_activate_response_body}"
+          fi
+
+          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
+            echo "::warning::Activation toujours refusée via pretty URL; retry via front-controller direct index.php/ops/activate."
+            direct_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-index.json"
+            if ! HTTP_CODE=$(call_activate "$ROUTE" "${direct_activate_response_body}" "index.php/${ROUTE}"); then
+              echo "::error::Webhook d'activation injoignable via front-controller direct."
+              if [ -s "${direct_activate_response_body}" ]; then
+                cat "${direct_activate_response_body}" >&2
+              fi
+              exit 1
+            fi
+            activate_response_body="${direct_activate_response_body}"
+          fi
+
+          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
+            echo "::warning::Activation front-controller refusée avec routePath=${ROUTE}; retry front-controller avec routePath historique ops/migrate."
+            direct_legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-index-legacy.json"
+            if ! HTTP_CODE=$(call_activate "ops/migrate" "${direct_legacy_activate_response_body}" "index.php/${ROUTE}"); then
+              echo "::error::Webhook d'activation injoignable via front-controller direct après retry compatibilité."
+              if [ -s "${direct_legacy_activate_response_body}" ]; then
+                cat "${direct_legacy_activate_response_body}" >&2
+              fi
+              exit 1
+            fi
+            activate_response_body="${direct_legacy_activate_response_body}"
           fi
 
           if [ -s "${activate_response_body}" ]; then
