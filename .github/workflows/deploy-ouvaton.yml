@@ -188,6 +188,78 @@ jobs:
           set -euo pipefail
           bash scripts/deploy-httpdocs.sh
 
+      - name: Verify production ops HMAC secret
+        env:
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPS_HMAC_SECRET:-}" ]; then
+            echo "::error::OPS_MIGRATION_HMAC_SECRET est requis."
+            exit 1
+          fi
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          trim_whitespace() {
+            local value="$1"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "${value}"
+          }
+
+          parse_dotenv_secret() {
+            local line="$1"
+            local value="${line#*=}"
+            value="$(trim_whitespace "${value}")"
+
+            if [[ "${value}" == \"*\" ]]; then
+              value="${value:1:${#value}-2}"
+              value="${value//\\\"/\"}"
+              value="${value//\\\\/\\}"
+            fi
+
+            printf '%s' "${value}"
+          }
+
+          env_copy="${RUNNER_TEMP:-/tmp}/kermesse-production.env"
+          remote_env="${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/.env"
+
+          {
+            printf 'set cmd:fail-exit yes\n'
+            printf 'set net:max-retries 3\n'
+            printf 'set net:timeout 60\n'
+            printf 'open -u %s,%s -p 115 sftp://%s\n' \
+              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
+              "${OUVATON_DEPLOY_HOST}"
+            printf 'get %s -o %s\n' "$(lftp_quote "${remote_env}")" "$(lftp_quote "${env_copy}")"
+            printf 'bye\n'
+          } | lftp
+
+          secret_line="$(grep -E '^[[:space:]]*kermesse\.opsMigrationHmacSecret[[:space:]]*=' "${env_copy}" | tail -n 1 || true)"
+          rm -f "${env_copy}"
+
+          if [ -z "${secret_line}" ]; then
+            echo "::error::shared/.env ne contient pas kermesse.opsMigrationHmacSecret."
+            exit 1
+          fi
+
+          remote_secret="$(parse_dotenv_secret "${secret_line}")"
+
+          if [ "${remote_secret}" != "${OPS_HMAC_SECRET}" ]; then
+            echo "::error::Le secret HMAC de shared/.env ne correspond pas au secret GitHub OPS_MIGRATION_HMAC_SECRET."
+            echo "::error::Longueurs observées: shared/.env=${#remote_secret}, GitHub=${#OPS_HMAC_SECRET}. Relancer Sync production .env to Ouvaton après correction des secrets."
+            exit 1
+          fi
+
+          echo "Production ops HMAC secret verified against shared/.env."
+
       - name: Activate release via webhook
         env:
           # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
@@ -377,4 +449,52 @@ jobs:
           if [[ "$HTTP_CODE" != "200" ]]; then
             echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
             exit 1
+          fi
+
+      - name: Fetch production log tail on deploy failure
+        if: failure()
+        run: |
+          set -euo pipefail
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          requested_date="$(date -u +%F)"
+          download_dir="${RUNNER_TEMP:-/tmp}/ouvaton-logs"
+          raw_log="${download_dir}/log-${requested_date}"
+          remote_log_base="${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/logs/log-${requested_date}"
+          mkdir -p "${download_dir}"
+
+          fetched_log=""
+          for extension in log php; do
+            remote_log="${remote_log_base}.${extension}"
+            candidate_log="${raw_log}.${extension}"
+
+            if {
+              printf 'set cmd:fail-exit yes\n'
+              printf 'set net:max-retries 2\n'
+              printf 'set net:timeout 30\n'
+              printf 'open -u %s,%s -p 115 sftp://%s\n' \
+                "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+                "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
+                "${OUVATON_DEPLOY_HOST}"
+              printf 'get %s -o %s\n' "$(lftp_quote "${remote_log}")" "$(lftp_quote "${candidate_log}")"
+              printf 'bye\n'
+            } | lftp; then
+              if [ -s "${candidate_log}" ]; then
+                fetched_log="${candidate_log}"
+                echo "::group::Production application log tail (${remote_log})"
+                tail -n 120 "${fetched_log}" || true
+                echo "::endgroup::"
+                break
+              fi
+            fi
+          done
+
+          if [ -z "${fetched_log}" ]; then
+            echo "::warning::Aucun log applicatif récupéré (${remote_log_base}.log ou ${remote_log_base}.php)."
           fi
