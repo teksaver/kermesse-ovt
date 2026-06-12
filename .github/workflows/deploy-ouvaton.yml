@@ -209,7 +209,6 @@ jobs:
 
           ROUTE="ops/activate"
           BODY='{"archive":"kermesse-deploy.tar.gz"}'
-          ops_sign "$ROUTE" "$BODY"
 
           CURL_TLS_ARGS=()
           if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
@@ -217,21 +216,42 @@ jobs:
             CURL_TLS_ARGS+=(--insecure)
           fi
 
+          call_activate() {
+            local signed_route="$1"
+            local response_body="$2"
+
+            ops_sign "$signed_route" "$BODY"
+            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+              -H "Content-Type: application/json" \
+              -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+              -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+              -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+              -w "%{http_code}" -o "${response_body}" \
+              -d "$BODY"
+          }
+
           # Ne pas utiliser curl -f ici : sur HTTP 4xx/5xx il masque le body JSON
           # utile au diagnostic (archive_missing, checksum_mismatch, release_invalid).
           activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response.json"
-          if ! HTTP_CODE=$(curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
-            -H "Content-Type: application/json" \
-            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
-            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
-            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -w "%{http_code}" -o "${activate_response_body}" \
-            -d "$BODY"); then
+          if ! HTTP_CODE=$(call_activate "$ROUTE" "${activate_response_body}"); then
             echo "::error::Webhook d'activation injoignable."
             if [ -s "${activate_response_body}" ]; then
               cat "${activate_response_body}" >&2
             fi
             exit 1
+          fi
+
+          if [[ "$HTTP_CODE" == "403" ]] && grep -Fq '"ops_unauthorized"' "${activate_response_body}"; then
+            echo "::warning::Activation refusée avec routePath=${ROUTE}; retry compatibilité avec routePath historique ops/migrate."
+            legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-legacy.json"
+            if ! HTTP_CODE=$(call_activate "ops/migrate" "${legacy_activate_response_body}"); then
+              echo "::error::Webhook d'activation injoignable après retry compatibilité."
+              if [ -s "${legacy_activate_response_body}" ]; then
+                cat "${legacy_activate_response_body}" >&2
+              fi
+              exit 1
+            fi
+            activate_response_body="${legacy_activate_response_body}"
           fi
 
           if [ -s "${activate_response_body}" ]; then

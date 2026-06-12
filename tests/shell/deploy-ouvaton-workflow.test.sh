@@ -30,6 +30,10 @@ assert_not_contains() {
 assert_contains "body activation capturé" 'activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response.json"'
 assert_contains "body activation affiché" 'cat "${activate_response_body}" >&2'
 assert_not_contains "activation ne masque pas les 4xx avec curl -f" 'curl --max-time 60 --retry 3 -fsS'
+assert_contains "activation utilise un helper curl partagé" 'call_activate()'
+assert_contains "activation tente le routePath canonique" 'HTTP_CODE=$(call_activate "$ROUTE" "${activate_response_body}")'
+assert_contains "activation fallback seulement sur ops_unauthorized" 'grep -Fq '"'"'"ops_unauthorized"'"'"' "${activate_response_body}"'
+assert_contains "activation fallback routePath historique" 'HTTP_CODE=$(call_activate "ops/migrate" "${legacy_activate_response_body}")'
 
 if [ "${fail}" -ne 0 ]; then
   echo "ÉCHEC : diagnostics webhook deploy-ouvaton invalides." >&2
