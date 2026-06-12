@@ -42,6 +42,11 @@ assert_contains "activation retry front-controller direct" 'HTTP_CODE=$(call_act
 assert_contains "activation retry front-controller historique" 'HTTP_CODE=$(call_activate "ops/migrate" "${direct_legacy_activate_response_body}" "index.php/${ROUTE}")'
 assert_contains "activation retry query routePath canonique" 'HTTP_CODE=$(call_activate_query "$ROUTE" "${query_activate_response_body}")'
 assert_contains "activation retry query routePath historique" 'HTTP_CODE=$(call_activate_query "ops/migrate" "${query_legacy_activate_response_body}")'
+assert_contains "prévol compare le secret HMAC distant" 'Production ops HMAC secret verified against shared/.env.'
+assert_contains "prévol échoue avant activation si secret divergent" 'Le secret HMAC de shared/.env ne correspond pas au secret GitHub OPS_MIGRATION_HMAC_SECRET.'
+assert_contains "diagnostic récupère les logs après échec" 'Fetch production log tail on deploy failure'
+assert_contains "diagnostic tente les logs CodeIgniter .log" 'for extension in log php; do'
+assert_contains "diagnostic n'imprime que la fin du log" 'tail -n 120 "${fetched_log}"'
 
 if [ "${fail}" -ne 0 ]; then
   echo "ÉCHEC : diagnostics webhook deploy-ouvaton invalides." >&2
