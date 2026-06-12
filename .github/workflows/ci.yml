@@ -211,6 +211,25 @@ jobs:
       - name: Run packaging script
         run: bash scripts/package-deploy-artifact.sh
 
+      - name: Verify deploy artifact public extraction
+        run: |
+          set -euo pipefail
+          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 )
+          tar -tzf build/kermesse-deploy.tar.gz | awk '
+            {
+              path = $0
+              sub(/^\.\//, "", path)
+              sub(/\/$/, "", path)
+              if (path == "public" || index(path, "public/") == 1) found = 1
+            }
+            END { exit found ? 0 : 1 }
+          '
+          rm -rf deploy-staging
+          mkdir -p deploy-staging
+          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging public
+          test -f deploy-staging/public/.htaccess
+          test -f deploy-staging/public/index.php
+
       - name: Upload main deploy artifact
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4

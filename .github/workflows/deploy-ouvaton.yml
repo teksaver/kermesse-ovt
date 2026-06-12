@@ -149,8 +149,10 @@ jobs:
           # Le .sha256 référence l'archive par son nom nu → vérifier depuis build/.
           ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu"; exit 1; }
           mkdir -p deploy-staging
-          # Extract only the public directory needed for static assets
-          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
+          # Extract only the public directory needed for static assets.
+          # New artifacts use top-level entries without "./"; keep a fallback for older reruns.
+          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging public \
+            || tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
 
       - name: Upload archive to staging
         # Réutilise EXACTEMENT le script validé en répétition (locale + job CI deploy-rehearsal)
