@@ -167,6 +167,58 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
         $this->assertDirectoryExists($this->tmpBase . '/releases/' . $result['release']);
     }
 
+    public function testActivateRejectsArchiveWithUnsafeTarEntryAndKeepsCurrent(): void
+    {
+        $service = $this->makeService();
+
+        $firstResult = $service->activate($this->createValidArchive());
+        $this->assertTrue($firstResult['ok']);
+        $currentBefore = trim((string) file_get_contents($this->tmpBase . '/CURRENT_RELEASE'));
+
+        $archiveName = $this->createRawTarGzArchive([
+            'app/'                     => ['type' => '5', 'content' => ''],
+            'vendor/'                  => ['type' => '5', 'content' => ''],
+            'public/'                  => ['type' => '5', 'content' => ''],
+            'database/migrations_sql/' => ['type' => '5', 'content' => ''],
+            '../evil.txt'              => ['type' => '0', 'content' => 'bad'],
+        ]);
+
+        $result = $service->activate($archiveName);
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('release_invalid', $result['error']);
+        $this->assertSame($currentBefore, trim((string) file_get_contents($this->tmpBase . '/CURRENT_RELEASE')));
+        $this->assertFileDoesNotExist($this->tmpBase . '/evil.txt');
+    }
+
+    public function testArchivePathValidatorRejectsUnsafeEntries(): void
+    {
+        $service = $this->makeService();
+        $method = new ReflectionMethod(ReleaseActivationService::class, 'isSafeArchivePath');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->invoke($service, './app/Config/Paths.php'));
+        $this->assertTrue($method->invoke($service, 'database/migrations_sql/'));
+        $this->assertFalse($method->invoke($service, '../evil.txt'));
+        $this->assertFalse($method->invoke($service, '/tmp/evil.txt'));
+        $this->assertFalse($method->invoke($service, 'app/../../evil.txt'));
+        $this->assertFalse($method->invoke($service, 'app//evil.txt'));
+        $this->assertFalse($method->invoke($service, 'phar://evil'));
+    }
+
+    public function testReleaseActivationServiceDoesNotUseShellFunctions(): void
+    {
+        $source = (string) file_get_contents(APPPATH . 'Services/ReleaseActivationService.php');
+
+        foreach (['exec', 'shell_exec', 'system', 'passthru', 'proc_open'] as $functionName) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/(?<![A-Za-z0-9_\\\\])' . preg_quote($functionName, '/') . '\s*\(/',
+                $source,
+                sprintf('ReleaseActivationService must not call %s()', $functionName)
+            );
+        }
+    }
+
     // -----------------------------------------------------------------------
     // AC-6 — Rétention : seules les N dernières releases conservées
     // -----------------------------------------------------------------------
@@ -307,27 +359,70 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
      */
     private function createArchiveWithDirs(array $dirs): string
     {
-        $sourceDir = sys_get_temp_dir() . '/kermesse_src_' . uniqid('', true);
-
-        foreach ($dirs as $dir) {
-            mkdir($sourceDir . '/' . ltrim($dir, '/'), 0755, true);
-        }
-
         $archiveName = 'kermesse-deploy.tar.gz';
         $archivePath = $this->tmpBase . '/staging/' . $archiveName;
+        $tarPath = substr($archivePath, 0, -3);
 
-        exec('tar -czf ' . escapeshellarg($archivePath) . ' -C ' . escapeshellarg($sourceDir) . ' . 2>&1', $out, $code);
-
-        if ($code !== 0) {
-            $this->fail('Could not create test archive: ' . implode("\n", $out));
+        $archive = new PharData($tarPath);
+        foreach ($dirs as $dir) {
+            $archiveDir = trim($dir, '/');
+            $archive->addFromString($archiveDir . '/.keep', '');
         }
+        $archive->compress(Phar::GZ);
+        unset($archive);
+        unlink($tarPath);
 
         $checksum = hash_file('sha256', $archivePath);
         file_put_contents($archivePath . '.sha256', $checksum);
 
-        $this->removeDirRecursive($sourceDir);
+        return $archiveName;
+    }
+
+    /**
+     * @param array<string, array{type: string, content: string}> $entries
+     */
+    private function createRawTarGzArchive(array $entries): string
+    {
+        $archiveName = 'kermesse-deploy.tar.gz';
+        $archivePath = $this->tmpBase . '/staging/' . $archiveName;
+        $tar = '';
+
+        foreach ($entries as $name => $entry) {
+            $tar .= $this->packTarEntry($name, $entry['content'], $entry['type']);
+        }
+
+        $tar .= str_repeat("\0", 1024);
+        file_put_contents($archivePath, gzencode($tar));
+
+        $checksum = hash_file('sha256', $archivePath);
+        file_put_contents($archivePath . '.sha256', $checksum);
 
         return $archiveName;
+    }
+
+    private function packTarEntry(string $name, string $content, string $type): string
+    {
+        $header  = str_pad($name, 100, "\0");
+        $header .= str_pad(decoct($type === '5' ? 0755 : 0644), 7, '0', STR_PAD_LEFT) . "\0";
+        $header .= str_pad(decoct(0), 7, '0', STR_PAD_LEFT) . "\0";
+        $header .= str_pad(decoct(0), 7, '0', STR_PAD_LEFT) . "\0";
+        $header .= str_pad(decoct(strlen($content)), 11, '0', STR_PAD_LEFT) . "\0";
+        $header .= str_pad(decoct(time()), 11, '0', STR_PAD_LEFT) . "\0";
+        $header .= str_repeat(' ', 8);
+        $header .= $type;
+        $header .= str_repeat("\0", 100);
+        $header .= "ustar\00000";
+        $header = str_pad($header, 512, "\0");
+
+        $checksum = 0;
+        for ($i = 0; $i < 512; $i++) {
+            $checksum += ord($header[$i]);
+        }
+
+        $header = substr_replace($header, str_pad(decoct($checksum), 6, '0', STR_PAD_LEFT) . "\0 ", 148, 8);
+        $padding = str_repeat("\0", (512 - (strlen($content) % 512)) % 512);
+
+        return $header . $content . $padding;
     }
 
 }
