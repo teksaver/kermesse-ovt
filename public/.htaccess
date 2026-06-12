@@ -28,6 +28,20 @@ Options -Indexes
 	RewriteCond %{HTTP:Front-End-Https} ^on$ [NC]
 	RewriteRule ^ - [E=HTTPS:on]
 
+	# Ensure headers used by authenticated endpoints are available before
+	# terminal rewrites stop processing this file.
+	RewriteCond %{HTTP:Authorization} .
+	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+	RewriteCond %{HTTP:X-Kermesse-Timestamp} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_TIMESTAMP:%{HTTP:X-Kermesse-Timestamp}]
+
+	RewriteCond %{HTTP:X-Kermesse-Nonce} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_NONCE:%{HTTP:X-Kermesse-Nonce}]
+
+	RewriteCond %{HTTP:X-Kermesse-Signature} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_SIGNATURE:%{HTTP:X-Kermesse-Signature}]
+
 	# If you installed CodeIgniter in a subfolder, you will need to
 	# change the following line to match the subfolder you need.
 	# http://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritebase
@@ -48,20 +62,6 @@ Options -Indexes
 	RewriteCond %{REQUEST_FILENAME} !-f
 	RewriteCond %{REQUEST_FILENAME} !-d
 	RewriteRule ^([\s\S]*)$ index.php/$1 [L,NC,QSA]
-
-	# Ensure Authorization header is passed along
-	RewriteCond %{HTTP:Authorization} .
-	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-
-	# Ensure custom HMAC headers are passed to CodeIgniter
-	RewriteCond %{HTTP:X-Kermesse-Timestamp} .
-	RewriteRule .* - [E=HTTP_X_KERMESSE_TIMESTAMP:%{HTTP:X-Kermesse-Timestamp}]
-	
-	RewriteCond %{HTTP:X-Kermesse-Nonce} .
-	RewriteRule .* - [E=HTTP_X_KERMESSE_NONCE:%{HTTP:X-Kermesse-Nonce}]
-	
-	RewriteCond %{HTTP:X-Kermesse-Signature} .
-	RewriteRule .* - [E=HTTP_X_KERMESSE_SIGNATURE:%{HTTP:X-Kermesse-Signature}]
 </IfModule>
 
 <IfModule !mod_rewrite.c>
