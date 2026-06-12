@@ -4,6 +4,7 @@ namespace App\Controllers\Kermesse\Public;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\ProfileDivergenceModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\UserModel;
@@ -39,9 +40,17 @@ class SignupController extends BaseController
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
+        $identity = session()->get('volunteer_identity');
+        $fields   = [
+            'first_name' => (string) ($identity['first_name'] ?? ''),
+            'last_name'  => (string) ($identity['last_name']  ?? ''),
+            'email'      => (string) ($identity['email']      ?? ''),
+            'phone'      => '',
+        ];
+
         return view('kermesse/public/signup_form', [
             'summary' => $summary,
-            'fields'  => ['first_name' => '', 'last_name' => '', 'email' => '', 'phone' => ''],
+            'fields'  => $fields,
             'errors'  => [],
         ]);
     }
@@ -91,6 +100,10 @@ class SignupController extends BaseController
             new SignupModel(),
             new KermesseModel(),
             new SlotModel(),
+            null,
+            null,
+            null,
+            new ProfileDivergenceModel(),
         ))->signup(
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],
@@ -104,6 +117,12 @@ class SignupController extends BaseController
                 'errors'  => ['_service' => $this->serviceErrorMessage($result)],
             ]);
         }
+
+        session()->set('volunteer_identity', [
+            'first_name' => $raw['first_name'],
+            'last_name'  => $raw['last_name'],
+            'email'      => $raw['email'],
+        ]);
 
         session()->setFlashdata('signup_success', [
             'slug'         => $publicSlug,

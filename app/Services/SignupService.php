@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\KermesseModel;
+use App\Models\ProfileDivergenceModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
@@ -31,13 +32,14 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 class SignupService
 {
     public function __construct(
-        private readonly UserModel            $userModel,
-        private readonly SignupModel          $signupModel,
-        private readonly ?KermesseModel       $kermesseModel = null,
-        private readonly ?SlotModel           $slotModel = null,
-        private readonly ?ConnectionInterface $db = null,
-        private readonly ?EmailService        $emailService = null,
-        private readonly ?StandModel          $standModel = null,
+        private readonly UserModel                 $userModel,
+        private readonly SignupModel               $signupModel,
+        private readonly ?KermesseModel            $kermesseModel            = null,
+        private readonly ?SlotModel                $slotModel                = null,
+        private readonly ?ConnectionInterface      $db                       = null,
+        private readonly ?EmailService             $emailService             = null,
+        private readonly ?StandModel               $standModel               = null,
+        private readonly ?ProfileDivergenceModel   $profileDivergenceModel   = null,
     ) {}
 
     /**
@@ -146,7 +148,8 @@ class SignupService
 
         // Lock the user row so same-user submissions serialize before the
         // duplicate/overlap checks (which are locking reads — see SignupModel).
-        $this->userModel->lockForOverlapCheck($userId, $db);
+        // The locking read also gives us the stored profile for divergence detection.
+        $storedUser = $this->userModel->findByEmailHash(hash('sha256', $email), $db, true);
 
         if ($this->signupModel->findActiveByUserAndSlot($userId, $slotId, $db) !== null) {
             return SignupResult::failure('duplicate_signup');
@@ -174,6 +177,12 @@ class SignupService
 
         if ($signupId === false) {
             return SignupResult::failure('signup_insert_failed');
+        }
+
+        // Record divergence if the submitted profile differs from the stored one.
+        // Failure must not abort the signup (catch-all in recordProfileDivergence).
+        if ($storedUser !== null && $this->detectsDivergence($storedUser, $fields)) {
+            $this->recordProfileDivergence($userId, (int) $signupId, $kermesseId, $fields);
         }
 
         // Internal result: the slot row rides in context so the caller can build
@@ -267,6 +276,47 @@ class SignupService
                     'SignupService models must share the transaction connection.'
                 );
             }
+        }
+    }
+
+    /**
+     * True when at least one of first_name, last_name, or phone differs between
+     * the stored user record and the submitted signup fields.
+     *
+     * @param array<string, mixed> $storedUser
+     * @param array<string, mixed> $fields
+     */
+    private function detectsDivergence(array $storedUser, array $fields): bool
+    {
+        return (string) ($storedUser['first_name'] ?? '') !== (string) ($fields['first_name'] ?? '')
+            || (string) ($storedUser['last_name']  ?? '') !== (string) ($fields['last_name']  ?? '')
+            || (string) ($storedUser['phone']      ?? '') !== (string) ($fields['phone']      ?? '');
+    }
+
+    /**
+     * Insert a profile_divergences row when submitted profile data differs from the
+     * stored profile. Must never throw: any failure is logged and swallowed so the
+     * surrounding transaction and signup can commit normally.
+     */
+    private function recordProfileDivergence(
+        int   $userId,
+        int   $signupId,
+        int   $kermesseId,
+        array $fields,
+    ): void {
+        try {
+            ($this->profileDivergenceModel ?? model(ProfileDivergenceModel::class))
+                ->skipValidation(true)
+                ->insert([
+                    'user_id'              => $userId,
+                    'kermesse_id'          => $kermesseId,
+                    'signup_id'            => $signupId,
+                    'submitted_first_name' => (string) ($fields['first_name'] ?? ''),
+                    'submitted_last_name'  => (string) ($fields['last_name']  ?? ''),
+                    'submitted_phone'      => (string) ($fields['phone']      ?? ''),
+                ]);
+        } catch (\Throwable $e) {
+            log_message('error', 'SignupService: profile divergence record failed: ' . $e->getMessage());
         }
     }
 }
