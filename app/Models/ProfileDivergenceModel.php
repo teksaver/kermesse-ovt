@@ -27,10 +27,15 @@ class ProfileDivergenceModel extends Model
     ];
 
     /**
+     * Returns unresolved divergences for a user, most recent first.
+     *
      * @return list<array<string, mixed>>
      */
     public function findUnresolvedByUser(int $userId): array
     {
-        return $this->where('user_id', $userId)->where('resolved_at IS NULL', null, false)->findAll();
+        return $this->where('user_id', $userId)
+            ->where('resolved_at IS NULL', null, false)
+            ->orderBy('created_at', 'DESC')
+            ->findAll();
     }
 }

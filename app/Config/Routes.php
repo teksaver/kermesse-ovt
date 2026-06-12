@@ -7,7 +7,7 @@ use CodeIgniter\Router\RouteCollection;
 // ---------------------------------------------------------------------------
 // Home
 // ---------------------------------------------------------------------------
-$routes->get('/', '\App\Controllers\Home\HomeController::index');
+$routes->get('/', '\App\Controllers\Home\HomeController::index', ['filter' => 'pending-resolution']);
 
 // ---------------------------------------------------------------------------
 // Auth — universal Magic Link (Stories 1.3, 1.4, 1.5, 3.6)
@@ -16,13 +16,13 @@ $routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLogin
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
 $routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
-$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show');
-$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve');
+$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show', ['filter' => 'auth']);
+$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve', ['filter' => 'auth']);
 
 // ---------------------------------------------------------------------------
 // Connected home — kermesse list (Story 1.5)
 // ---------------------------------------------------------------------------
-$routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => 'auth']);
+$routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => ['auth', 'pending-resolution']]);
 
 // ---------------------------------------------------------------------------
 // Kermesse creation — open to all (Story 2.1)
