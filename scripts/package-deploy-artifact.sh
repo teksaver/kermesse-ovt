@@ -21,7 +21,7 @@ echo "Racine du projet : ${PROJECT_ROOT}"
 echo "Dossier de staging : ${STAGING_DIR}"
 echo "Fichier de sortie : ${OUTPUT_TAR}"
 
-for command in composer tar awk; do
+for command in composer tar awk php; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "ERREUR : commande requise introuvable : ${command}"
     exit 1
@@ -161,7 +161,16 @@ fi
 # 4. Création de l'archive tar.gz
 echo "Création de l'archive tar.gz..."
 cd "${STAGING_DIR}"
-tar -czf "${OUTPUT_TAR}" . || exit 1
+COPYFILE_DISABLE=1 tar -czf "${OUTPUT_TAR}" \
+  app \
+  public \
+  writable \
+  database \
+  docs \
+  vendor \
+  composer.json \
+  composer.lock \
+  .env.example || exit 1
 
 # 5. Génération du checksum SHA-256 (format compatible sha256sum -c)
 echo "Génération du checksum SHA-256..."
@@ -186,7 +195,12 @@ tar -tzf "${OUTPUT_TAR}" || exit 1
 while IFS= read -r line; do
   # Nettoyage des slashs de fin pour les dossiers
   clean_line="${line%/}"
-  
+
+  if [[ "${clean_line}" == "." || "${clean_line}" == "./" || "${clean_line}" == ._* || "${clean_line}" == */._* ]]; then
+    echo "ERREUR : Entrée tar incompatible avec l'extraction PHP native : ${line}"
+    IS_ARCHIVE_INVALID=1
+  fi
+
   # Retrait du préfixe ./ pour simplifier les comparaisons
   clean_line="${clean_line#./}"
 
@@ -218,6 +232,33 @@ if [ ${IS_ARCHIVE_INVALID} -eq 1 ]; then
   rm -f "${OUTPUT_TAR}" "${OUTPUT_CHECKSUM}"
   exit 1
 fi
+
+echo "Validation de l'extraction PHP native de l'archive..."
+TMP_EXTRACT_DIR="$(mktemp -d)"
+cleanup_extract_validation() {
+  rm -rf "${TMP_EXTRACT_DIR}"
+}
+trap cleanup_extract_validation EXIT
+
+php -r '
+$archive = $argv[1];
+$target = $argv[2];
+
+try {
+    $phar = new PharData($archive);
+    $phar->extractTo($target, null, true);
+} catch (Throwable $e) {
+    fwrite(STDERR, "ERREUR : extraction PHP native impossible : " . $e->getMessage() . PHP_EOL);
+    exit(1);
+}
+
+foreach (["app", "vendor", "public", "database/migrations_sql"] as $required) {
+    if (!is_dir($target . DIRECTORY_SEPARATOR . $required)) {
+        fwrite(STDERR, "ERREUR : dossier requis absent après extraction PHP native : " . $required . PHP_EOL);
+        exit(1);
+    }
+}
+' "${OUTPUT_TAR}" "${TMP_EXTRACT_DIR}"
 
 echo "=== Packaging réussi ! ==="
 echo "Archive créée avec succès : ${OUTPUT_TAR}"

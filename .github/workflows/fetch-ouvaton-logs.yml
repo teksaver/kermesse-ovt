@@ -1,0 +1,138 @@
+name: Fetch Ouvaton application logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      log_date:
+        description: "Log date to fetch, format YYYY-MM-DD. Defaults to current UTC date."
+        required: false
+        type: string
+      tail_lines:
+        description: "Number of trailing lines to include in the artifact."
+        required: false
+        default: "400"
+        type: string
+
+concurrency:
+  group: production-log-fetch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-ouvaton-logs:
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
+      OUVATON_DEPLOY_USERNAME: ${{ vars.OUVATON_DEPLOY_USERNAME }}
+      OUVATON_DEPLOY_REMOTE_FOLDER: ${{ vars.OUVATON_DEPLOY_REMOTE_FOLDER }}
+      OUVATON_DEPLOY_PASSWORD: ${{ secrets.OUVATON_DEPLOY_PASSWORD }}
+      OUVATON_SFTP_KNOWN_HOST: ${{ secrets.OUVATON_SFTP_KNOWN_HOST }}
+      LOG_DATE_INPUT: ${{ inputs.log_date }}
+      TAIL_LINES_INPUT: ${{ inputs.tail_lines }}
+
+    steps:
+      - name: Install transfer client
+        run: sudo apt-get update && sudo apt-get install --yes lftp
+
+      - name: Fetch selected production log
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            OUVATON_DEPLOY_HOST
+            OUVATON_DEPLOY_USERNAME
+            OUVATON_DEPLOY_REMOTE_FOLDER
+            OUVATON_DEPLOY_PASSWORD
+            OUVATON_SFTP_KNOWN_HOST
+          )
+
+          missing=0
+          for var_name in "${required_vars[@]}"; do
+            var_value="${!var_name:-}"
+            var_stripped="${var_value//[[:space:]]/}"
+            if [ -z "${var_stripped}" ]; then
+              echo "::error::Missing required production log configuration: ${var_name}"
+              missing=1
+            fi
+          done
+
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+          requested_date="${LOG_DATE_INPUT}"
+          if [ -z "${requested_date}" ]; then
+            requested_date="$(date -u +%F)"
+          fi
+
+          if [[ ! "${requested_date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::log_date must use YYYY-MM-DD format"
+            exit 1
+          fi
+
+          tail_lines="${TAIL_LINES_INPUT}"
+          if [[ ! "${tail_lines}" =~ ^[0-9]+$ ]] || [ "${tail_lines}" -lt 1 ] || [ "${tail_lines}" -gt 2000 ]; then
+            echo "::error::tail_lines must be an integer between 1 and 2000"
+            exit 1
+          fi
+
+          known_hosts_file="${RUNNER_TEMP}/ouvaton_known_hosts"
+          download_dir="${RUNNER_TEMP}/ouvaton-logs"
+          raw_log="${download_dir}/log-${requested_date}.php"
+          artifact_log="${download_dir}/log-${requested_date}-tail.txt"
+          remote_log="${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/logs/log-${requested_date}.php"
+
+          trap 'rm -f "${known_hosts_file}"' EXIT
+          mkdir -p "${download_dir}"
+          umask 077
+          printf '%s\n' "${OUVATON_SFTP_KNOWN_HOST}" > "${known_hosts_file}"
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          lftp_settings() {
+            printf 'set cmd:fail-exit yes\n'
+            printf 'set net:max-retries 2\n'
+            printf 'set net:timeout 30\n'
+            printf 'set ssl:verify-certificate yes\n'
+            printf 'set sftp:connect-program %s\n' \
+              "$(lftp_quote "ssh -a -x -o BatchMode=no -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile=${known_hosts_file}")"
+          }
+
+          {
+            lftp_settings
+            printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
+            printf 'user %s %s\n' \
+              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
+            printf 'get %s -o %s\n' \
+              "$(lftp_quote "${remote_log}")" \
+              "$(lftp_quote "${raw_log}")"
+            printf 'bye\n'
+          } | lftp
+
+          if [ ! -s "${raw_log}" ]; then
+            echo "::error::Requested application log is missing or empty: ${remote_log}"
+            exit 1
+          fi
+
+          tail -n "${tail_lines}" "${raw_log}" > "${artifact_log}"
+          rm -f "${raw_log}"
+          echo "Fetched production application log for ${requested_date}."
+
+      - name: Upload log artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ouvaton-application-log
+          path: ${{ runner.temp }}/ouvaton-logs/*-tail.txt
+          if-no-files-found: error
+          retention-days: 1

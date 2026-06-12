@@ -168,14 +168,281 @@ class ReleaseActivationService
      */
     protected function extractArchive(string $archivePath, string $releaseDir): bool
     {
-        $cmd = 'tar -xzf ' . escapeshellarg($archivePath) . ' -C ' . escapeshellarg($releaseDir) . ' 2>&1';
-        exec($cmd, $output, $returnCode);
-
-        if ($returnCode !== 0) {
-            log_message('error', 'ReleaseActivationService: Extraction failed: ' . implode("\n", $output));
+        if (!class_exists(\PharData::class)) {
+            log_message('error', 'ReleaseActivationService: PharData is not available for archive extraction.');
+            return false;
         }
 
-        return $returnCode === 0;
+        if (!$this->validateTarGzArchive($archivePath)) {
+            return false;
+        }
+
+        try {
+            $archive = new \PharData($archivePath);
+            $archive->extractTo(rtrim($releaseDir, '/'), null, true);
+        } catch (\Throwable $e) {
+            log_message('error', 'ReleaseActivationService: Extraction failed: ' . $e->getMessage());
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Validate TAR metadata before PharData extraction.
+     *
+     * PharData is used for extraction, but raw TAR scanning lets us reject
+     * dangerous entries that some readers may silently skip or normalize.
+     */
+    protected function validateTarGzArchive(string $archivePath): bool
+    {
+        $handle = gzopen($archivePath, 'rb');
+        if ($handle === false) {
+            log_message('error', 'ReleaseActivationService: Could not open archive for validation.');
+            return false;
+        }
+
+        $zeroBlocks = 0;
+        $pendingPath = null;
+
+        try {
+            while (!gzeof($handle)) {
+                $header = $this->readGzipBytes($handle, 512);
+                if ($header === '') {
+                    break;
+                }
+
+                if (strlen($header) !== 512) {
+                    log_message('error', 'ReleaseActivationService: Invalid tar header length.');
+                    return false;
+                }
+
+                if ($header === str_repeat("\0", 512)) {
+                    $zeroBlocks++;
+                    if ($zeroBlocks >= 2) {
+                        break;
+                    }
+                    continue;
+                }
+
+                $zeroBlocks = 0;
+
+                if (!$this->hasValidTarChecksum($header)) {
+                    log_message('error', 'ReleaseActivationService: Invalid tar header checksum.');
+                    return false;
+                }
+
+                $typeFlag = $header[156] === "\0" ? '0' : $header[156];
+                $size = $this->readTarOctal(substr($header, 124, 12));
+                if ($size === null) {
+                    log_message('error', 'ReleaseActivationService: Invalid tar entry size.');
+                    return false;
+                }
+
+                $path = $pendingPath ?? $this->readTarPath($header);
+                $pendingPath = null;
+
+                if ($typeFlag === 'x') {
+                    $payload = $this->readTarPayload($handle, $size);
+                    if ($payload === null) {
+                        return false;
+                    }
+
+                    $paxPath = $this->readPaxPath($payload);
+                    if ($paxPath !== null) {
+                        if (!$this->isSafeArchivePath($paxPath)) {
+                            log_message('error', 'ReleaseActivationService: Unsafe pax archive path rejected: ' . $paxPath);
+                            return false;
+                        }
+                        $pendingPath = $paxPath;
+                    }
+
+                    continue;
+                }
+
+                if ($typeFlag === 'L') {
+                    $payload = $this->readTarPayload($handle, $size);
+                    if ($payload === null) {
+                        return false;
+                    }
+
+                    $longPath = rtrim($payload, "\0");
+                    if (!$this->isSafeArchivePath($longPath)) {
+                        log_message('error', 'ReleaseActivationService: Unsafe long archive path rejected: ' . $longPath);
+                        return false;
+                    }
+
+                    $pendingPath = $longPath;
+                    continue;
+                }
+
+                if ($typeFlag === 'K') {
+                    if (!$this->skipTarPayload($handle, $size)) {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (in_array($typeFlag, ['1', '2'], true)) {
+                    log_message('error', 'ReleaseActivationService: Archive links are not allowed: ' . $path);
+                    return false;
+                }
+
+                if (!in_array($typeFlag, ['0', '5', '7'], true)) {
+                    log_message('error', 'ReleaseActivationService: Unsupported tar entry type rejected: ' . $typeFlag);
+                    return false;
+                }
+
+                if (!$this->isSafeArchivePath($path)) {
+                    log_message('error', 'ReleaseActivationService: Unsafe archive path rejected: ' . $path);
+                    return false;
+                }
+
+                if (!$this->skipTarPayload($handle, $size)) {
+                    return false;
+                }
+            }
+        } finally {
+            gzclose($handle);
+        }
+
+        return true;
+    }
+
+    protected function readTarPath(string $header): string
+    {
+        $name = rtrim(substr($header, 0, 100), "\0");
+        $prefix = rtrim(substr($header, 345, 155), "\0");
+
+        return $prefix === '' ? $name : $prefix . '/' . $name;
+    }
+
+    protected function isSafeArchivePath(string $path): bool
+    {
+        $path = str_replace('\\', '/', trim($path));
+        $path = preg_replace('#^\./+#', '', $path) ?? $path;
+        $path = rtrim($path, '/');
+
+        if ($path === '' || $path === '.') {
+            return true;
+        }
+
+        if (str_starts_with($path, '/') || str_contains($path, '://')) {
+            return false;
+        }
+
+        $segments = explode('/', $path);
+        foreach ($segments as $segment) {
+            if ($segment === '' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function readGzipBytes($handle, int $bytes): string
+    {
+        $data = '';
+
+        while (strlen($data) < $bytes && !gzeof($handle)) {
+            $chunk = gzread($handle, $bytes - strlen($data));
+            if ($chunk === false) {
+                return $data;
+            }
+            if ($chunk === '') {
+                break;
+            }
+            $data .= $chunk;
+        }
+
+        return $data;
+    }
+
+    private function readTarPayload($handle, int $size): ?string
+    {
+        $payload = $this->readGzipBytes($handle, $size);
+        if (strlen($payload) !== $size) {
+            log_message('error', 'ReleaseActivationService: Invalid tar payload length.');
+            return null;
+        }
+
+        $padding = (512 - ($size % 512)) % 512;
+        if ($padding > 0 && strlen($this->readGzipBytes($handle, $padding)) !== $padding) {
+            log_message('error', 'ReleaseActivationService: Invalid tar payload padding.');
+            return null;
+        }
+
+        return $payload;
+    }
+
+    private function skipTarPayload($handle, int $size): bool
+    {
+        $remaining = $size;
+
+        while ($remaining > 0) {
+            $chunkSize = min($remaining, 8192);
+            $chunk = $this->readGzipBytes($handle, $chunkSize);
+            if (strlen($chunk) !== $chunkSize) {
+                log_message('error', 'ReleaseActivationService: Invalid tar payload length.');
+                return false;
+            }
+            $remaining -= $chunkSize;
+        }
+
+        $padding = (512 - ($size % 512)) % 512;
+        if ($padding > 0 && strlen($this->readGzipBytes($handle, $padding)) !== $padding) {
+            log_message('error', 'ReleaseActivationService: Invalid tar payload padding.');
+            return false;
+        }
+
+        return true;
+    }
+
+    private function readTarOctal(string $value): ?int
+    {
+        $value = trim($value, " \0");
+        if ($value === '') {
+            return 0;
+        }
+
+        if (!preg_match('/^[0-7]+$/', $value)) {
+            return null;
+        }
+
+        return octdec($value);
+    }
+
+    private function hasValidTarChecksum(string $header): bool
+    {
+        $stored = $this->readTarOctal(substr($header, 148, 8));
+        if ($stored === null) {
+            return false;
+        }
+
+        $checksumHeader = substr_replace($header, str_repeat(' ', 8), 148, 8);
+        $actual = 0;
+        for ($i = 0; $i < 512; $i++) {
+            $actual += ord($checksumHeader[$i]);
+        }
+
+        return $stored === $actual;
+    }
+
+    private function readPaxPath(string $payload): ?string
+    {
+        foreach (explode("\n", $payload) as $line) {
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^\d+ path=(.*)$/', $line, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
     }
 
     /**
