@@ -376,12 +376,17 @@ echo "-- Étape 3/5 : Activation atomique"
 ACTIVATE_ROUTE="ops/activate"
 ACTIVATE_BODY="{\"archive\":\"${KERMESSE_ARTIFACT_NAME}\"}"
 ops_sign "${ACTIVATE_ROUTE}" "${ACTIVATE_BODY}"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${ACTIVATE_ROUTE}" \
+HTTP_CODE=$(curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${ACTIVATE_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
     -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-    -d "${ACTIVATE_BODY}"
+    -w "%{http_code}" -o /dev/stderr \
+    -d "${ACTIVATE_BODY}")
+if [[ "$HTTP_CODE" != "200" ]]; then
+    echo "ERREUR : Webhook d'activation a retourné HTTP $HTTP_CODE (attendu 200)" >&2
+    exit 1
+fi
 echo ""
 
 # ── Étape 4/5 : Migration base de données ────────────────────────────────────
@@ -390,12 +395,17 @@ echo ""
 echo "-- Étape 4/5 : Migration de la base de données"
 MIGRATE_ROUTE="ops/migrate"
 ops_sign "${MIGRATE_ROUTE}"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${MIGRATE_ROUTE}" \
+HTTP_CODE=$(curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${MIGRATE_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
     -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-    -d '{}'
+    -w "%{http_code}" -o /dev/stderr \
+    -d '{}')
+if [[ "$HTTP_CODE" != "200" ]]; then
+    echo "ERREUR : Webhook de migration a retourné HTTP $HTTP_CODE (attendu 200)" >&2
+    exit 1
+fi
 echo ""
 
 # ── Étape 5/5 : Vérification de l'état des migrations ───────────────────────
@@ -404,12 +414,17 @@ echo ""
 echo "-- Étape 5/5 : Vérification de l'état des migrations"
 STATUS_ROUTE="ops/migrate/status"
 ops_sign "${STATUS_ROUTE}"
-curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${STATUS_ROUTE}" \
+HTTP_CODE=$(curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${STATUS_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
     -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-    -d '{}'
+    -w "%{http_code}" -o /dev/stderr \
+    -d '{}')
+if [[ "$HTTP_CODE" != "200" ]]; then
+    echo "ERREUR : Webhook de statut a retourné HTTP $HTTP_CODE (attendu 200)" >&2
+    exit 1
+fi
 echo ""
 
 # ── Résumé ───────────────────────────────────────────────────────────────────
