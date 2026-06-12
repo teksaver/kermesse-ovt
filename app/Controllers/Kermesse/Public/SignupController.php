@@ -47,7 +47,7 @@ class SignupController extends BaseController
         $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
 
         if ($isAuthenticated) {
-            $user = (new UserModel())->find($authUserId);
+            $user = model(UserModel::class)->find($authUserId);
             if ($user !== null) {
                 return view('kermesse/public/signup_form', [
                     'summary'         => $summary,
@@ -74,12 +74,30 @@ class SignupController extends BaseController
             'phone'      => '',
         ];
 
+        // Privacy (review 3.4): when the form is prefilled from a previous submission
+        // cached in this session, expose a "Ce n'est pas vous ?" affordance so a visitor
+        // on a shared device can wipe the previous person's name/email before signing up.
+        $isPrefilled = is_array($identity) && (string) ($identity['email'] ?? '') !== '';
+
         return view('kermesse/public/signup_form', [
             'summary'         => $summary,
             'fields'          => $fields,
             'errors'          => [],
             'isAuthenticated' => false,
+            'isPrefilled'     => $isPrefilled,
         ]);
+    }
+
+    /**
+     * Clear the session-cached volunteer identity. PRG: redirects back to the empty
+     * form. Privacy guard for shared devices (review 3.4) — the prefilled name/email
+     * must not survive for the next visitor when they ask to forget it.
+     */
+    public function forget(string $publicSlug, string $slotId): mixed
+    {
+        session()->remove('volunteer_identity');
+
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"));
     }
 
     public function submit(string $publicSlug, string $slotId): mixed
@@ -100,9 +118,9 @@ class SignupController extends BaseController
         $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
 
         if ($isAuthenticated) {
-            $user = (new UserModel())->find($authUserId);
+            $user = model(UserModel::class)->find($authUserId);
             if ($user === null) {
-                // Stale session (user_id not in DB): cannot fall through to anonymous flow safely 
+                // Stale session (user_id not in DB): cannot fall through to anonymous flow safely
                 // on POST without fields. Destroy stale data and redirect.
                 session()->remove(['is_logged_in', 'user_id']);
                 return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"))
@@ -148,13 +166,7 @@ class SignupController extends BaseController
             $fields = $validation->getValidated();
         }
 
-        $result = (new SignupService(
-            userModel:              new UserModel(),
-            signupModel:            new SignupModel(),
-            kermesseModel:          new KermesseModel(),
-            slotModel:              new SlotModel(),
-            profileDivergenceModel: new ProfileDivergenceModel(),
-        ))->signup(
+        $result = $this->signupService()->signup(
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],
             fields:     $fields,
@@ -202,6 +214,21 @@ class SignupController extends BaseController
             'publicSlug'   => $publicSlug,
             'emailSent'    => $flash['emailSent'] ?? null,
         ]);
+    }
+
+    /**
+     * Build the SignupService with shared model instances. Extracted to a seam so a
+     * test can subclass the controller and inject a mock service without touching HTTP.
+     */
+    protected function signupService(): SignupService
+    {
+        return new SignupService(
+            userModel:              model(UserModel::class),
+            signupModel:            model(SignupModel::class),
+            kermesseModel:          model(KermesseModel::class),
+            slotModel:              model(SlotModel::class),
+            profileDivergenceModel: model(ProfileDivergenceModel::class),
+        );
     }
 
     private function serviceErrorMessage(SignupResult $result): string

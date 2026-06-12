@@ -32,14 +32,14 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 class SignupService
 {
     public function __construct(
-        private readonly UserModel                 $userModel,
-        private readonly SignupModel               $signupModel,
-        private readonly ?KermesseModel            $kermesseModel            = null,
-        private readonly ?SlotModel                $slotModel                = null,
-        private readonly ?ConnectionInterface      $db                       = null,
-        private readonly ?EmailService             $emailService             = null,
-        private readonly ?StandModel               $standModel               = null,
-        private readonly ?ProfileDivergenceModel   $profileDivergenceModel   = null,
+        private readonly UserModel $userModel,
+        private readonly SignupModel $signupModel,
+        private readonly ?KermesseModel $kermesseModel = null,
+        private readonly ?SlotModel $slotModel = null,
+        private readonly ?ConnectionInterface $db = null,
+        private readonly ?EmailService $emailService = null,
+        private readonly ?StandModel $standModel = null,
+        private readonly ?ProfileDivergenceModel $profileDivergenceModel = null,
     ) {}
 
     /**
@@ -146,12 +146,11 @@ class SignupService
             return SignupResult::failure('volunteer_insert_failed');
         }
 
-        // Lock the user row so same-user submissions serialize before the
-        // duplicate/overlap checks (which are locking reads — see SignupModel).
-        $this->userModel->lockForOverlapCheck($userId, $db);
-
-        // Separate locking read to obtain stored profile for divergence detection.
-        $storedUser = $this->userModel->findByEmailHash(hash('sha256', $email), $db, true);
+        // One locking read does both jobs: it acquires the FOR UPDATE lock on the user
+        // row (serializing same-user submissions before the duplicate/overlap checks,
+        // which are themselves locking reads — see SignupModel) AND returns the stored
+        // profile for divergence detection. A second lock on the same row would be redundant.
+        $storedUser = $this->userModel->findByEmailHash($this->userModel->hashEmail($email), $db, true);
 
         if ($this->signupModel->findActiveByUserAndSlot($userId, $slotId, $db) !== null) {
             return SignupResult::failure('duplicate_signup');
@@ -184,7 +183,7 @@ class SignupService
         // Record divergence if the submitted profile differs from the stored one.
         // Failure must not abort the signup (catch-all in recordProfileDivergence).
         if ($storedUser !== null && $this->detectsDivergence($storedUser, $fields)) {
-            $this->recordProfileDivergence($userId, (int) $signupId, $kermesseId, $fields);
+            $this->recordProfileDivergence($db, $userId, (int) $signupId, $kermesseId, $fields);
         }
 
         // Internal result: the slot row rides in context so the caller can build
@@ -229,7 +228,7 @@ class SignupService
      */
     private function findOrCreateUser(ConnectionInterface $db, string $email, array $fields): ?int
     {
-        $emailHash = hash('sha256', $email);
+        $emailHash = $this->userModel->hashEmail($email);
 
         $existing = $this->userModel->findByEmailHash($emailHash, $db);
         if ($existing !== null) {
@@ -271,7 +270,11 @@ class SignupService
      */
     private function assertSharedConnection(ConnectionInterface $db): void
     {
-        foreach ([$this->userModel, $this->signupModel] as $model) {
+        // profileDivergenceModel writes inside the transaction too, so it must share $db.
+        foreach ([$this->userModel, $this->signupModel, $this->profileDivergenceModel] as $model) {
+            if ($model === null) {
+                continue;
+            }
             $modelDb = $model->db ?? null;
             if ($modelDb instanceof ConnectionInterface && $modelDb !== $db) {
                 throw new DatabaseException(
@@ -296,7 +299,12 @@ class SignupService
         if ((string) ($storedUser['last_name'] ?? '') !== (string) ($fields['last_name'] ?? '')) {
             return true;
         }
-        // Phone is optional: a blank submission does not signal a change.
+        // Phone is optional on the public form. DELIBERATE DECISION (review 3.4): a blank
+        // submission is treated as "not provided / no change intended", never as a request
+        // to erase the stored number. The frictionless public signup is not a profile
+        // editor — clearing a contact field belongs to a dedicated edit surface — so a
+        // volunteer who simply skips the phone must not silently wipe a number the
+        // organisers rely on. Only a non-empty, different value records a divergence.
         $submittedPhone = (string) ($fields['phone'] ?? '');
         return $submittedPhone !== '' && $submittedPhone !== (string) ($storedUser['phone'] ?? '');
     }
@@ -307,13 +315,17 @@ class SignupService
      * surrounding transaction and signup can commit normally.
      */
     private function recordProfileDivergence(
+        ConnectionInterface $db,
         int   $userId,
         int   $signupId,
         int   $kermesseId,
         array $fields,
     ): void {
         try {
-            ($this->profileDivergenceModel ?? new ProfileDivergenceModel())
+            // Bind the fallback model to $db so the divergence row is written inside the
+            // open transaction (a model on its own connection would escape it). An injected
+            // model is validated up front by assertSharedConnection().
+            ($this->profileDivergenceModel ?? new ProfileDivergenceModel($db))
                 ->skipValidation(true)
                 ->insert([
                     'user_id'              => $userId,

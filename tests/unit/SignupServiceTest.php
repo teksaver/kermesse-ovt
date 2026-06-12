@@ -93,7 +93,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $mock = $this->getMockBuilder(UserModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
             ->getMock();
         $mock->method('findByEmailHash')->willReturn(null);
         $mock->method('skipValidation')->willReturnSelf();
@@ -495,7 +495,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $userMock = $this->getMockBuilder(UserModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
             ->getMock();
         // Plain lookup misses (stale snapshot), insert loses the unique-key race,
         // the locking re-read then sees the competitor's committed row.
@@ -597,7 +597,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $mock = $this->getMockBuilder(UserModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
             ->getMock();
         $mock->method('findByEmailHash')->willReturn($storedProfile);
         $mock->expects($this->never())->method('insert');

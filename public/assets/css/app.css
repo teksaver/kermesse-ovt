@@ -564,6 +564,26 @@ p {
     text-decoration: underline;
 }
 
+.signup-forget {
+    margin-top: 12px;
+    text-align: center;
+}
+
+.link-button {
+    min-height: 44px;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    font-size: 14px;
+    color: var(--color-primary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.link-button:hover {
+    text-decoration: none;
+}
+
 @media (min-width: 520px) {
     .form-actions .btn {
         width: auto;

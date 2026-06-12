@@ -60,6 +60,7 @@ $routes->post('kermesse/(:num)/slots/(:num)', '\App\Controllers\Kermesse\Dashboa
 $routes->get('k/(:segment)', '\App\Controllers\Kermesse\Public\PublicController::index/$1');
 $routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::show/$1/$2');
 $routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::submit/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/signup/forget', '\App\Controllers\Kermesse\Public\SignupController::forget/$1/$2');
 $routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Kermesse\Public\SignupController::confirm/$1/$2');
 
 // ---------------------------------------------------------------------------

@@ -857,6 +857,62 @@ final class PublicSignupFormTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Review 3.4 — Privacy: "Ce n'est pas vous ?" clears the session identity
+    // so a prefilled name/email cannot leak to the next visitor on a shared device.
+    // ------------------------------------------------------------------
+
+    public function testPrefilledFormShowsForgetAffordance(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-shown');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession([
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@forget.fr',
+            ],
+        ])->get("k/ecole-forget-shown/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Ce n\'est pas vous', $body, 'Le formulaire pré-rempli doit proposer d\'effacer l\'identité');
+        $this->assertStringContainsString('class="signup-forget"', $body, 'Le formulaire doit poster vers l\'action forget');
+    }
+
+    public function testEmptyFormDoesNotShowForgetAffordance(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-hidden');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->get("k/ecole-forget-hidden/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $this->assertStringNotContainsString('Ce n\'est pas vous', $result->response()->getBody(), 'Sans pré-remplissage, pas d\'affordance d\'effacement');
+    }
+
+    public function testForgetClearsSessionIdentityAndRedirects(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-post');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession([
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@forget.fr',
+            ],
+        ])->csrfPost("k/ecole-forget-post/slots/{$slotId}/signup/forget", []);
+
+        $result->assertRedirectTo(site_url("k/ecole-forget-post/slots/{$slotId}/signup"));
+        $this->assertNull(session()->get('volunteer_identity'), 'L\'identité de session doit être effacée');
+    }
+
+    // ------------------------------------------------------------------
     // Story 3.2 — AC3: Profile divergence recorded when data differs
     // ------------------------------------------------------------------
 

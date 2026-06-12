@@ -127,6 +127,15 @@
             </div>
         </form>
 
+        <?php if ($isPrefilled ?? false): ?>
+        <form method="post"
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup/forget"), 'attr') ?>"
+            class="signup-forget">
+            <?= csrf_field() ?>
+            <button type="submit" class="link-button">Ce n'est pas vous ? Effacer mes informations</button>
+        </form>
+        <?php endif; ?>
+
         <?php endif; ?>
 
         <div class="signup-back">
