@@ -239,10 +239,12 @@ jobs:
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
 
             # Create shared writable directories so the realpath check in index.php succeeds
+            printf 'set cmd:fail-exit no\n'
             printf 'mkdir -p %s/shared/writable/cache\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
             printf 'mkdir -p %s/shared/writable/logs\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
             printf 'mkdir -p %s/shared/writable/session\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
             printf 'mkdir -p %s/shared/writable/uploads\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
+            printf 'set cmd:fail-exit yes\n'
 
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
             printf 'put /tmp/httpdocs-index.php -o index.php\n'
