@@ -96,14 +96,11 @@ class SignupController extends BaseController
         }
 
         $result = (new SignupService(
-            new UserModel(),
-            new SignupModel(),
-            new KermesseModel(),
-            new SlotModel(),
-            null,
-            null,
-            null,
-            new ProfileDivergenceModel(),
+            userModel:              new UserModel(),
+            signupModel:            new SignupModel(),
+            kermesseModel:          new KermesseModel(),
+            slotModel:              new SlotModel(),
+            profileDivergenceModel: new ProfileDivergenceModel(),
         ))->signup(
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],

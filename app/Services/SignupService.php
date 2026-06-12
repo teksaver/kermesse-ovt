@@ -148,7 +148,9 @@ class SignupService
 
         // Lock the user row so same-user submissions serialize before the
         // duplicate/overlap checks (which are locking reads — see SignupModel).
-        // The locking read also gives us the stored profile for divergence detection.
+        $this->userModel->lockForOverlapCheck($userId, $db);
+
+        // Separate locking read to obtain stored profile for divergence detection.
         $storedUser = $this->userModel->findByEmailHash(hash('sha256', $email), $db, true);
 
         if ($this->signupModel->findActiveByUserAndSlot($userId, $slotId, $db) !== null) {
@@ -288,9 +290,15 @@ class SignupService
      */
     private function detectsDivergence(array $storedUser, array $fields): bool
     {
-        return (string) ($storedUser['first_name'] ?? '') !== (string) ($fields['first_name'] ?? '')
-            || (string) ($storedUser['last_name']  ?? '') !== (string) ($fields['last_name']  ?? '')
-            || (string) ($storedUser['phone']      ?? '') !== (string) ($fields['phone']      ?? '');
+        if ((string) ($storedUser['first_name'] ?? '') !== (string) ($fields['first_name'] ?? '')) {
+            return true;
+        }
+        if ((string) ($storedUser['last_name'] ?? '') !== (string) ($fields['last_name'] ?? '')) {
+            return true;
+        }
+        // Phone is optional: a blank submission does not signal a change.
+        $submittedPhone = (string) ($fields['phone'] ?? '');
+        return $submittedPhone !== '' && $submittedPhone !== (string) ($storedUser['phone'] ?? '');
     }
 
     /**
@@ -305,7 +313,7 @@ class SignupService
         array $fields,
     ): void {
         try {
-            ($this->profileDivergenceModel ?? model(ProfileDivergenceModel::class))
+            ($this->profileDivergenceModel ?? new ProfileDivergenceModel())
                 ->skipValidation(true)
                 ->insert([
                     'user_id'              => $userId,

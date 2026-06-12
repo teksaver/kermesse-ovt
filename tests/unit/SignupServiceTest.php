@@ -684,6 +684,28 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertTrue($result->success);
     }
 
+    public function testEmptySubmittedPhoneDoesNotTriggerDivergence(): void
+    {
+        // Stored phone = '0600000000', submitted phone = '' (field left blank — optional)
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0600000000'];
+
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->never())->method('insert');
+
+        $fieldsNoPhone = array_merge($this->validFields(), ['phone' => '']);
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(1, 10, $fieldsNoPhone);
+
+        $this->assertTrue($result->success);
+    }
+
     public function testDivergenceInsertFailureDoesNotFailSignup(): void
     {
         $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'OtherName', 'last_name' => 'Dupont', 'phone' => ''];
