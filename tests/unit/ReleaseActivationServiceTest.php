@@ -225,6 +225,37 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
         $this->assertSame('SECRET=production', file_get_contents($this->tmpBase . '/shared/.env'));
     }
 
+    public function testDeriveBasePathAcceptsLegacyRootLayout(): void
+    {
+        $root = $this->tmpBase . '/kermesse';
+        mkdir($root . '/staging', 0755, true);
+        mkdir($root . '/shared', 0755, true);
+        mkdir($root . '/releases', 0755, true);
+
+        $this->assertSame($root, $this->deriveBasePathForTest($root));
+    }
+
+    public function testDeriveBasePathClimbsOutOfReleaseDirectory(): void
+    {
+        $base = $this->tmpBase . '/kermesse';
+        $releaseRoot = $base . '/releases/20260612-092200-deadbeef';
+        mkdir($base . '/staging', 0755, true);
+        mkdir($base . '/shared', 0755, true);
+        mkdir($releaseRoot, 0755, true);
+
+        $this->assertSame($base, $this->deriveBasePathForTest($releaseRoot));
+    }
+
+    public function testDeriveBasePathUsesCurrentParentWhenSymlinkIsNotResolved(): void
+    {
+        $base = $this->tmpBase . '/kermesse';
+        mkdir($base . '/staging', 0755, true);
+        mkdir($base . '/shared', 0755, true);
+        mkdir($base . '/releases', 0755, true);
+
+        $this->assertSame($base, $this->deriveBasePathForTest($base . '/current'));
+    }
+
     // -----------------------------------------------------------------------
     // Sécurité — traversal de chemin rejeté par le contrôleur (couvert ici
     // au niveau service : archive name avec / → archive_missing)
@@ -250,6 +281,15 @@ final class ReleaseActivationServiceTest extends CIUnitTestCase
     private function makeService(): ReleaseActivationService
     {
         return new ReleaseActivationService(null, $this->tmpBase, new NullLockStrategy());
+    }
+
+    private function deriveBasePathForTest(string $rootPath): string
+    {
+        $service = $this->makeService();
+        $method = new ReflectionMethod(ReleaseActivationService::class, 'deriveBasePath');
+        $method->setAccessible(true);
+
+        return $method->invoke($service, $rootPath);
     }
 
     /**

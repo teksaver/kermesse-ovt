@@ -215,15 +215,27 @@ jobs:
             CURL_TLS_ARGS+=(--insecure)
           fi
 
-          # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
-          # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          HTTP_CODE=$(curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+          # Ne pas utiliser curl -f ici : sur HTTP 4xx/5xx il masque le body JSON
+          # utile au diagnostic (archive_missing, checksum_mismatch, release_invalid).
+          activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response.json"
+          if ! HTTP_CODE=$(curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
             -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
             -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -w "%{http_code}" -o /dev/stderr \
-            -d "$BODY")
+            -w "%{http_code}" -o "${activate_response_body}" \
+            -d "$BODY"); then
+            echo "::error::Webhook d'activation injoignable."
+            if [ -s "${activate_response_body}" ]; then
+              cat "${activate_response_body}" >&2
+            fi
+            exit 1
+          fi
+
+          if [ -s "${activate_response_body}" ]; then
+            cat "${activate_response_body}" >&2
+            printf '\n' >&2
+          fi
           
           if [[ "$HTTP_CODE" != "200" ]]; then
             echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
