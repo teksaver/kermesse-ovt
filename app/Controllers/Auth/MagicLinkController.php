@@ -3,6 +3,7 @@
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
+use App\Models\ProfileDivergenceModel;
 use App\Models\UserModel;
 use App\Services\EmailService;
 use App\Services\TokenService;
@@ -88,6 +89,13 @@ class MagicLinkController extends BaseController
             'user_id'      => $userId,
             'is_logged_in' => true,
         ]);
+
+        // Story 3.6: intercept to profile resolution when pending divergences exist.
+        $unresolvedDivergences = (new ProfileDivergenceModel())->findUnresolvedByUser($userId);
+        if (! empty($unresolvedDivergences)) {
+            session()->set('pending_profile_resolution', true);
+            return redirect()->to(site_url('auth/profile-resolution'));
+        }
 
         $url = session('redirect_url');
         session()->remove('redirect_url');

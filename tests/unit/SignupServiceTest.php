@@ -4,17 +4,20 @@ use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
 use App\Models\KermesseModel;
+use App\Models\ProfileDivergenceModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Services\EmailDeliveryResult;
 use App\Services\EmailService;
+use App\Services\IssuedToken;
 use App\Services\SignupService;
 use App\Services\SignupResult;
+use App\Services\TokenService;
 use App\Models\UserModel;
 use App\Models\SignupModel;
 
 /**
- * Unit tests for SignupService — Stories 3.3 & 3.4.
+ * Unit tests for SignupService — Stories 3.2, 3.3 & 3.4.
  *
  * All DB access is mocked — including the transaction connection — so tests are
  * fast and fully isolated from any real database.
@@ -26,23 +29,46 @@ use App\Models\SignupModel;
 final class SignupServiceTest extends CIUnitTestCase
 {
     private function buildService(
-        ?UserModel      $userModel     = null,
-        ?SignupModel    $signupModel   = null,
-        ?KermesseModel  $kermesseModel = null,
-        ?SlotModel      $slotModel     = null,
-        ?BaseConnection $db            = null,
-        ?EmailService   $emailService  = null,
-        ?StandModel     $standModel    = null,
+        ?UserModel               $userModel              = null,
+        ?SignupModel              $signupModel            = null,
+        ?KermesseModel           $kermesseModel          = null,
+        ?SlotModel               $slotModel              = null,
+        ?BaseConnection          $db                     = null,
+        ?EmailService            $emailService           = null,
+        ?StandModel              $standModel             = null,
+        ?ProfileDivergenceModel  $profileDivergenceModel = null,
+        ?TokenService            $tokenService           = null,
     ): SignupService {
         return new SignupService(
-            $userModel     ?? $this->buildMockUserModel(),
-            $signupModel   ?? $this->buildMockSignupModel(),
-            $kermesseModel ?? $this->buildMockKermesseModel(),
-            $slotModel     ?? $this->buildMockSlotModel(),
-            $db            ?? $this->buildMockConnection(),
-            $emailService  ?? $this->buildMockEmailService(),
-            $standModel    ?? $this->buildMockStandModel(),
+            $userModel              ?? $this->buildMockUserModel(),
+            $signupModel            ?? $this->buildMockSignupModel(),
+            $kermesseModel          ?? $this->buildMockKermesseModel(),
+            $slotModel              ?? $this->buildMockSlotModel(),
+            $db                     ?? $this->buildMockConnection(),
+            $emailService           ?? $this->buildMockEmailService(),
+            $standModel             ?? $this->buildMockStandModel(),
+            $profileDivergenceModel ?? $this->buildMockProfileDivergenceModel(),
+            $tokenService           ?? $this->buildMockTokenService(),
         );
+    }
+
+    private function buildMockTokenService(): TokenService
+    {
+        $mock = $this->createMock(TokenService::class);
+        $mock->method('issueMagicLink')
+            ->willReturn(new IssuedToken('default-test-token', 1));
+        return $mock;
+    }
+
+    private function buildMockProfileDivergenceModel(): ProfileDivergenceModel
+    {
+        $mock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $mock->method('skipValidation')->willReturnSelf();
+        $mock->method('insert')->willReturn(1);
+        return $mock;
     }
 
     private function buildMockEmailService(bool $sent = true): EmailService
@@ -79,7 +105,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $mock = $this->getMockBuilder(UserModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
             ->getMock();
         $mock->method('findByEmailHash')->willReturn(null);
         $mock->method('skipValidation')->willReturnSelf();
@@ -481,12 +507,17 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $userMock = $this->getMockBuilder(UserModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert', 'lockForOverlapCheck'])
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
             ->getMock();
         // Plain lookup misses (stale snapshot), insert loses the unique-key race,
         // the locking re-read then sees the competitor's committed row.
+        // Third call: divergence-check locking read — returns same existing row.
         $userMock->method('findByEmailHash')
-            ->willReturnOnConsecutiveCalls(null, ['id' => 7, 'email' => 'marie@exemple.fr']);
+            ->willReturnOnConsecutiveCalls(
+                null,
+                ['id' => 7, 'email' => 'marie@exemple.fr'],
+                ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0612345678'],
+            );
         $userMock->method('skipValidation')->willReturnSelf();
         $userMock->method('insert')
             ->willThrowException(new DatabaseException('Duplicate entry for uq_users_email_hash'));
@@ -554,6 +585,57 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertFalse($result->emailSent);
     }
 
+    // ------------------------------------------------------------------
+    // Story 3.5 — Magic Link URL passed to EmailService
+    // ------------------------------------------------------------------
+
+    public function testMagicLinkUrlPassedToEmailService(): void
+    {
+        $tokenMock = $this->createMock(TokenService::class);
+        $tokenMock->method('issueMagicLink')
+            ->willReturn(new IssuedToken('special-raw-token', 1));
+
+        $capturedArgs = null;
+        $emailMock    = $this->createMock(EmailService::class);
+        $emailMock->expects($this->once())
+            ->method('sendSignupConfirmationEmail')
+            ->willReturnCallback(function (...$args) use (&$capturedArgs) {
+                $capturedArgs = $args;
+                return new EmailDeliveryResult(true, null);
+            });
+
+        $result = $this->buildService(emailService: $emailMock, tokenService: $tokenMock)
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertIsString($capturedArgs[6] ?? null, 'Magic link URL must be the 7th argument to sendSignupConfirmationEmail');
+        $this->assertStringContainsString('special-raw-token', $capturedArgs[6]);
+    }
+
+    public function testMagicLinkTokenGenerationFailureStillSendsEmail(): void
+    {
+        $tokenMock = $this->createMock(TokenService::class);
+        $tokenMock->method('issueMagicLink')
+            ->willThrowException(new \RuntimeException('Token DB unavailable'));
+
+        $capturedArgs = null;
+        $emailMock    = $this->createMock(EmailService::class);
+        $emailMock->expects($this->once())
+            ->method('sendSignupConfirmationEmail')
+            ->willReturnCallback(function (...$args) use (&$capturedArgs) {
+                $capturedArgs = $args;
+                return new EmailDeliveryResult(true, null);
+            });
+
+        $result = $this->buildService(emailService: $emailMock, tokenService: $tokenMock)
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertTrue($result->emailSent, 'Email must still be sent when magic link token generation fails');
+        $this->assertCount(7, $capturedArgs, 'sendSignupConfirmationEmail must always receive 7 arguments');
+        $this->assertSame('', $capturedArgs[6], 'Magic link URL must be empty string when token generation fails');
+    }
+
     public function testEmailExceptionDoesNotFailSignup(): void
     {
         $emailMock = $this->createMock(EmailService::class);
@@ -564,5 +646,145 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $this->assertTrue($result->success, 'Signup must stay confirmed when the email throws (AC4)');
         $this->assertFalse($result->emailSent);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.2 — AC3: Profile divergence detection
+    //
+    // When a public signup provides different name/phone than the stored profile,
+    // SignupService must insert a profile_divergences row in the same transaction,
+    // without blocking the signup success.
+    // ------------------------------------------------------------------
+
+    private function buildExistingUserMock(array $storedProfile): UserModel
+    {
+        $mock = $this->getMockBuilder(UserModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
+            ->getMock();
+        $mock->method('findByEmailHash')->willReturn($storedProfile);
+        $mock->expects($this->never())->method('insert');
+        return $mock;
+    }
+
+    public function testExistingUserWithSameProfileDoesNotInsertDivergence(): void
+    {
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0612345678'];
+
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->never())->method('insert');
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+    }
+
+    public function testExistingUserWithDifferentFirstNameInsertsProfileDivergence(): void
+    {
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Maria', 'last_name' => 'Dupont', 'phone' => '0612345678'];
+
+        $capturedData = null;
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->once())->method('insert')
+            ->willReturnCallback(function (array $data) use (&$capturedData) {
+                $capturedData = $data;
+                return 1;
+            });
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(slotId: 1, kermesseId: 10, fields: $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertSame('Marie', $capturedData['submitted_first_name'] ?? null, 'Submitted first_name must be recorded');
+        $this->assertSame(7,      $capturedData['user_id']               ?? null);
+        $this->assertSame(10,     $capturedData['kermesse_id']           ?? null);
+    }
+
+    public function testExistingUserWithDifferentPhoneInsertsProfileDivergence(): void
+    {
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0600000000'];
+
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->once())->method('insert')->willReturn(1);
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+    }
+
+    public function testNewUserDoesNotInsertProfileDivergence(): void
+    {
+        // Default buildMockUserModel returns null for findByEmailHash (new user)
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->never())->method('insert');
+
+        $result = $this->buildService(profileDivergenceModel: $pdMock)->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+    }
+
+    public function testEmptySubmittedPhoneDoesNotTriggerDivergence(): void
+    {
+        // Stored phone = '0600000000', submitted phone = '' (field left blank — optional)
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0600000000'];
+
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->expects($this->never())->method('insert');
+
+        $fieldsNoPhone = array_merge($this->validFields(), ['phone' => '']);
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(1, 10, $fieldsNoPhone);
+
+        $this->assertTrue($result->success);
+    }
+
+    public function testDivergenceInsertFailureDoesNotFailSignup(): void
+    {
+        $stored = ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'OtherName', 'last_name' => 'Dupont', 'phone' => ''];
+
+        $pdMock = $this->getMockBuilder(ProfileDivergenceModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert'])
+            ->getMock();
+        $pdMock->method('skipValidation')->willReturnSelf();
+        $pdMock->method('insert')->willThrowException(new \RuntimeException('DB error'));
+
+        $result = $this->buildService(
+            userModel:              $this->buildExistingUserMock($stored),
+            profileDivergenceModel: $pdMock,
+        )->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success, 'Signup must succeed even when the divergence insert fails');
     }
 }

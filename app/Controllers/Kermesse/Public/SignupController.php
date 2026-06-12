@@ -4,6 +4,7 @@ namespace App\Controllers\Kermesse\Public;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\ProfileDivergenceModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\UserModel;
@@ -39,11 +40,64 @@ class SignupController extends BaseController
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
+        // Connected user: load profile from DB — DB data always takes precedence over
+        // volunteer_identity session (NFR4: never trust client-supplied identity for
+        // a session-authenticated user).
+        $authUserId      = (int) session()->get('user_id');
+        $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
+
+        if ($isAuthenticated) {
+            $user = model(UserModel::class)->find($authUserId);
+            if ($user !== null) {
+                return view('kermesse/public/signup_form', [
+                    'summary'         => $summary,
+                    'fields'          => [
+                        'first_name' => (string) $user['first_name'],
+                        'last_name'  => (string) $user['last_name'],
+                        'email'      => (string) $user['email'],
+                        'phone'      => (string) ($user['phone'] ?? ''),
+                    ],
+                    'errors'          => [],
+                    'isAuthenticated' => true,
+                ]);
+            }
+            // Stale session (user_id not in DB): remove stale data and fall through to anonymous flow.
+            session()->remove(['is_logged_in', 'user_id']);
+            $isAuthenticated = false;
+        }
+
+        $identity = session()->get('volunteer_identity');
+        $fields   = [
+            'first_name' => (string) ($identity['first_name'] ?? ''),
+            'last_name'  => (string) ($identity['last_name']  ?? ''),
+            'email'      => (string) ($identity['email']      ?? ''),
+            'phone'      => '',
+        ];
+
+        // Privacy (review 3.4): when the form is prefilled from a previous submission
+        // cached in this session, expose a "Ce n'est pas vous ?" affordance so a visitor
+        // on a shared device can wipe the previous person's name/email before signing up.
+        $isPrefilled = is_array($identity) && (string) ($identity['email'] ?? '') !== '';
+
         return view('kermesse/public/signup_form', [
-            'summary' => $summary,
-            'fields'  => ['first_name' => '', 'last_name' => '', 'email' => '', 'phone' => ''],
-            'errors'  => [],
+            'summary'         => $summary,
+            'fields'          => $fields,
+            'errors'          => [],
+            'isAuthenticated' => false,
+            'isPrefilled'     => $isPrefilled,
         ]);
+    }
+
+    /**
+     * Clear the session-cached volunteer identity. PRG: redirects back to the empty
+     * form. Privacy guard for shared devices (review 3.4) — the prefilled name/email
+     * must not survive for the next visitor when they ask to forget it.
+     */
+    public function forget(string $publicSlug, string $slotId): mixed
+    {
+        session()->remove('volunteer_identity');
+
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"));
     }
 
     public function submit(string $publicSlug, string $slotId): mixed
@@ -58,50 +112,80 @@ class SignupController extends BaseController
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
-        $getPostString = function (string $key): string {
-            $val = $this->request->getPost($key);
-            return trim(is_array($val) ? '' : (string) $val);
-        };
+        // Connected user: use DB profile directly — never trust POST fields for
+        // identity (NFR4). This also avoids false-positive profile divergences.
+        $authUserId      = (int) session()->get('user_id');
+        $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
 
-        $raw = [
-            'first_name' => $getPostString('first_name'),
-            'last_name'  => $getPostString('last_name'),
-            'email'      => $getPostString('email'),
-            'phone'      => $getPostString('phone'),
-        ];
+        if ($isAuthenticated) {
+            $user = model(UserModel::class)->find($authUserId);
+            if ($user === null) {
+                // Stale session (user_id not in DB): cannot fall through to anonymous flow safely
+                // on POST without fields. Destroy stale data and redirect.
+                session()->remove(['is_logged_in', 'user_id']);
+                return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"))
+                    ->with('error', 'Votre session a expiré. Veuillez vous inscrire manuellement.');
+            }
 
-        $rules = [
-            'first_name' => 'required|max_length[100]',
-            'last_name'  => 'required|max_length[100]',
-            'email'      => 'required|valid_email|max_length[254]',
-            'phone'      => 'permit_empty|max_length[30]|regex_match[/^(?=.*[0-9])[0-9\+\-\(\)\s]+$/]',
-        ];
+            $fields = [
+                'first_name' => (string) $user['first_name'],
+                'last_name'  => (string) $user['last_name'],
+                'email'      => (string) $user['email'],
+                'phone'      => (string) ($user['phone'] ?? ''),
+            ];
+            $rawForView = $fields;
+        } else {
+            $getPostString = function (string $key): string {
+                $val = $this->request->getPost($key);
+                return trim(is_array($val) ? '' : (string) $val);
+            };
 
-        $validation = service('validation');
-        if (! $validation->setRules($rules)->run($raw)) {
-            return view('kermesse/public/signup_form', [
-                'summary' => $summary,
-                'fields'  => $raw,
-                'errors'  => $validation->getErrors(),
-            ]);
+            $rawForView = [
+                'first_name' => $getPostString('first_name'),
+                'last_name'  => $getPostString('last_name'),
+                'email'      => $getPostString('email'),
+                'phone'      => $getPostString('phone'),
+            ];
+
+            $rules = [
+                'first_name' => 'required|max_length[100]',
+                'last_name'  => 'required|max_length[100]',
+                'email'      => 'required|valid_email|max_length[254]',
+                'phone'      => 'permit_empty|max_length[30]|regex_match[/^(?=.*[0-9])[0-9\+\-\(\)\s]+$/]',
+            ];
+
+            $validation = service('validation');
+            if (! $validation->setRules($rules)->run($rawForView)) {
+                return view('kermesse/public/signup_form', [
+                    'summary'         => $summary,
+                    'fields'          => $rawForView,
+                    'errors'          => $validation->getErrors(),
+                    'isAuthenticated' => false,
+                ]);
+            }
+            $fields = $validation->getValidated();
         }
 
-        $result = (new SignupService(
-            new UserModel(),
-            new SignupModel(),
-            new KermesseModel(),
-            new SlotModel(),
-        ))->signup(
+        $result = $this->signupService()->signup(
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],
-            fields:     $validation->getValidated(),
+            fields:     $fields,
         );
 
         if (! $result->success) {
             return view('kermesse/public/signup_form', [
-                'summary' => $summary,
-                'fields'  => $raw,
-                'errors'  => ['_service' => $this->serviceErrorMessage($result)],
+                'summary'         => $summary,
+                'fields'          => $rawForView,
+                'errors'          => ['_service' => $this->serviceErrorMessage($result)],
+                'isAuthenticated' => $isAuthenticated,
+            ]);
+        }
+
+        if (! $isAuthenticated) {
+            session()->set('volunteer_identity', [
+                'first_name' => $fields['first_name'],
+                'last_name'  => $fields['last_name'],
+                'email'      => $fields['email'],
             ]);
         }
 
@@ -130,6 +214,21 @@ class SignupController extends BaseController
             'publicSlug'   => $publicSlug,
             'emailSent'    => $flash['emailSent'] ?? null,
         ]);
+    }
+
+    /**
+     * Build the SignupService with shared model instances. Extracted to a seam so a
+     * test can subclass the controller and inject a mock service without touching HTTP.
+     */
+    protected function signupService(): SignupService
+    {
+        return new SignupService(
+            userModel:              model(UserModel::class),
+            signupModel:            model(SignupModel::class),
+            kermesseModel:          model(KermesseModel::class),
+            slotModel:              model(SlotModel::class),
+            profileDivergenceModel: model(ProfileDivergenceModel::class),
+        );
     }
 
     private function serviceErrorMessage(SignupResult $result): string

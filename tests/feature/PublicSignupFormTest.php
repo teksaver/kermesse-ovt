@@ -22,6 +22,20 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $db = db_connect();
         $db->query('
+            CREATE TABLE IF NOT EXISTS db_profile_divergences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                kermesse_id INTEGER NOT NULL,
+                signup_id INTEGER,
+                submitted_first_name TEXT NOT NULL DEFAULT \'\',
+                submitted_last_name TEXT NOT NULL DEFAULT \'\',
+                submitted_phone TEXT NOT NULL DEFAULT \'\',
+                resolved_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
             CREATE TABLE IF NOT EXISTS db_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL,
@@ -95,6 +109,22 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_access_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                token_type TEXT NOT NULL,
+                user_id INTEGER,
+                owner_id INTEGER,
+                kermesse_id INTEGER,
+                email TEXT,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME,
+                revoked_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     protected function tearDown(): void
@@ -106,12 +136,19 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_users');
         $db->query('DELETE FROM db_email_events');
+        $db->query('DELETE FROM db_profile_divergences');
+        $db->query('DELETE FROM db_access_tokens');
         parent::tearDown();
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private function insertUser(string $email, string $firstName, string $lastName): int
+    {
+        return (new \App\Models\UserModel())->findOrCreateWithProfile($email, $firstName, $lastName);
+    }
 
     private function insertKermesse(string $slug, string $status = 'open'): int
     {
@@ -180,10 +217,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 1);
 
         $db    = db_connect();
-        $email = 'benevole@test.example';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Test', 'Bénévole', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userIdFull = (int) $db->insertID();
+        $userIdFull = $this->insertUser('benevole@test.example', 'Test', 'Bénévole');
         $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, {$userIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
@@ -469,10 +503,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotIdA    = $this->insertSlot($standId, 5);
         $slotIdB    = $this->insertSlot($standId, 5);
 
-        $db    = db_connect();
-        $email = 'reuse@exemple.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db = db_connect(); $this->insertUser('reuse@exemple.fr', 'Marie', 'Dupont');
 
         $this->csrfPost("k/ecole-reuse-user/slots/{$slotIdB}/signup", [
             'first_name' => 'Marie',
@@ -740,6 +771,29 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertStringContainsString('organisateur', $body);
     }
 
+    public function testValidSubmitCreatesMagicLinkTokenForVolunteer(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-token-create');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-token-create/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@token.fr',
+            'phone'      => '',
+        ]);
+
+        // AC1: a magic_link token must be created for the volunteer's email
+        $row = db_connect()->query(
+            "SELECT token_type, email, kermesse_id FROM db_access_tokens WHERE token_type = 'magic_link' AND email = 'marie@token.fr'"
+        )->getRowArray();
+
+        $this->assertNotNull($row, 'A magic_link token must be created in access_tokens after a successful signup');
+        $this->assertSame('marie@token.fr', $row['email']);
+        $this->assertSame((string) $kermesseId, (string) $row['kermesse_id']);
+    }
+
     public function testConfirmationPageDoesNotMentionManagementLink(): void
     {
         $kermesseId = $this->insertKermesse('ecole-email-nolink');
@@ -752,6 +806,356 @@ final class PublicSignupFormTest extends CIUnitTestCase
         // Écart acté 2026-06-10 : aucun lien de gestion promis tant que le modèle
         // d'identité (lien de gestion vs Magic Link) n'est pas tranché.
         $this->assertStringNotContainsString('lien de gestion', $result->response()->getBody());
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.2 — AC2: Session pre-fill after successful signup
+    // ------------------------------------------------------------------
+
+    public function testSuccessfulSubmitSavesIdentityToSession(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-session-save');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-session-save/slots/{$slotId}/signup", [
+            'first_name' => 'Hélène',
+            'last_name'  => 'Bernard',
+            'email'      => 'helene@session.fr',
+            'phone'      => '',
+        ]);
+
+        $identity = session()->get('volunteer_identity');
+        $this->assertIsArray($identity, 'Session must store volunteer_identity after successful signup');
+        $this->assertSame('Hélène',            $identity['first_name'] ?? null);
+        $this->assertSame('Bernard',            $identity['last_name']  ?? null);
+        $this->assertSame('helene@session.fr',  $identity['email']      ?? null);
+    }
+
+    public function testGetFormPreFillsFromSessionIdentity(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-prefill');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        // Simulate a volunteer who already signed up once in this session
+        $sessionData = [
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@prefill.fr',
+            ],
+        ];
+
+        $result = $this->withSession($sessionData)
+            ->get("k/ecole-prefill/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Hélène',           $body, 'First name must be pre-filled from session');
+        $this->assertStringContainsString('Bernard',           $body, 'Last name must be pre-filled from session');
+        $this->assertStringContainsString('helene@prefill.fr', $body, 'Email must be pre-filled from session');
+    }
+
+    public function testGetFormWithoutSessionShowsEmptyFields(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-empty-fields');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->get("k/ecole-empty-fields/slots/{$slotId}/signup");
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        // No stale data injected
+        $this->assertStringNotContainsString('value="Hélène"', $body);
+        $this->assertStringNotContainsString('secret-owner.example', $body);
+    }
+
+    public function testSessionPreFillDoesNotLeakPhoneToForm(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-nophone');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        // Even if phone is in session (shouldn't be), the form must not pre-fill it
+        $sessionData = [
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@nophone.fr',
+                'phone'      => '0601020304',
+            ],
+        ];
+
+        $result = $this->withSession($sessionData)
+            ->get("k/ecole-nophone/slots/{$slotId}/signup");
+
+        $body = $result->response()->getBody();
+        $this->assertStringNotContainsString('0601020304', $body, 'Phone must not be pre-filled from session (privacy)');
+    }
+
+    // ------------------------------------------------------------------
+    // Review 3.4 — Privacy: "Ce n'est pas vous ?" clears the session identity
+    // so a prefilled name/email cannot leak to the next visitor on a shared device.
+    // ------------------------------------------------------------------
+
+    public function testPrefilledFormShowsForgetAffordance(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-shown');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession([
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@forget.fr',
+            ],
+        ])->get("k/ecole-forget-shown/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Ce n\'est pas vous', $body, 'Le formulaire pré-rempli doit proposer d\'effacer l\'identité');
+        $this->assertStringContainsString('class="signup-forget"', $body, 'Le formulaire doit poster vers l\'action forget');
+    }
+
+    public function testEmptyFormDoesNotShowForgetAffordance(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-hidden');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->get("k/ecole-forget-hidden/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $this->assertStringNotContainsString('Ce n\'est pas vous', $result->response()->getBody(), 'Sans pré-remplissage, pas d\'affordance d\'effacement');
+    }
+
+    public function testForgetClearsSessionIdentityAndRedirects(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-forget-post');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $result = $this->withSession([
+            'volunteer_identity' => [
+                'first_name' => 'Hélène',
+                'last_name'  => 'Bernard',
+                'email'      => 'helene@forget.fr',
+            ],
+        ])->csrfPost("k/ecole-forget-post/slots/{$slotId}/signup/forget", []);
+
+        $result->assertRedirectTo(site_url("k/ecole-forget-post/slots/{$slotId}/signup"));
+        $this->assertNull(session()->get('volunteer_identity'), 'L\'identité de session doit être effacée');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.2 — AC3: Profile divergence recorded when data differs
+    // ------------------------------------------------------------------
+
+    public function testExistingUserWithDifferentNameCreatesProfileDivergenceRow(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-diverge');
+        $standId    = $this->insertStand($kermesseId);
+        $slotIdA    = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:00:00');
+        $slotIdB    = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:00:00');
+
+        // First signup: creates user with 'Marie Dupont'
+        $this->csrfPost("k/ecole-diverge/slots/{$slotIdA}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@diverge.fr',
+            'phone'      => '',
+        ]);
+
+        // Second signup on a non-overlapping slot: same email, different first name
+        $this->csrfPost("k/ecole-diverge/slots/{$slotIdB}/signup", [
+            'first_name' => 'Maria',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@diverge.fr',
+            'phone'      => '',
+        ]);
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_profile_divergences WHERE submitted_first_name = 'Maria'"
+        )->getRowArray()['cnt'];
+
+        $this->assertSame(1, $count, 'A profile_divergences row must be created when submitted name differs from stored profile');
+    }
+
+    public function testSignupWithSameProfileAsStoredDoesNotCreateDivergenceRow(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-nodiverg');
+        $standId    = $this->insertStand($kermesseId);
+        $slotIdA    = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:00:00');
+        $slotIdB    = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:00:00');
+
+        $fields = ['first_name' => 'Marie', 'last_name' => 'Dupont', 'email' => 'marie@nodiverg.fr', 'phone' => ''];
+        $this->csrfPost("k/ecole-nodiverg/slots/{$slotIdA}/signup", $fields);
+        $this->csrfPost("k/ecole-nodiverg/slots/{$slotIdB}/signup", $fields);
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_profile_divergences"
+        )->getRowArray()['cnt'];
+
+        $this->assertSame(0, $count, 'No divergence row must be created when the same data is submitted twice');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC1: Connected user GET shows locked profile + confirm
+    // ------------------------------------------------------------------
+
+    public function testConnectedUserGetShowsProfileData(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-get');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('marie@connected.fr', 'Marie', 'Dupont');
+
+        $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->get("k/ecole-auth-get/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Marie', $body);
+        $this->assertStringContainsString('Dupont', $body);
+        $this->assertStringContainsString('marie@connected.fr', $body);
+    }
+
+    public function testConnectedUserGetShowsConfirmButtonWithoutEditableFields(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-btn');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('btn@connected.fr', 'Sophie', 'Martin');
+
+        $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->get("k/ecole-auth-btn/slots/{$slotId}/signup");
+
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Confirmer', $body, 'Bouton de confirmation requis pour utilisateur connecté');
+        $this->assertStringNotContainsString('name="first_name"', $body, 'Pas de champ éditable first_name pour utilisateur connecté');
+        $this->assertStringNotContainsString('name="email"', $body, 'Pas de champ éditable email pour utilisateur connecté');
+    }
+
+    public function testConnectedUserDbDataTakesPrecedenceOverVolunteerIdentitySession(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-precedence');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('db@priority.fr', 'DbPrenom', 'DbNom');
+
+        $sessionData = [
+            'is_logged_in'       => true,
+            'user_id'            => $userId,
+            'volunteer_identity' => [
+                'first_name' => 'StalePrenom',
+                'last_name'  => 'StaleNom',
+                'email'      => 'stale@old.fr',
+            ],
+        ];
+
+        $result = $this->withSession($sessionData)
+            ->get("k/ecole-auth-precedence/slots/{$slotId}/signup");
+
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('DbPrenom', $body, 'DB first_name doit être affiché');
+        $this->assertStringContainsString('DbNom', $body, 'DB last_name doit être affiché');
+        $this->assertStringNotContainsString('StalePrenom', $body, 'volunteer_identity ne doit pas prendre le dessus');
+        $this->assertStringNotContainsString('stale@old.fr', $body, 'Email volunteer_identity obsolète ne doit pas apparaître');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC2: Connected user POST uses DB data, bypasses validation
+    // ------------------------------------------------------------------
+
+    public function testConnectedUserSubmitCreatesSignupUsingDbData(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-submit');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('auth@signup.fr', 'Auth', 'User');
+
+        $security = service('security');
+        $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-submit/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+            ]);
+
+        $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId} AND status = 'active'"
+        )->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur connecté');
+    }
+
+    public function testConnectedUserSubmitIgnoresForgedPostFields(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-forge');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('real@user.fr', 'Real', 'User');
+
+        $security = service('security');
+        $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-forge/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+                'first_name' => 'Attaquant',
+                'last_name'  => 'Falsifié',
+                'email'      => 'forge@attaquant.fr',
+                'phone'      => '',
+            ]);
+
+        $this->assertSame(302, $result->response()->getStatusCode(), 'L\'inscription doit réussir avec les données DB, pas POST');
+
+        $fakeUser = db_connect()->query(
+            "SELECT * FROM db_users WHERE email = 'forge@attaquant.fr'"
+        )->getRowArray();
+        $this->assertNull($fakeUser, 'L\'email forgé ne doit pas créer de ligne utilisateur');
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId}"
+        )->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur réel, pas à l\'identité forgée');
+    }
+
+    public function testConnectedUserSubmitDoesNotCreateProfileDivergence(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-nodiverg');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $userId = $this->insertUser('nodiv@connected.fr', 'NoDiverg', 'User');
+
+        $security = service('security');
+        $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-nodiverg/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+            ]);
+
+        $count = (int) db_connect()->query(
+            'SELECT COUNT(*) AS cnt FROM db_profile_divergences'
+        )->getRowArray()['cnt'];
+        $this->assertSame(0, $count, 'Aucune divergence de profil ne doit être enregistrée pour un utilisateur connecté');
     }
 
     // ------------------------------------------------------------------

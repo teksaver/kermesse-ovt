@@ -14,6 +14,7 @@ use CodeIgniter\Filters\PerformanceMetrics;
 use CodeIgniter\Filters\SecureHeaders;
 use App\Filters\AuthFilter;
 use App\Filters\OpsAuthFilter;
+use App\Filters\PendingResolutionFilter;
 use App\Filters\RoleFilter;
 
 class Filters extends BaseFilters
@@ -37,9 +38,10 @@ class Filters extends BaseFilters
         'forcehttps'    => ForceHTTPS::class,
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
-        'ops-auth'      => OpsAuthFilter::class,
-        'auth'          => AuthFilter::class,
-        'role'          => RoleFilter::class,
+        'ops-auth'           => OpsAuthFilter::class,
+        'auth'               => AuthFilter::class,
+        'role'               => RoleFilter::class,
+        'pending-resolution' => PendingResolutionFilter::class,
     ];
 
     /**

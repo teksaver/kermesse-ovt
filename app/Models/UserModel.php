@@ -28,6 +28,18 @@ class UserModel extends Model
     ];
 
     /**
+     * Hash a normalized (lowercased, trimmed) email into its lookup key.
+     *
+     * Single source of truth for the email_hash algorithm: callers (and this model's
+     * own create paths) must go through here rather than inlining hash('sha256', …),
+     * so the hashing scheme stays owned by the model.
+     */
+    public function hashEmail(string $email): string
+    {
+        return hash('sha256', $email);
+    }
+
+    /**
      * Find a user by normalized (lowercased, trimmed) email hash.
      *
      * Pass $db to run on an open transaction connection.
@@ -64,7 +76,7 @@ class UserModel extends Model
      */
     public function findOrCreateByEmail(string $email): ?int
     {
-        $emailHash = hash('sha256', $email);
+        $emailHash = $this->hashEmail($email);
 
         $existing = $this->findByEmailHash($emailHash);
         if ($existing !== null) {
@@ -110,7 +122,7 @@ class UserModel extends Model
      */
     public function findOrCreateWithProfile(string $email, string $firstName, string $lastName): ?int
     {
-        $emailHash = hash('sha256', $email);
+        $emailHash = $this->hashEmail($email);
 
         $existing = $this->findByEmailHash($emailHash);
         if ($existing !== null) {
@@ -147,14 +159,5 @@ class UserModel extends Model
         $existing = $this->findByEmailHash($emailHash);
 
         return $existing !== null ? (int) $existing['id'] : null;
-    }
-
-    /**
-     * Lock the user row to serialize concurrent overlap checks.
-     */
-    public function lockForOverlapCheck(int $userId, ConnectionInterface $db): void
-    {
-        $table = $db->prefixTable('users');
-        $db->query("SELECT id FROM {$table} WHERE id = ?" . $this->forUpdateSuffix($db), [$userId]);
     }
 }

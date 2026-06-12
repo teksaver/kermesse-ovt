@@ -55,6 +55,14 @@
         </dl>
         <?php endif; ?>
 
+        <?php if (! $isLoggedIn): ?>
+        <p class="public-intro">
+            Déjà inscrit ?
+            <a href="<?= route_to('auth.login') ?>">Connectez-vous</a>
+            pour retrouver vos participations.
+        </p>
+        <?php endif; ?>
+
         <?php if ($status === 'preparation'): ?>
         <div class="kermesse-empty-state" role="status" aria-label="Inscriptions à venir">
             <p class="kermesse-empty-state__title">Les inscriptions ne sont pas encore ouvertes</p>
@@ -68,12 +76,7 @@
         </div>
 
         <?php elseif ($hasSlots): ?>
-        <p class="public-intro" role="note">Choisissez un créneau pour vous inscrire.</p>
-        <p class="public-intro" role="note">
-            Déjà inscrit ?
-            <a href="<?= site_url('auth/login') ?>">Connectez-vous</a>
-            pour retrouver vos participations.
-        </p>
+        <p class="public-intro">Choisissez un créneau pour vous inscrire.</p>
         <div class="stand-list" aria-label="Stands et créneaux">
             <?php foreach ($stands as $stand): ?>
             <?= view('partials/stand_group', ['stand' => $stand]) ?>

@@ -27,6 +27,7 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_profile_divergences');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_access_tokens');
@@ -93,6 +94,20 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
                 revoked_at  DATETIME,
                 created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_profile_divergences (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id              INTEGER NOT NULL,
+                kermesse_id          INTEGER NOT NULL,
+                signup_id            INTEGER,
+                submitted_first_name TEXT    NOT NULL DEFAULT "",
+                submitted_last_name  TEXT    NOT NULL DEFAULT "",
+                submitted_phone      TEXT    NOT NULL DEFAULT "",
+                resolved_at          DATETIME,
+                created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

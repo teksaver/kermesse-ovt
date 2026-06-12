@@ -68,9 +68,7 @@ class EmailService
 
     /**
      * Send the volunteer signup confirmation email and record an email_event.
-     *
-     * Story 3.5 (écart acté 2026-06-10): no management link in this email — the
-     * identity model decision (management link vs Magic Link) is pending.
+     * When $magicLinkUrl is provided, the email includes a button to access the dashboard.
      */
     public function sendSignupConfirmationEmail(
         string $recipientEmail,
@@ -79,6 +77,7 @@ class EmailService
         string $standName,
         string $slotStartsAt,
         string $slotEndsAt,
+        string $magicLinkUrl = '',
     ): EmailDeliveryResult {
         return $this->deliver(
             recipientEmail: $recipientEmail,
@@ -90,6 +89,8 @@ class EmailService
                 'standName'    => $standName,
                 'slotStartsAt' => $slotStartsAt,
                 'slotEndsAt'   => $slotEndsAt,
+                'magicLinkUrl' => $magicLinkUrl,
+                'ttlMinutes'   => max(1, (int) round((config('Kermesse')->magicLinkTokenTTL ?? 900) / 60)),
             ],
             eventType: 'signup_confirmation',
             metadata: [

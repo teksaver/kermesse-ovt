@@ -7,22 +7,22 @@ use CodeIgniter\Router\RouteCollection;
 // ---------------------------------------------------------------------------
 // Home
 // ---------------------------------------------------------------------------
-$routes->get('/', '\App\Controllers\Home\HomeController::index');
+$routes->get('/', '\App\Controllers\Home\HomeController::index', ['filter' => 'pending-resolution']);
 
 // ---------------------------------------------------------------------------
 // Auth — universal Magic Link (Stories 1.3, 1.4, 1.5, 3.6)
 // ---------------------------------------------------------------------------
-$routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm');
+$routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLoginForm', ['as' => 'auth.login']);
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
 $routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
-$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show');
-$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve');
+$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show', ['filter' => 'auth']);
+$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve', ['filter' => 'auth']);
 
 // ---------------------------------------------------------------------------
 // Connected home — kermesse list (Story 1.5)
 // ---------------------------------------------------------------------------
-$routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => 'auth']);
+$routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => ['auth', 'pending-resolution']]);
 
 // ---------------------------------------------------------------------------
 // Kermesse creation — open to all (Story 2.1)
@@ -60,6 +60,7 @@ $routes->post('kermesse/(:num)/slots/(:num)', '\App\Controllers\Kermesse\Dashboa
 $routes->get('k/(:segment)', '\App\Controllers\Kermesse\Public\PublicController::index/$1');
 $routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::show/$1/$2');
 $routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::submit/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/signup/forget', '\App\Controllers\Kermesse\Public\SignupController::forget/$1/$2');
 $routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Kermesse\Public\SignupController::confirm/$1/$2');
 
 // ---------------------------------------------------------------------------

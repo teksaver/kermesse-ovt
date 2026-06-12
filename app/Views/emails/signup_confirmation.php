@@ -45,6 +45,23 @@ try {
         <p style="margin:0 0 16px; color:#475569;">
             Pensez à noter ce créneau dans votre agenda. Toute l'équipe compte sur vous !
         </p>
+        <?php if (!empty($magicLinkUrl)): ?>
+        <p style="margin:0 0 16px; color:#475569;">
+            Pour retrouver ou gérer vos participations, cliquez sur le bouton ci-dessous.
+            Ce lien est valable <strong><?= (int) ($ttlMinutes ?? 15) ?> minutes</strong> et ne peut être utilisé qu'une seule fois.
+        </p>
+        <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;">
+        <tr><td style="border-radius:8px; background:#2563EB;">
+            <a href="<?= esc($magicLinkUrl) ?>"
+               style="display:inline-block; padding:14px 28px; font-size:16px; font-weight:600; color:#FFFFFF; text-decoration:none; border-radius:8px;">
+                Gérer mes participations
+            </a>
+        </td></tr>
+        </table>
+        <p style="margin:0 0 24px; word-break:break-all; color:#2563EB; font-size:14px;">
+            <?= esc($magicLinkUrl) ?>
+        </p>
+        <?php endif; ?>
         <hr style="border:none; border-top:1px solid #CBD5E1; margin:24px 0;">
         <p style="margin:0; color:#475569; font-size:13px;">
             Vous recevez cet email parce que cette adresse a été utilisée pour
