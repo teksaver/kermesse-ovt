@@ -12,6 +12,7 @@ Ouvaton est un hébergement mutualisé. **Le serveur de production ne doit jamai
 - `mysql < migration.sql` ou tout import SQL manuel côté serveur
 - Compilation d'assets (Vite, Tailwind, Webpack…)
 - Opérations de cache warmup
+- Extraction shell (`tar`, `exec`, `shell_exec`, `system`, `passthru`, `proc_open`)
 
 Tout est préparé par GitHub Actions et livré en artefact prêt à exécuter.
 
@@ -32,7 +33,7 @@ Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement
 3. Publication de l'archive de déploiement comme artefact GitHub (14 jours)
 4. Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
 5. Déploiement du shim `httpdocs/index.php` et des assets publics via `scripts/deploy-httpdocs.sh`
-6. Appel de `POST /ops/activate` via HTTPS/HMAC : le serveur vérifie l'archive, la décompresse dans une release horodatée, puis bascule `current`
+6. Appel de `POST /ops/activate` via HTTPS/HMAC : le serveur vérifie l'archive, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`
 7. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
 
 > **Règle absolue (NFR-2) :** le déploiement de routine **ne génère ni ne transfère jamais** le `.env` de production. La configuration de production (`shared/.env`) est gérée par une opération séparée et manuelle — voir « Déploiement du `.env` de production » plus bas. _(Implémenté par la Story 5.4.)_
@@ -52,7 +53,7 @@ Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement g
 
 `OUVATON_DEPLOY_REMOTE_FOLDER` et `OUVATON_HTTPDOCS_FOLDER` sont des **noms de dossier**, passés tels quels à `lftp cd`. Le FTP Ouvaton est chroot dans le home du compte — pas de chemin absolu du filesystem.
 
-Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis l'endpoint `/ops/activate` la décompresse côté serveur dans `releases/` et met à jour le lien `current`. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
+Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis l'endpoint `/ops/activate` la décompresse côté serveur dans `releases/` et met à jour le lien `current`. L'extraction est réalisée par PHP (`PharData`) après validation des entrées TAR : chemins absolus, `..`, liens symboliques, liens durs et types spéciaux sont rejetés avant toute bascule. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
 
 `KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de générer explicitement les chemins runtime dans `shared/.env` : `session.savePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session` et `kermesse.opsActivateBasePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`.
 
@@ -258,6 +259,19 @@ Le transfert utilise `lftp` en deux zones distinctes :
 Avant de déposer le shim, `scripts/deploy-httpdocs.sh` crée et vérifie les dossiers `shared/writable/*` avec `cmd:fail-exit yes`. Si un chemin, une permission ou une connexion est incorrecte, le déploiement échoue immédiatement au lieu de continuer avec un état partiel.
 
 Le `.env` de production n'est jamais inclus dans le transfert de routine ni dans l'artefact ; il est géré exclusivement par le workflow manuel `sync-production-env.yml`.
+
+## Récupération des logs applicatifs
+
+Les logs applicatifs de production vivent dans `kermesse/shared/writable/logs/`. Ils ne doivent pas être exposés par `httpdocs/` et aucun endpoint web de lecture des logs ne doit être ajouté.
+
+Pour diagnostiquer un incident, lancer manuellement le workflow `.github/workflows/fetch-ouvaton-logs.yml` depuis GitHub Actions :
+
+1. Choisir l'environnement `production`
+2. Renseigner `log_date` au format `YYYY-MM-DD` si le jour courant UTC ne convient pas
+3. Ajuster `tail_lines` si nécessaire, entre `1` et `2000`
+4. Télécharger l'artefact `ouvaton-application-log`
+
+Le workflow utilise SFTP avec `OUVATON_SFTP_KNOWN_HOST`, récupère uniquement `shared/writable/logs/log-YYYY-MM-DD.php`, n'affiche pas le contenu du log en console et publie un artefact à rétention d'un jour. En cas de fichier absent, chemin incorrect ou erreur SFTP, il échoue explicitement.
 
 Le workflow vérifie qu'un run CI réussi existe pour le SHA déployé, et refuse les refs autres que `main`. Pour un déclenchement manuel (`workflow_dispatch`), ce contrôle est actif. Pour le déclenchement automatique, la conclusion du CI garantit déjà la validité.
 

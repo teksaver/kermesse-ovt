@@ -148,25 +148,20 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
 
     private function createValidArchive(): string
     {
-        $sourceDir = sys_get_temp_dir() . '/kermesse_feat_src_' . uniqid('', true);
-
-        foreach (['app', 'vendor', 'public', 'database/migrations_sql'] as $dir) {
-            mkdir($sourceDir . '/' . $dir, 0755, true);
-        }
-
         $archiveName = 'kermesse-deploy.tar.gz';
         $archivePath = $this->tmpBase . '/staging/' . $archiveName;
+        $tarPath = substr($archivePath, 0, -3);
 
-        exec('tar -czf ' . escapeshellarg($archivePath) . ' -C ' . escapeshellarg($sourceDir) . ' . 2>&1', $out, $code);
-
-        if ($code !== 0) {
-            $this->fail('Could not create test archive: ' . implode("\n", $out));
+        $archive = new PharData($tarPath);
+        foreach (['app', 'vendor', 'public', 'database/migrations_sql'] as $dir) {
+            $archive->addFromString($dir . '/.keep', '');
         }
+        $archive->compress(Phar::GZ);
+        unset($archive);
+        unlink($tarPath);
 
         $checksum = hash_file('sha256', $archivePath);
         file_put_contents($archivePath . '.sha256', $checksum);
-
-        $this->removeDirRecursive($sourceDir);
 
         return $archiveName;
     }
