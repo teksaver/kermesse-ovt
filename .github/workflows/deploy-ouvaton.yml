@@ -212,6 +212,10 @@ jobs:
             printf "if (\$appRoot === false) { http_response_code(500); exit('Application path is not available.'); }\n"
             printf "require \$appRoot . '/app/Config/Paths.php';\n"
             printf '$paths = new Paths();\n'
+            printf "\$paths->envDirectory = realpath(\$appRoot . '/../shared');\n"
+            printf "if (\$paths->envDirectory === false) { http_response_code(500); exit('Shared directory is not available.'); }\n"
+            printf "\$paths->writableDirectory = realpath(\$appRoot . '/../shared/writable');\n"
+            printf "if (\$paths->writableDirectory === false) { http_response_code(500); exit('Shared writable directory is not available.'); }\n"
             printf "require \$paths->systemDirectory . '/Boot.php';\n"
             printf 'exit(Boot::bootWeb($paths));\n'
           } > /tmp/httpdocs-index.php
@@ -273,12 +277,18 @@ jobs:
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx, -s silencieux, -S affiche les erreurs.
           # L'échec de l'activation (422 checksum_mismatch, 409 locked, 500 …) fait échouer le job (fail-fast).
-          curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+          HTTP_CODE=$(curl --max-time 60 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
             -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
             -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -d "$BODY"
+            -w "%{http_code}" -o /dev/stderr \
+            -d "$BODY")
+          
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
+            exit 1
+          fi
 
       - name: Run post-deploy migrations
         env:
@@ -310,9 +320,15 @@ jobs:
           fi
 
           # curl -fsS : -f échoue sur HTTP 4xx/5xx (failed > 0 ou code ≠ 200 ⇒ job rouge).
-          curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+          HTTP_CODE=$(curl --max-time 300 --retry 3 -fsS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
             -H "Content-Type: application/json" \
             -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
             -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
             -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-            -d "$BODY"
+            -w "%{http_code}" -o /dev/stderr \
+            -d "$BODY")
+
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
+            exit 1
+          fi

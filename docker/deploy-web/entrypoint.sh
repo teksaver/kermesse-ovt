@@ -64,6 +64,8 @@ $appRoot = realpath(__DIR__ . '/../current');
 if ($appRoot === false) { $appRoot = '/var/www/html'; }
 require $appRoot . '/app/Config/Paths.php';
 $paths = new Paths();
+$paths->envDirectory = realpath(__DIR__ . '/../shared');
+$paths->writableDirectory = realpath(__DIR__ . '/../shared/writable');
 require $paths->systemDirectory . '/Boot.php';
 exit(Boot::bootWeb($paths));
 PHPEOF
