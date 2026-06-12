@@ -54,7 +54,7 @@ Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement g
 
 Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis l'endpoint `/ops/activate` la décompresse côté serveur dans `releases/` et met à jour le lien `current`. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
 
-`KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de dériver automatiquement `session.savePath` dans le `.env` généré : `${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session`.
+`KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de générer explicitement les chemins runtime dans `shared/.env` : `session.savePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session` et `kermesse.opsActivateBasePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`.
 
 Le `index.php` déposé dans `httpdocs/` est un shim généré par `scripts/deploy-httpdocs.sh`. Il définit `FCPATH=httpdocs/`, résout l'application via `../${OUVATON_DEPLOY_REMOTE_FOLDER}/current`, et force les chemins persistants vers `shared/.env` et `shared/writable`. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
 
@@ -344,10 +344,12 @@ Ces divergences sont propres à la cible locale (`docker compose --profile rehea
   activée.
 
 - **`kermesse.opsActivateBasePath`** : cette variable doit être fixée
-  explicitement à `/srv/deploy-data` dans l'environnement du service `deploy-web`
-  (ce qui est fait dans `docker-compose.yml`). Sur Ouvaton, le chemin est dérivé
-  automatiquement depuis `dirname(ROOTPATH)` ; en local le `ROOTPATH` pointe vers
-  `/var/www/html/`, ce qui rendrait la dérivation incorrecte sans surcharge.
+  explicitement dans l'environnement runtime. En local, elle vaut
+  `/srv/deploy-data` dans le service `deploy-web`. Sur Ouvaton, le workflow
+  `sync-production-env.yml` l'écrit dans `shared/.env` avec
+  `${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`. Ne pas dépendre de
+  `dirname(ROOTPATH)` : PHP résout le symlink `current/` vers `releases/<id>/`,
+  ce qui peut faire chercher `staging/` au mauvais niveau.
 
 - **Permissions et propriétaire (`chroot` SFTP)** : le chroot SFTP exige que le
   répertoire racine (`/home/deploy`) soit détenu par `root:root` avec permissions

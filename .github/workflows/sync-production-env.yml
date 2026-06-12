@@ -172,8 +172,8 @@ jobs:
           fi
 
           # Dériver les valeurs composées depuis la configuration.
-          # session.savePath = chemin absolu filesystem pour les sessions PHP.
-          session_save_path="${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/writable/session"
+          # session.savePath = chemin absolu filesystem persistant hors release.
+          session_save_path="${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session"
           # deploy path = chemin absolu filesystem de l'application déployée.
           deploy_remote_path="${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}"
 
@@ -267,10 +267,9 @@ jobs:
             write_quoted kermesse.opsMigrationLockName kermesse_ops_migration_lock
 
             printf '\n'
-            # opsActivateBasePath : vide = dérivé automatiquement depuis dirname(ROOTPATH).
-            # Sur Ouvaton, ROOTPATH est dans releases/<timestamp>/ ;
-            # dirname renvoie correctement le dossier OUVATON_DEPLOY_REMOTE_FOLDER.
-            write_raw kermesse.opsActivateBasePath ''
+            # Chemin explicite du layout atomique Ouvaton.
+            # Ne pas dépendre de ROOTPATH : PHP résout current/ vers releases/<id>/.
+            write_quoted kermesse.opsActivateBasePath "${deploy_remote_path}"
             write_quoted kermesse.opsActivateLockName kermesse_ops_activate_lock
             write_raw kermesse.releasesRetention 3
 
