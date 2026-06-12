@@ -21,7 +21,7 @@ echo "Racine du projet : ${PROJECT_ROOT}"
 echo "Dossier de staging : ${STAGING_DIR}"
 echo "Fichier de sortie : ${OUTPUT_TAR}"
 
-for command in composer tar awk php; do
+for command in composer tar awk php grep mktemp; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "ERREUR : commande requise introuvable : ${command}"
     exit 1
@@ -161,16 +161,28 @@ fi
 # 4. Création de l'archive tar.gz
 echo "Création de l'archive tar.gz..."
 cd "${STAGING_DIR}"
+REQUIRED_ARCHIVE_ENTRIES=(
+  "app"
+  "public"
+  "writable"
+  "database"
+  "docs"
+  "vendor"
+  "composer.json"
+  "composer.lock"
+  ".env.example"
+)
+
+for required in "${REQUIRED_ARCHIVE_ENTRIES[@]}"; do
+  if [ ! -e "${required}" ]; then
+    echo "ERREUR : entrée requise absente du staging : ${required}"
+    exit 1
+  fi
+done
+
 COPYFILE_DISABLE=1 tar -czf "${OUTPUT_TAR}" \
-  app \
-  public \
-  writable \
-  database \
-  docs \
-  vendor \
-  composer.json \
-  composer.lock \
-  .env.example || exit 1
+  "${REQUIRED_ARCHIVE_ENTRIES[@]}" \
+  || exit 1
 
 # 5. Génération du checksum SHA-256 (format compatible sha256sum -c)
 echo "Génération du checksum SHA-256..."
@@ -191,6 +203,47 @@ IS_ARCHIVE_INVALID=0
 
 echo "Contenu de l'archive tar.gz :"
 tar -tzf "${OUTPUT_TAR}" || exit 1
+ARCHIVE_LIST_FILE="$(mktemp)"
+tar -tzf "${OUTPUT_TAR}" > "${ARCHIVE_LIST_FILE}"
+
+REQUIRED_ARCHIVE_PATHS=(
+  "app/"
+  "public/"
+  "public/.htaccess"
+  "public/index.php"
+  "writable/"
+  "database/migrations_sql/"
+  "vendor/"
+  "composer.json"
+  "composer.lock"
+  ".env.example"
+)
+
+for required_path in "${REQUIRED_ARCHIVE_PATHS[@]}"; do
+  required_kind="file"
+  if [[ "${required_path}" == */ ]]; then
+    required_kind="dir"
+  fi
+
+  if ! awk -v required_path="${required_path}" -v required_kind="${required_kind}" '
+    {
+      path = $0
+      sub(/^\.\//, "", path)
+      sub(/\/$/, "", path)
+      required = required_path
+      sub(/^\.\//, "", required)
+      sub(/\/$/, "", required)
+
+      if (path == required || (required_kind == "dir" && index(path, required "/") == 1)) {
+        found = 1
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "${ARCHIVE_LIST_FILE}"; then
+    echo "ERREUR : entrée requise absente de l'archive tar.gz : ${required_path}"
+    IS_ARCHIVE_INVALID=1
+  fi
+done
 
 while IFS= read -r line; do
   # Nettoyage des slashs de fin pour les dossiers
@@ -225,7 +278,9 @@ while IFS= read -r line; do
       IS_ARCHIVE_INVALID=1
     fi
   fi
-done < <(tar -tzf "${OUTPUT_TAR}" || exit 1)
+done < "${ARCHIVE_LIST_FILE}"
+
+rm -f "${ARCHIVE_LIST_FILE}"
 
 if [ ${IS_ARCHIVE_INVALID} -eq 1 ]; then
   echo "ÉCHEC : L'archive tar.gz contient des fichiers interdits."
