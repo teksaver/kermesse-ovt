@@ -9,7 +9,7 @@
     </header>
 
     <div class="home-public__actions">
-        <a href="<?= site_url('create') ?>" class="btn btn--primary btn--large btn--block">
+        <a href="<?= site_url('kermesse/create') ?>" class="btn btn--primary btn--large btn--block">
             Créer une kermesse
         </a>
         <a href="<?= site_url('auth/login') ?>" class="btn btn--secondary btn--large btn--block">
