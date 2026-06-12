@@ -260,6 +260,53 @@ jobs:
 
           echo "Production ops HMAC secret verified against shared/.env."
 
+      - name: Bootstrap legacy activation service
+        run: |
+          set -euo pipefail
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          current_marker="${RUNNER_TEMP:-/tmp}/kermesse-current-release"
+          remote_current_marker="${OUVATON_DEPLOY_REMOTE_FOLDER}/CURRENT_RELEASE"
+          remote_legacy_service="${OUVATON_DEPLOY_REMOTE_FOLDER}/app/Services/ReleaseActivationService.php"
+
+          {
+            printf 'set cmd:fail-exit no\n'
+            printf 'set net:max-retries 2\n'
+            printf 'set net:timeout 30\n'
+            printf 'open -u %s,%s -p 115 sftp://%s\n' \
+              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
+              "${OUVATON_DEPLOY_HOST}"
+            printf 'get %s -o %s\n' "$(lftp_quote "${remote_current_marker}")" "$(lftp_quote "${current_marker}")"
+            printf 'bye\n'
+          } | lftp >/dev/null 2>&1 || true
+
+          if [ -s "${current_marker}" ]; then
+            echo "Atomic release marker exists; legacy activation bootstrap skipped."
+            exit 0
+          fi
+
+          echo "::warning::CURRENT_RELEASE absent: patching legacy activation service once so the first atomic activation can run without exec()."
+          {
+            printf 'set cmd:fail-exit yes\n'
+            printf 'set net:max-retries 3\n'
+            printf 'set net:timeout 60\n'
+            printf 'open -u %s,%s -p 115 sftp://%s\n' \
+              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
+              "${OUVATON_DEPLOY_HOST}"
+            printf 'put %s -o %s\n' \
+              "$(lftp_quote "app/Services/ReleaseActivationService.php")" \
+              "$(lftp_quote "${remote_legacy_service}")"
+            printf 'bye\n'
+          } | lftp
+
       - name: Activate release via webhook
         env:
           # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
