@@ -34,6 +34,23 @@
         </div>
         <?php endif; ?>
 
+        <?php if ($isAuthenticated ?? false): ?>
+
+        <div class="signup-auth-profile" aria-label="Profil connecté">
+            <p class="signup-auth-profile__name"><?= esc($fields['first_name'] ?? '') ?> <?= esc($fields['last_name'] ?? '') ?></p>
+            <p class="signup-auth-profile__email"><?= esc($fields['email'] ?? '') ?></p>
+        </div>
+
+        <form method="post"
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>">
+            <?= csrf_field() ?>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Confirmer l'inscription</button>
+            </div>
+        </form>
+
+        <?php else: ?>
+
         <form method="post"
             action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>"
             novalidate>
@@ -109,6 +126,8 @@
                 <button type="submit" class="btn btn-primary">S'inscrire</button>
             </div>
         </form>
+
+        <?php endif; ?>
 
         <div class="signup-back">
             <a href="<?= site_url('k/' . esc($summary['publicSlug'], 'attr')) ?>" class="back-link">← Retour aux créneaux</a>

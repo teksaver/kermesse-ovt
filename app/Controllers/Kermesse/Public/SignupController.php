@@ -40,6 +40,30 @@ class SignupController extends BaseController
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
+        // Connected user: load profile from DB — DB data always takes precedence over
+        // volunteer_identity session (NFR4: never trust client-supplied identity for
+        // a session-authenticated user).
+        $authUserId      = (int) session()->get('user_id');
+        $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
+
+        if ($isAuthenticated) {
+            $user = (new UserModel())->find($authUserId);
+            if ($user !== null) {
+                return view('kermesse/public/signup_form', [
+                    'summary'         => $summary,
+                    'fields'          => [
+                        'first_name' => (string) $user['first_name'],
+                        'last_name'  => (string) $user['last_name'],
+                        'email'      => (string) $user['email'],
+                        'phone'      => (string) ($user['phone'] ?? ''),
+                    ],
+                    'errors'          => [],
+                    'isAuthenticated' => true,
+                ]);
+            }
+            // Stale session (user_id not in DB): fall through to anonymous flow.
+        }
+
         $identity = session()->get('volunteer_identity');
         $fields   = [
             'first_name' => (string) ($identity['first_name'] ?? ''),
@@ -49,9 +73,10 @@ class SignupController extends BaseController
         ];
 
         return view('kermesse/public/signup_form', [
-            'summary' => $summary,
-            'fields'  => $fields,
-            'errors'  => [],
+            'summary'         => $summary,
+            'fields'          => $fields,
+            'errors'          => [],
+            'isAuthenticated' => false,
         ]);
     }
 
@@ -65,6 +90,54 @@ class SignupController extends BaseController
 
         if ($summary['kermesseStatus'] !== KermesseModel::STATUS_OPEN) {
             return redirect()->to(site_url("k/{$publicSlug}"));
+        }
+
+        // Connected user: use DB profile directly — never trust POST fields for
+        // identity (NFR4). This also avoids false-positive profile divergences.
+        $authUserId      = (int) session()->get('user_id');
+        $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
+
+        if ($isAuthenticated) {
+            $user = (new UserModel())->find($authUserId);
+            if ($user !== null) {
+                $raw = [
+                    'first_name' => (string) $user['first_name'],
+                    'last_name'  => (string) $user['last_name'],
+                    'email'      => (string) $user['email'],
+                    'phone'      => (string) ($user['phone'] ?? ''),
+                ];
+
+                $result = (new SignupService(
+                    userModel:              new UserModel(),
+                    signupModel:            new SignupModel(),
+                    kermesseModel:          new KermesseModel(),
+                    slotModel:              new SlotModel(),
+                    profileDivergenceModel: new ProfileDivergenceModel(),
+                ))->signup(
+                    slotId:     (int) $slotId,
+                    kermesseId: (int) $summary['kermesseId'],
+                    fields:     $raw,
+                );
+
+                if (! $result->success) {
+                    return view('kermesse/public/signup_form', [
+                        'summary'         => $summary,
+                        'fields'          => $raw,
+                        'errors'          => ['_service' => $this->serviceErrorMessage($result)],
+                        'isAuthenticated' => true,
+                    ]);
+                }
+
+                session()->setFlashdata('signup_success', [
+                    'slug'         => $publicSlug,
+                    'slotId'       => (int) $slotId,
+                    'kermesseName' => (string) $summary['kermesseName'],
+                    'emailSent'    => $result->emailSent,
+                ]);
+
+                return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
+            }
+            // Stale session (user_id not in DB): fall through to anonymous flow.
         }
 
         $getPostString = function (string $key): string {
@@ -89,9 +162,10 @@ class SignupController extends BaseController
         $validation = service('validation');
         if (! $validation->setRules($rules)->run($raw)) {
             return view('kermesse/public/signup_form', [
-                'summary' => $summary,
-                'fields'  => $raw,
-                'errors'  => $validation->getErrors(),
+                'summary'         => $summary,
+                'fields'          => $raw,
+                'errors'          => $validation->getErrors(),
+                'isAuthenticated' => false,
             ]);
         }
 
@@ -109,9 +183,10 @@ class SignupController extends BaseController
 
         if (! $result->success) {
             return view('kermesse/public/signup_form', [
-                'summary' => $summary,
-                'fields'  => $raw,
-                'errors'  => ['_service' => $this->serviceErrorMessage($result)],
+                'summary'         => $summary,
+                'fields'          => $raw,
+                'errors'          => ['_service' => $this->serviceErrorMessage($result)],
+                'isAuthenticated' => false,
             ]);
         }
 

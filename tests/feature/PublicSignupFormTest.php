@@ -910,6 +910,178 @@ final class PublicSignupFormTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Story 3.3 — AC1: Connected user GET shows locked profile + confirm
+    // ------------------------------------------------------------------
+
+    public function testConnectedUserGetShowsProfileData(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-get');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'marie@connected.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->get("k/ecole-auth-get/slots/{$slotId}/signup");
+
+        $result->assertOK();
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Marie', $body);
+        $this->assertStringContainsString('Dupont', $body);
+        $this->assertStringContainsString('marie@connected.fr', $body);
+    }
+
+    public function testConnectedUserGetShowsConfirmButtonWithoutEditableFields(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-btn');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'btn@connected.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Sophie', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->get("k/ecole-auth-btn/slots/{$slotId}/signup");
+
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('Confirmer', $body, 'Bouton de confirmation requis pour utilisateur connecté');
+        $this->assertStringNotContainsString('name="first_name"', $body, 'Pas de champ éditable first_name pour utilisateur connecté');
+        $this->assertStringNotContainsString('name="email"', $body, 'Pas de champ éditable email pour utilisateur connecté');
+    }
+
+    public function testConnectedUserDbDataTakesPrecedenceOverVolunteerIdentitySession(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-precedence');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'db@priority.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'DbPrenom', 'DbNom', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $sessionData = [
+            'is_logged_in'       => true,
+            'user_id'            => $userId,
+            'volunteer_identity' => [
+                'first_name' => 'StalePrenom',
+                'last_name'  => 'StaleNom',
+                'email'      => 'stale@old.fr',
+            ],
+        ];
+
+        $result = $this->withSession($sessionData)
+            ->get("k/ecole-auth-precedence/slots/{$slotId}/signup");
+
+        $body = $result->response()->getBody();
+
+        $this->assertStringContainsString('DbPrenom', $body, 'DB first_name doit être affiché');
+        $this->assertStringContainsString('DbNom', $body, 'DB last_name doit être affiché');
+        $this->assertStringNotContainsString('StalePrenom', $body, 'volunteer_identity ne doit pas prendre le dessus');
+        $this->assertStringNotContainsString('stale@old.fr', $body, 'Email volunteer_identity obsolète ne doit pas apparaître');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.3 — AC2: Connected user POST uses DB data, bypasses validation
+    // ------------------------------------------------------------------
+
+    public function testConnectedUserSubmitCreatesSignupUsingDbData(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-submit');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'auth@signup.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Auth', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $security = service('security');
+        $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-submit/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+            ]);
+
+        $this->assertSame(302, $result->response()->getStatusCode());
+        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId} AND status = 'active'"
+        )->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur connecté');
+    }
+
+    public function testConnectedUserSubmitIgnoresForgedPostFields(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-forge');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'real@user.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Real', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $security = service('security');
+        $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-forge/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+                'first_name' => 'Attaquant',
+                'last_name'  => 'Falsifié',
+                'email'      => 'forge@attaquant.fr',
+                'phone'      => '',
+            ]);
+
+        $this->assertSame(302, $result->response()->getStatusCode(), 'L\'inscription doit réussir avec les données DB, pas POST');
+
+        $fakeUser = db_connect()->query(
+            "SELECT * FROM db_users WHERE email = 'forge@attaquant.fr'"
+        )->getRowArray();
+        $this->assertNull($fakeUser, 'L\'email forgé ne doit pas créer de ligne utilisateur');
+
+        $count = (int) db_connect()->query(
+            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId}"
+        )->getRowArray()['cnt'];
+        $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur réel, pas à l\'identité forgée');
+    }
+
+    public function testConnectedUserSubmitDoesNotCreateProfileDivergence(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-auth-nodiverg');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $db    = db_connect();
+        $email = 'nodiv@connected.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'NoDiverg', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $userId = (int) $db->insertID();
+
+        $security = service('security');
+        $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
+            ->post("k/ecole-auth-nodiverg/slots/{$slotId}/signup", [
+                $security->getTokenName() => $security->getHash(),
+            ]);
+
+        $count = (int) db_connect()->query(
+            'SELECT COUNT(*) AS cnt FROM db_profile_divergences'
+        )->getRowArray()['cnt'];
+        $this->assertSame(0, $count, 'Aucune divergence de profil ne doit être enregistrée pour un utilisateur connecté');
+    }
+
+    // ------------------------------------------------------------------
     // Story 3.4 helpers
     // ------------------------------------------------------------------
 
