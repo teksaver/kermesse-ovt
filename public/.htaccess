@@ -7,6 +7,18 @@ Options -Indexes
 
 # Turning on the rewrite engine is necessary for the following rules and features.
 # FollowSymLinks must be enabled for this to work.
+<IfModule mod_setenvif.c>
+	# Shared-hosting CGI can ignore rewrite environment variables for HTTP_*
+	# headers; SetEnvIf exposes the same non-secret HMAC metadata earlier.
+	SetEnvIfNoCase Authorization "(.+)" HTTP_AUTHORIZATION=$1
+	SetEnvIfNoCase X-Kermesse-Timestamp "(.+)" HTTP_X_KERMESSE_TIMESTAMP=$1
+	SetEnvIfNoCase X-Kermesse-Nonce "(.+)" HTTP_X_KERMESSE_NONCE=$1
+	SetEnvIfNoCase X-Kermesse-Signature "(.+)" HTTP_X_KERMESSE_SIGNATURE=$1
+	SetEnvIfNoCase Query_String "(?:^|&)kts=([0-9]+)(?:&|$)" HTTP_X_KERMESSE_TIMESTAMP=$1
+	SetEnvIfNoCase Query_String "(?:^|&)kn=([a-f0-9]{32})(?:&|$)" HTTP_X_KERMESSE_NONCE=$1
+	SetEnvIfNoCase Query_String "(?:^|&)ks=([a-f0-9]{64})(?:&|$)" HTTP_X_KERMESSE_SIGNATURE=$1
+</IfModule>
+
 <IfModule mod_rewrite.c>
 	Options +FollowSymlinks
 	RewriteEngine On
@@ -41,6 +53,17 @@ Options -Indexes
 
 	RewriteCond %{HTTP:X-Kermesse-Signature} .
 	RewriteRule .* - [E=HTTP_X_KERMESSE_SIGNATURE:%{HTTP:X-Kermesse-Signature}]
+
+	# Fallback for shared hosts/proxies that drop custom X-* headers before PHP.
+	# Values are non-secret HMAC metadata; the shared secret never travels in the URL.
+	RewriteCond %{QUERY_STRING} (?:^|&)kts=([0-9]+)(?:&|$)
+	RewriteRule .* - [E=HTTP_X_KERMESSE_TIMESTAMP:%1]
+
+	RewriteCond %{QUERY_STRING} (?:^|&)kn=([a-f0-9]{32})(?:&|$) [NC]
+	RewriteRule .* - [E=HTTP_X_KERMESSE_NONCE:%1]
+
+	RewriteCond %{QUERY_STRING} (?:^|&)ks=([a-f0-9]{64})(?:&|$) [NC]
+	RewriteRule .* - [E=HTTP_X_KERMESSE_SIGNATURE:%1]
 
 	# If you installed CodeIgniter in a subfolder, you will need to
 	# change the following line to match the subfolder you need.

@@ -231,6 +231,18 @@ jobs:
               -d "$BODY"
           }
 
+          call_activate_query() {
+            local signed_route="$1"
+            local response_body="$2"
+            local target_route="${3:-${ROUTE}}"
+
+            ops_sign "$signed_route" "$BODY"
+            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${target_route}?kts=${SIGN_TS}&kn=${SIGN_NONCE}&ks=${SIGN_SIG}" \
+              -H "Content-Type: application/json" \
+              -w "%{http_code}" -o "${response_body}" \
+              -d "$BODY"
+          }
+
           is_ops_unauthorized() {
             local status_code="$1"
             local response_body="$2"
@@ -286,6 +298,32 @@ jobs:
               exit 1
             fi
             activate_response_body="${direct_legacy_activate_response_body}"
+          fi
+
+          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
+            echo "::warning::Activation refusée avec headers HMAC; retry via query string HMAC sur routePath=${ROUTE}."
+            query_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-query.json"
+            if ! HTTP_CODE=$(call_activate_query "$ROUTE" "${query_activate_response_body}"); then
+              echo "::error::Webhook d'activation injoignable via query string HMAC."
+              if [ -s "${query_activate_response_body}" ]; then
+                cat "${query_activate_response_body}" >&2
+              fi
+              exit 1
+            fi
+            activate_response_body="${query_activate_response_body}"
+          fi
+
+          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
+            echo "::warning::Activation query string refusée avec routePath=${ROUTE}; retry query string avec routePath historique ops/migrate."
+            query_legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-query-legacy.json"
+            if ! HTTP_CODE=$(call_activate_query "ops/migrate" "${query_legacy_activate_response_body}"); then
+              echo "::error::Webhook d'activation injoignable via query string HMAC après retry compatibilité."
+              if [ -s "${query_legacy_activate_response_body}" ]; then
+                cat "${query_legacy_activate_response_body}" >&2
+              fi
+              exit 1
+            fi
+            activate_response_body="${query_legacy_activate_response_body}"
           fi
 
           if [ -s "${activate_response_body}" ]; then

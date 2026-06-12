@@ -40,11 +40,23 @@ authorization_line="$(line_of 'E=HTTP_AUTHORIZATION:%{HTTP:Authorization}')"
 timestamp_line="$(line_of 'E=HTTP_X_KERMESSE_TIMESTAMP:%{HTTP:X-Kermesse-Timestamp}')"
 nonce_line="$(line_of 'E=HTTP_X_KERMESSE_NONCE:%{HTTP:X-Kermesse-Nonce}')"
 signature_line="$(line_of 'E=HTTP_X_KERMESSE_SIGNATURE:%{HTTP:X-Kermesse-Signature}')"
+setenv_timestamp_line="$(line_of 'SetEnvIfNoCase X-Kermesse-Timestamp')"
+setenv_nonce_line="$(line_of 'SetEnvIfNoCase X-Kermesse-Nonce')"
+setenv_signature_line="$(line_of 'SetEnvIfNoCase X-Kermesse-Signature')"
+query_timestamp_line="$(line_of 'kts=([0-9]+)')"
+query_nonce_line="$(line_of 'kn=([a-f0-9]{32})')"
+query_signature_line="$(line_of 'ks=([a-f0-9]{64})')"
 
 assert_before "Authorization propagé avant rewrite terminal" "${authorization_line}" "${front_controller_line}"
 assert_before "Timestamp HMAC propagé avant rewrite terminal" "${timestamp_line}" "${front_controller_line}"
 assert_before "Nonce HMAC propagé avant rewrite terminal" "${nonce_line}" "${front_controller_line}"
 assert_before "Signature HMAC propagée avant rewrite terminal" "${signature_line}" "${front_controller_line}"
+assert_before "Timestamp HMAC SetEnvIf avant rewrite terminal" "${setenv_timestamp_line}" "${front_controller_line}"
+assert_before "Nonce HMAC SetEnvIf avant rewrite terminal" "${setenv_nonce_line}" "${front_controller_line}"
+assert_before "Signature HMAC SetEnvIf avant rewrite terminal" "${setenv_signature_line}" "${front_controller_line}"
+assert_before "Timestamp query HMAC propagé avant rewrite terminal" "${query_timestamp_line}" "${front_controller_line}"
+assert_before "Nonce query HMAC propagé avant rewrite terminal" "${query_nonce_line}" "${front_controller_line}"
+assert_before "Signature query HMAC propagée avant rewrite terminal" "${query_signature_line}" "${front_controller_line}"
 
 if [ "${fail}" -ne 0 ]; then
   echo "ÉCHEC : ordre public/.htaccess invalide." >&2
