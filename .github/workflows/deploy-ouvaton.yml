@@ -235,6 +235,13 @@ jobs:
             printf 'set net:timeout 60\n'
             printf 'open %s\n' "$(lftp_quote "sftp://${OUVATON_DEPLOY_HOST}:115")"
             printf 'user %s %s\n' "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")"
+
+            # Create shared writable directories so the realpath check in index.php succeeds
+            printf 'mkdir -p %s/shared/writable/cache\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
+            printf 'mkdir -p %s/shared/writable/logs\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
+            printf 'mkdir -p %s/shared/writable/session\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
+            printf 'mkdir -p %s/shared/writable/uploads\n' "$(lftp_quote "${KERMESSE_DIRNAME}")"
+
             printf 'cd %s\n' "$(lftp_quote "${OUVATON_HTTPDOCS_FOLDER}")"
             printf 'put /tmp/httpdocs-index.php -o index.php\n'
             printf 'put deploy-staging/public/.htaccess -o .htaccess\n'
