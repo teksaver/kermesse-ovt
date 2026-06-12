@@ -128,6 +128,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
     // Helpers
     // ------------------------------------------------------------------
 
+    private function insertUser(string $email, string $firstName, string $lastName): int
+    {
+        return (new \App\Models\UserModel())->findOrCreateWithProfile($email, $firstName, $lastName);
+    }
+
     private function insertKermesse(string $slug, string $status = 'open'): int
     {
         $db    = db_connect();
@@ -195,10 +200,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId, 1);
 
         $db    = db_connect();
-        $email = 'benevole@test.example';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Test', 'Bénévole', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userIdFull = (int) $db->insertID();
+        $userIdFull = $this->insertUser('benevole@test.example', 'Test', 'Bénévole');
         $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
             VALUES ({$slotId}, {$userIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
@@ -484,10 +486,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotIdA    = $this->insertSlot($standId, 5);
         $slotIdB    = $this->insertSlot($standId, 5);
 
-        $db    = db_connect();
-        $email = 'reuse@exemple.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db = db_connect(); $this->insertUser('reuse@exemple.fr', 'Marie', 'Dupont');
 
         $this->csrfPost("k/ecole-reuse-user/slots/{$slotIdB}/signup", [
             'first_name' => 'Marie',
@@ -920,10 +919,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'marie@connected.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('marie@connected.fr', 'Marie', 'Dupont');
 
         $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
             ->get("k/ecole-auth-get/slots/{$slotId}/signup");
@@ -943,10 +939,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'btn@connected.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Sophie', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('btn@connected.fr', 'Sophie', 'Martin');
 
         $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
             ->get("k/ecole-auth-btn/slots/{$slotId}/signup");
@@ -965,10 +958,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'db@priority.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'DbPrenom', 'DbNom', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('db@priority.fr', 'DbPrenom', 'DbNom');
 
         $sessionData = [
             'is_logged_in'       => true,
@@ -1002,10 +992,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'auth@signup.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Auth', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('auth@signup.fr', 'Auth', 'User');
 
         $security = service('security');
         $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
@@ -1029,10 +1016,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'real@user.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Real', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('real@user.fr', 'Real', 'User');
 
         $security = service('security');
         $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
@@ -1064,10 +1048,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $db    = db_connect();
-        $email = 'nodiv@connected.fr';
-        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
-            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'NoDiverg', 'User', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
-        $userId = (int) $db->insertID();
+        $userId = $this->insertUser('nodiv@connected.fr', 'NoDiverg', 'User');
 
         $security = service('security');
         $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
