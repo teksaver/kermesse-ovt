@@ -52,6 +52,16 @@ Options -Indexes
 	# Ensure Authorization header is passed along
 	RewriteCond %{HTTP:Authorization} .
 	RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+	# Ensure custom HMAC headers are passed to CodeIgniter
+	RewriteCond %{HTTP:X-Kermesse-Timestamp} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_TIMESTAMP:%{HTTP:X-Kermesse-Timestamp}]
+	
+	RewriteCond %{HTTP:X-Kermesse-Nonce} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_NONCE:%{HTTP:X-Kermesse-Nonce}]
+	
+	RewriteCond %{HTTP:X-Kermesse-Signature} .
+	RewriteRule .* - [E=HTTP_X_KERMESSE_SIGNATURE:%{HTTP:X-Kermesse-Signature}]
 </IfModule>
 
 <IfModule !mod_rewrite.c>

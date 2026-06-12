@@ -48,16 +48,19 @@ class OpsAuthFilter implements FilterInterface
         $signature = $request->getHeaderLine('X-Kermesse-Signature');
 
         if ($timestamp === '' || $nonce === '' || $signature === '') {
+            log_message('error', 'OpsAuthFilter: missing HMAC headers. Headers received: ' . json_encode(array_keys($request->headers())));
             return $this->denyRequest();
         }
 
         // Timestamp freshness
         if (!$this->isTimestampValid((int) $timestamp, $config->opsMigrationAllowedTimestampSkew)) {
+            log_message('error', 'OpsAuthFilter: timestamp skew too large. Received: ' . $timestamp . ', Now: ' . time());
             return $this->denyRequest();
         }
 
         // HMAC verification before any nonce write.
         if (!$this->isSignatureValid($request, $timestamp, $nonce, $signature, $config->opsMigrationHmacSecret)) {
+            log_message('error', 'OpsAuthFilter: signature mismatch.');
             return $this->denyRequest();
         }
 
