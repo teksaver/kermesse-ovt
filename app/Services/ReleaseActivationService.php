@@ -38,11 +38,47 @@ class ReleaseActivationService
         $this->lockName          = $config->opsActivateLockName;
         $this->releasesRetention = $config->releasesRetention;
 
-        $configPath     = $config->opsActivateBasePath;
+        $configPath     = trim($config->opsActivateBasePath);
         $this->basePath = rtrim(
-            $basePath ?? ($configPath !== '' ? $configPath : dirname(ROOTPATH)),
+            $basePath ?? ($configPath !== '' ? $configPath : $this->deriveBasePath(ROOTPATH)),
             '/'
         );
+    }
+
+    /**
+     * Derive the deployment layout root when legacy environments do not yet
+     * provide kermesse.opsActivateBasePath explicitly.
+     */
+    protected function deriveBasePath(string $rootPath): string
+    {
+        $root = rtrim($rootPath, '/');
+        $parent = dirname($root);
+        $candidates = [$root];
+
+        if (basename($parent) === 'releases') {
+            $candidates[] = dirname($parent);
+        }
+
+        if (basename($root) === 'current') {
+            $candidates[] = $parent;
+        }
+
+        $candidates[] = $parent;
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($this->looksLikeDeployBase($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $parent;
+    }
+
+    private function looksLikeDeployBase(string $candidate): bool
+    {
+        return is_dir($candidate . '/staging')
+            || is_dir($candidate . '/shared')
+            || is_dir($candidate . '/releases');
     }
 
     /**

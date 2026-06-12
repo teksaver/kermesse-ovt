@@ -53,11 +53,11 @@ Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement g
 
 `OUVATON_DEPLOY_REMOTE_FOLDER` et `OUVATON_HTTPDOCS_FOLDER` sont des **noms de dossier**, passés tels quels à `lftp cd`. Le FTP Ouvaton est chroot dans le home du compte — pas de chemin absolu du filesystem.
 
-`KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de dériver automatiquement `session.savePath` dans le `.env` généré : `${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/writable/session`.
-
 Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis l'endpoint `/ops/activate` la décompresse côté serveur dans `releases/` et met à jour le lien `current`. L'extraction est réalisée par PHP (`PharData`) après validation des entrées TAR : chemins absolus, `..`, liens symboliques, liens durs et types spéciaux sont rejetés avant toute bascule. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
 
-Le `index.php` déposé dans `httpdocs/` est un shim généré par le workflow qui définit `ROOTPATH=../kermesse/` et `FCPATH=httpdocs/`, puis charge le bootstrap CodeIgniter. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
+`KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de générer explicitement les chemins runtime dans `shared/.env` : `session.savePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session` et `kermesse.opsActivateBasePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`.
+
+Le `index.php` déposé dans `httpdocs/` est un shim généré par `scripts/deploy-httpdocs.sh`. Il définit `FCPATH=httpdocs/`, résout l'application via `../${OUVATON_DEPLOY_REMOTE_FOLDER}/current`, et force les chemins persistants vers `shared/.env` et `shared/writable`. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
 
 ### Inclus
 
@@ -236,28 +236,27 @@ Rollback :
 
 Ne jamais coller le contenu du `.env` ou d'un backup dans une issue, un log, un commentaire de PR, ou un artefact GitHub.
 
-## Dossiers `writable/`
+## Dossiers persistants
 
-L'artefact inclut les placeholders de structure (`index.html`, `.htaccess`) mais **pas** les fichiers générés en runtime (logs, cache, sessions, uploads).
+L'artefact inclut des placeholders de structure (`index.html`, `.htaccess`) mais **pas** les fichiers générés en runtime (logs, cache, sessions, uploads).
 
-Sur le serveur, les sous-dossiers `writable/` doivent être **accessibles en écriture** par PHP :
+Sur le serveur, les sous-dossiers persistants vivent dans `shared/writable/` et doivent être **accessibles en écriture** par PHP :
 
-- `writable/cache/`
-- `writable/debugbar/` (développement uniquement)
-- `writable/logs/`
-- `writable/session/`
-- `writable/uploads/`
+- `shared/writable/cache/`
+- `shared/writable/logs/`
+- `shared/writable/session/`
+- `shared/writable/uploads/`
 
 ## Protocole de transfert
 
 Le workflow utilise **SFTP** (SSH File Transfer Protocol) sur le port 115 via `lftp`, disponible sur tous les comptes Ouvaton mutualisés. Le protocole est fixé en dur — aucun secret `OUVATON_DEPLOY_PROTOCOL` n'est nécessaire.
 
-Le transfert utilise `lftp` en deux étapes :
+Le transfert utilise `lftp` en deux zones distinctes :
 
-1. **Amorçage de `writable/`** (`mirror --reverse writable writable`, **sans** `--delete`) : dépose l'arborescence `writable/` et ses fichiers garde (`.htaccess`, `index.html`) pour que le dossier existe sur le serveur. CodeIgniter refuse de démarrer (« The WRITEPATH is not set correctly ») si ce dossier est absent. L'absence de `--delete` garantit que les fichiers runtime écrits par l'app (logs, sessions, cache, uploads) ne sont jamais supprimés.
-2. **Synchronisation du reste** (`mirror --reverse --delete`) : les fichiers présents sur Ouvaton mais absents de l'artefact sont supprimés (déploiement propre). Deux exclusions garantissent la sécurité :
-   - `^writable/` — déjà traité à l'étape 1 ; exclu ici pour préserver les fichiers runtime
-   - `^\.env` — le `.env` de production (et `shared/.env`) ne sont **jamais** touchés par le déploiement de routine (NFR-2)
+1. **Archive applicative** : `scripts/transfer-archive.sh` transfère `build/kermesse-deploy.tar.gz` et son checksum vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` avec `put`. Le code applicatif n'est jamais synchronisé par mirror.
+2. **Web root public** : `scripts/deploy-httpdocs.sh` dépose le shim `index.php`, `.htaccess`, `robots.txt` si présent, puis synchronise uniquement `public/assets/` vers `httpdocs/assets/` avec `mirror --reverse --delete`.
+
+Avant de déposer le shim, `scripts/deploy-httpdocs.sh` crée et vérifie les dossiers `shared/writable/*` avec `cmd:fail-exit yes`. Si un chemin, une permission ou une connexion est incorrecte, le déploiement échoue immédiatement au lieu de continuer avec un état partiel.
 
 Le `.env` de production n'est jamais inclus dans le transfert de routine ni dans l'artefact ; il est géré exclusivement par le workflow manuel `sync-production-env.yml`.
 
@@ -359,10 +358,12 @@ Ces divergences sont propres à la cible locale (`docker compose --profile rehea
   activée.
 
 - **`kermesse.opsActivateBasePath`** : cette variable doit être fixée
-  explicitement à `/srv/deploy-data` dans l'environnement du service `deploy-web`
-  (ce qui est fait dans `docker-compose.yml`). Sur Ouvaton, le chemin est dérivé
-  automatiquement depuis `dirname(ROOTPATH)` ; en local le `ROOTPATH` pointe vers
-  `/var/www/html/`, ce qui rendrait la dérivation incorrecte sans surcharge.
+  explicitement dans l'environnement runtime. En local, elle vaut
+  `/srv/deploy-data` dans le service `deploy-web`. Sur Ouvaton, le workflow
+  `sync-production-env.yml` l'écrit dans `shared/.env` avec
+  `${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`. Ne pas dépendre de
+  `dirname(ROOTPATH)` : PHP résout le symlink `current/` vers `releases/<id>/`,
+  ce qui peut faire chercher `staging/` au mauvais niveau.
 
 - **Permissions et propriétaire (`chroot` SFTP)** : le chroot SFTP exige que le
   répertoire racine (`/home/deploy`) soit détenu par `root:root` avec permissions
