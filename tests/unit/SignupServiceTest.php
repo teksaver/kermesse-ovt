@@ -9,8 +9,10 @@ use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Services\EmailDeliveryResult;
 use App\Services\EmailService;
+use App\Services\IssuedToken;
 use App\Services\SignupService;
 use App\Services\SignupResult;
+use App\Services\TokenService;
 use App\Models\UserModel;
 use App\Models\SignupModel;
 
@@ -35,6 +37,7 @@ final class SignupServiceTest extends CIUnitTestCase
         ?EmailService            $emailService           = null,
         ?StandModel              $standModel             = null,
         ?ProfileDivergenceModel  $profileDivergenceModel = null,
+        ?TokenService            $tokenService           = null,
     ): SignupService {
         return new SignupService(
             $userModel              ?? $this->buildMockUserModel(),
@@ -45,7 +48,16 @@ final class SignupServiceTest extends CIUnitTestCase
             $emailService           ?? $this->buildMockEmailService(),
             $standModel             ?? $this->buildMockStandModel(),
             $profileDivergenceModel ?? $this->buildMockProfileDivergenceModel(),
+            $tokenService           ?? $this->buildMockTokenService(),
         );
+    }
+
+    private function buildMockTokenService(): TokenService
+    {
+        $mock = $this->createMock(TokenService::class);
+        $mock->method('issueMagicLink')
+            ->willReturn(new IssuedToken('default-test-token', 1));
+        return $mock;
     }
 
     private function buildMockProfileDivergenceModel(): ProfileDivergenceModel
@@ -571,6 +583,57 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $this->assertTrue($result->success, 'Signup must stay confirmed when the email fails (AC4)');
         $this->assertFalse($result->emailSent);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 3.5 — Magic Link URL passed to EmailService
+    // ------------------------------------------------------------------
+
+    public function testMagicLinkUrlPassedToEmailService(): void
+    {
+        $tokenMock = $this->createMock(TokenService::class);
+        $tokenMock->method('issueMagicLink')
+            ->willReturn(new IssuedToken('special-raw-token', 1));
+
+        $capturedArgs = null;
+        $emailMock    = $this->createMock(EmailService::class);
+        $emailMock->expects($this->once())
+            ->method('sendSignupConfirmationEmail')
+            ->willReturnCallback(function (...$args) use (&$capturedArgs) {
+                $capturedArgs = $args;
+                return new EmailDeliveryResult(true, null);
+            });
+
+        $result = $this->buildService(emailService: $emailMock, tokenService: $tokenMock)
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertIsString($capturedArgs[6] ?? null, 'Magic link URL must be the 7th argument to sendSignupConfirmationEmail');
+        $this->assertStringContainsString('special-raw-token', $capturedArgs[6]);
+    }
+
+    public function testMagicLinkTokenGenerationFailureStillSendsEmail(): void
+    {
+        $tokenMock = $this->createMock(TokenService::class);
+        $tokenMock->method('issueMagicLink')
+            ->willThrowException(new \RuntimeException('Token DB unavailable'));
+
+        $capturedArgs = null;
+        $emailMock    = $this->createMock(EmailService::class);
+        $emailMock->expects($this->once())
+            ->method('sendSignupConfirmationEmail')
+            ->willReturnCallback(function (...$args) use (&$capturedArgs) {
+                $capturedArgs = $args;
+                return new EmailDeliveryResult(true, null);
+            });
+
+        $result = $this->buildService(emailService: $emailMock, tokenService: $tokenMock)
+            ->signup(1, 10, $this->validFields());
+
+        $this->assertTrue($result->success);
+        $this->assertTrue($result->emailSent, 'Email must still be sent when magic link token generation fails');
+        $this->assertCount(7, $capturedArgs, 'sendSignupConfirmationEmail must always receive 7 arguments');
+        $this->assertSame('', $capturedArgs[6], 'Magic link URL must be empty string when token generation fails');
     }
 
     public function testEmailExceptionDoesNotFailSignup(): void

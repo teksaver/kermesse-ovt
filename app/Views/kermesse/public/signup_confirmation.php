@@ -9,11 +9,13 @@
             <p class="confirmation-message">
                 Votre inscription à <strong><?= esc($kermesseName) ?></strong> est bien enregistrée.
             </p>
-            <?php if (($emailSent ?? null) === false): ?>
+            <?php if (($emailSent ?? null) !== true): ?>
             <p class="confirmation-email-notice">
                 Votre inscription est bien enregistrée, mais l'email de confirmation
-                n'a pas pu être envoyé. Notez bien votre créneau&nbsp;; en cas de doute,
-                contactez l'organisateur de la kermesse.
+                n'a pas pu être envoyé. Pour gérer vos participations ultérieurement,
+                <a href="<?= esc(route_to('auth.login'), 'attr') ?>">demandez un lien de connexion</a>
+                depuis la page d'accueil.
+                En cas de doute, contactez l'organisateur de la kermesse.
             </p>
             <?php else: ?>
             <p class="confirmation-email-notice">

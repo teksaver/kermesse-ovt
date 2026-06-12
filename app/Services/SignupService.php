@@ -40,6 +40,7 @@ class SignupService
         private readonly ?EmailService $emailService = null,
         private readonly ?StandModel $standModel = null,
         private readonly ?ProfileDivergenceModel $profileDivergenceModel = null,
+        private readonly ?TokenService $tokenService = null,
     ) {}
 
     /**
@@ -205,6 +206,15 @@ class SignupService
         try {
             $stand = ($this->standModel ?? model(StandModel::class))->find((int) ($slot['stand_id'] ?? 0));
 
+            // Token generation is isolated: failure must never abort the email send.
+            $magicLinkUrl = '';
+            try {
+                $issued       = ($this->tokenService ?? new TokenService())->issueMagicLink($email, (int) $kermesse['id']);
+                $magicLinkUrl = site_url('auth/magic-link/' . $issued->rawToken);
+            } catch (\Throwable $e) {
+                log_message('error', 'SignupService: magic link generation failed: ' . $e->getMessage());
+            }
+
             $delivery = ($this->emailService ?? new EmailService())->sendSignupConfirmationEmail(
                 $email,
                 (string) ($fields['first_name'] ?? ''),
@@ -212,6 +222,7 @@ class SignupService
                 (string) ($stand['name'] ?? ''),
                 (string) ($slot['starts_at'] ?? ''),
                 (string) ($slot['ends_at'] ?? ''),
+                $magicLinkUrl,
             );
 
             return $delivery->sent;

@@ -109,6 +109,22 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_access_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                token_type TEXT NOT NULL,
+                user_id INTEGER,
+                owner_id INTEGER,
+                kermesse_id INTEGER,
+                email TEXT,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME,
+                revoked_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     protected function tearDown(): void
@@ -121,6 +137,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query('DELETE FROM db_users');
         $db->query('DELETE FROM db_email_events');
         $db->query('DELETE FROM db_profile_divergences');
+        $db->query('DELETE FROM db_access_tokens');
         parent::tearDown();
     }
 
@@ -752,6 +769,29 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertStringContainsString('confirmée', $body);
         $this->assertStringContainsString('a pas pu être envoyé', $body);
         $this->assertStringContainsString('organisateur', $body);
+    }
+
+    public function testValidSubmitCreatesMagicLinkTokenForVolunteer(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-token-create');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId);
+
+        $this->csrfPost("k/ecole-token-create/slots/{$slotId}/signup", [
+            'first_name' => 'Marie',
+            'last_name'  => 'Dupont',
+            'email'      => 'marie@token.fr',
+            'phone'      => '',
+        ]);
+
+        // AC1: a magic_link token must be created for the volunteer's email
+        $row = db_connect()->query(
+            "SELECT token_type, email, kermesse_id FROM db_access_tokens WHERE token_type = 'magic_link' AND email = 'marie@token.fr'"
+        )->getRowArray();
+
+        $this->assertNotNull($row, 'A magic_link token must be created in access_tokens after a successful signup');
+        $this->assertSame('marie@token.fr', $row['email']);
+        $this->assertSame((string) $kermesseId, (string) $row['kermesse_id']);
     }
 
     public function testConfirmationPageDoesNotMentionManagementLink(): void

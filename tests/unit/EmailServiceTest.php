@@ -211,6 +211,36 @@ final class EmailServiceTest extends CIUnitTestCase
         $this->assertSame('Buvette', $metadata['stand_name'] ?? null);
     }
 
+    public function testSendSignupConfirmationEmailAcceptsMagicLinkParam(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new EmailService($mockModel);
+        $result  = $service->sendSignupConfirmationEmail(
+            'marie@exemple.fr',
+            'Marie',
+            'Kermesse de test',
+            'Buvette',
+            '2026-09-12 09:00:00',
+            '2026-09-12 10:30:00',
+            'https://example.com/auth/magic-link/abc123xyz',
+        );
+
+        $this->assertInstanceOf(EmailDeliveryResult::class, $result);
+        $this->assertSame('signup_confirmation', $capturedData['event_type']);
+        // The magic link URL must not appear in metadata under either casing (privacy: no raw token in logs)
+        $metadata = json_decode((string) $capturedData['metadata'], true);
+        $this->assertArrayNotHasKey('magicLinkUrl', $metadata ?? []);
+        $this->assertArrayNotHasKey('magic_link_url', $metadata ?? []);
+    }
+
     public function testSignupConfirmationEmailFailureRecordsFailedStatus(): void
     {
         $capturedData = null;
