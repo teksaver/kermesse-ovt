@@ -69,6 +69,11 @@
 
         <?php elseif ($hasSlots): ?>
         <p class="public-intro" role="note">Choisissez un créneau pour vous inscrire.</p>
+        <p class="public-intro" role="note">
+            Déjà inscrit ?
+            <a href="<?= site_url('auth/login') ?>">Connectez-vous</a>
+            pour retrouver vos participations.
+        </p>
         <div class="stand-list" aria-label="Stands et créneaux">
             <?php foreach ($stands as $stand): ?>
             <?= view('partials/stand_group', ['stand' => $stand]) ?>

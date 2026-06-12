@@ -184,6 +184,8 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         // Available slot rendered as a real <a> link to the signup form
         $this->assertStringContainsString('slot-row--available', $body);
         $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/signup"#', $body);
+        $this->assertStringContainsString('Déjà inscrit', $body);
+        $this->assertStringContainsString('auth/login', $body);
     }
 
     public function testOpenRemainingReflectsActiveSignups(): void
