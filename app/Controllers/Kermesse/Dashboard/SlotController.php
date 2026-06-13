@@ -39,16 +39,26 @@ class SlotController extends BaseController
         $capacityPost = $this->request->getPost('capacity');
         $capacity = is_numeric($capacityPost) ? (int) $capacityPost : 0;
 
+        $eventDate = !empty($kermesse['event_date']) ? $kermesse['event_date'] : date('Y-m-d');
+        
+        $fullStart = ($startsAt !== '') ? $eventDate . ' ' . $startsAt : '';
+        $fullEnd   = ($endsAt !== '')   ? $eventDate . ' ' . $endsAt   : '';
+
         $timezone = $kermesse['timezone'] ?? date_default_timezone_get();
-        $errors = $this->validateSlot($startsAt, $endsAt, $capacity, $timezone);
+        $errors = $this->validateSlot($fullStart, $fullEnd, $capacity, $timezone);
         
         if (!empty($errors)) {
-            return $this->redirectWithErrors($errors, 'add', $id, $standId);
+            // Restore original input keys to avoid returning full date to UI
+            $errors_modified = $errors;
+            if (isset($errors['starts_at']) && $startsAt === '') $errors_modified['starts_at'] = 'L\'heure de début est obligatoire.';
+            if (isset($errors['ends_at']) && $endsAt === '') $errors_modified['ends_at'] = 'L\'heure de fin est obligatoire.';
+            
+            return $this->redirectWithErrors($errors_modified, 'add', $id, $standId);
         }
 
         // Format to standard SQL DATETIME
-        $startFormatted = Time::parse($startsAt, $timezone)->format('Y-m-d H:i:s');
-        $endFormatted   = Time::parse($endsAt, $timezone)->format('Y-m-d H:i:s');
+        $startFormatted = Time::parse($fullStart, $timezone)->format('Y-m-d H:i:s');
+        $endFormatted   = Time::parse($fullEnd, $timezone)->format('Y-m-d H:i:s');
 
         $inserted = model(SlotModel::class)->insert([
             'stand_id'  => $standId,
@@ -97,15 +107,25 @@ class SlotController extends BaseController
         $capacityPost = $this->request->getPost('capacity');
         $capacity = is_numeric($capacityPost) ? (int) $capacityPost : 0;
 
+        $eventDate = !empty($kermesse['event_date']) ? $kermesse['event_date'] : date('Y-m-d');
+        
+        $fullStart = ($startsAt !== '') ? $eventDate . ' ' . $startsAt : '';
+        $fullEnd   = ($endsAt !== '')   ? $eventDate . ' ' . $endsAt   : '';
+
         $timezone = $kermesse['timezone'] ?? date_default_timezone_get();
-        $errors = $this->validateSlot($startsAt, $endsAt, $capacity, $timezone);
+        $errors = $this->validateSlot($fullStart, $fullEnd, $capacity, $timezone);
         
         if (!empty($errors)) {
-            return $this->redirectWithErrors($errors, 'edit', $id, (int) $slot['stand_id'], $slotId);
+            // Restore original input keys to avoid returning full date to UI
+            $errors_modified = $errors;
+            if (isset($errors['starts_at']) && $startsAt === '') $errors_modified['starts_at'] = 'L\'heure de début est obligatoire.';
+            if (isset($errors['ends_at']) && $endsAt === '') $errors_modified['ends_at'] = 'L\'heure de fin est obligatoire.';
+            
+            return $this->redirectWithErrors($errors_modified, 'edit', $id, (int) $slot['stand_id'], $slotId);
         }
 
-        $startFormatted = Time::parse($startsAt, $timezone)->format('Y-m-d H:i:s');
-        $endFormatted   = Time::parse($endsAt, $timezone)->format('Y-m-d H:i:s');
+        $startFormatted = Time::parse($fullStart, $timezone)->format('Y-m-d H:i:s');
+        $endFormatted   = Time::parse($fullEnd, $timezone)->format('Y-m-d H:i:s');
 
         $updated = model(SlotModel::class)->update($slotId, [
             'starts_at' => $startFormatted,

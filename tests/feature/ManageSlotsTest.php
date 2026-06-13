@@ -203,8 +203,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '3',
             ]);
 
@@ -220,8 +220,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->adminId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T14:00',
-                'ends_at'   => '2026-09-01T16:00',
+                'starts_at' => '14:00',
+                'ends_at'   => '16:00',
                 'capacity'  => '5',
             ]);
 
@@ -237,8 +237,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->gestionId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '3',
             ]);
 
@@ -254,8 +254,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     public function testUnauthenticatedCannotAddSlot(): void
     {
         $result = $this->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-            'starts_at' => '2026-09-01T09:00',
-            'ends_at'   => '2026-09-01T11:00',
+            'starts_at' => '09:00',
+            'ends_at'   => '11:00',
             'capacity'  => '3',
         ]);
 
@@ -277,8 +277,8 @@ final class ManageSlotsTest extends CIUnitTestCase
 
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/slots/{$slotId}", [
-                'starts_at' => '2026-09-01T10:00',
-                'ends_at'   => '2026-09-01T12:00',
+                'starts_at' => '10:00',
+                'ends_at'   => '12:00',
                 'capacity'  => '4',
             ]);
 
@@ -296,8 +296,8 @@ final class ManageSlotsTest extends CIUnitTestCase
 
         $result = $this->withSession($this->session($this->adminId))
             ->csrfPost("kermesse/{$this->kermesseId}/slots/{$slotId}", [
-                'starts_at' => '2026-09-01T08:00',
-                'ends_at'   => '2026-09-01T10:00',
+                'starts_at' => '08:00',
+                'ends_at'   => '10:00',
                 'capacity'  => '2',
             ]);
 
@@ -315,8 +315,8 @@ final class ManageSlotsTest extends CIUnitTestCase
 
         $result = $this->withSession($this->session($this->gestionId))
             ->csrfPost("kermesse/{$this->kermesseId}/slots/{$slotId}", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '10',
             ]);
 
@@ -328,8 +328,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/slots/99999", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '3',
             ]);
 
@@ -344,8 +344,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T12:00',
-                'ends_at'   => '2026-09-01T09:00',
+                'starts_at' => '12:00',
+                'ends_at'   => '09:00',
                 'capacity'  => '3',
             ]);
 
@@ -362,8 +362,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T10:00',
-                'ends_at'   => '2026-09-01T10:00',
+                'starts_at' => '10:00',
+                'ends_at'   => '10:00',
                 'capacity'  => '3',
             ]);
 
@@ -397,8 +397,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '0',
             ]);
 
@@ -415,8 +415,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T09:00',
-                'ends_at'   => '2026-09-01T11:00',
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
                 'capacity'  => '-1',
             ]);
 
@@ -432,8 +432,8 @@ final class ManageSlotsTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
-                'starts_at' => '2026-09-01T12:00',
-                'ends_at'   => '2026-09-01T09:00',
+                'starts_at' => '12:00',
+                'ends_at'   => '09:00',
                 'capacity'  => '3',
             ]);
 
@@ -449,8 +449,8 @@ final class ManageSlotsTest extends CIUnitTestCase
 
         $result = $this->withSession($this->session($this->ownerId))
             ->csrfPost("kermesse/{$this->kermesseId}/slots/{$slotId}", [
-                'starts_at' => '2026-09-01T12:00',
-                'ends_at'   => '2026-09-01T09:00',
+                'starts_at' => '12:00',
+                'ends_at'   => '09:00',
                 'capacity'  => '3',
             ]);
 

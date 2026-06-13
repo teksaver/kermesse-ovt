@@ -185,13 +185,13 @@
                             <?= csrf_field() ?>
                             <?php
                                 $isEditingThis = ($slotForm === 'edit' && $slotFormSlotId === $slotId);
-                                $editStartsAt  = $isEditingThis ? old('starts_at', date('Y-m-d\TH:i', strtotime($slot['starts_at']))) : date('Y-m-d\TH:i', strtotime($slot['starts_at']));
-                                $editEndsAt    = $isEditingThis ? old('ends_at', date('Y-m-d\TH:i', strtotime($slot['ends_at'])))     : date('Y-m-d\TH:i', strtotime($slot['ends_at']));
+                                $editStartsAt  = $isEditingThis ? old('starts_at', date('H:i', strtotime($slot['starts_at']))) : date('H:i', strtotime($slot['starts_at']));
+                                $editEndsAt    = $isEditingThis ? old('ends_at', date('H:i', strtotime($slot['ends_at'])))     : date('H:i', strtotime($slot['ends_at']));
                                 $editCapacity  = $isEditingThis ? old('capacity', $slot['capacity'])   : $slot['capacity'];
                             ?>
                             <div class="form-group">
                                 <label for="slot-starts-<?= $slotId ?>" class="form-label">Début</label>
-                                <input type="datetime-local"
+                                <input type="time"
                                        id="slot-starts-<?= $slotId ?>"
                                        name="starts_at"
                                        class="form-control<?= $isEditingThis && isset($slotErrors['starts_at']) ? ' is-invalid' : '' ?>"
@@ -203,7 +203,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="slot-ends-<?= $slotId ?>" class="form-label">Fin</label>
-                                <input type="datetime-local"
+                                <input type="time"
                                        id="slot-ends-<?= $slotId ?>"
                                        name="ends_at"
                                        class="form-control<?= $isEditingThis && isset($slotErrors['ends_at']) ? ' is-invalid' : '' ?>"
@@ -248,7 +248,7 @@
                     <h4 class="slot-add-form__title">Ajouter un créneau</h4>
                     <div class="form-group">
                         <label for="slot-add-starts-<?= $sid ?>" class="form-label">Début</label>
-                        <input type="datetime-local"
+                        <input type="time"
                                id="slot-add-starts-<?= $sid ?>"
                                name="starts_at"
                                class="form-control<?= $isAddingHere && isset($slotErrors['starts_at']) ? ' is-invalid' : '' ?>"
@@ -260,7 +260,7 @@
                     </div>
                     <div class="form-group">
                         <label for="slot-add-ends-<?= $sid ?>" class="form-label">Fin</label>
-                        <input type="datetime-local"
+                        <input type="time"
                                id="slot-add-ends-<?= $sid ?>"
                                name="ends_at"
                                class="form-control<?= $isAddingHere && isset($slotErrors['ends_at']) ? ' is-invalid' : '' ?>"
