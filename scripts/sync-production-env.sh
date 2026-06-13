@@ -154,13 +154,29 @@ ensure_shared_layout() {
 
 remote_env_exists() {
   local shared_ls
-  shared_ls="$(run_lftp_shared "cls -1")"
+  if ! shared_ls="$(run_lftp_shared "cls -1")"; then
+    echo "::error::Unable to inspect Ouvaton shared/.env; refusing to assume first install."
+    return 2
+  fi
   echo "${shared_ls}" | grep -qE "^\.env\r?$"
+}
+
+remote_env_exists_or_die() {
+  if remote_env_exists; then
+    return 0
+  fi
+
+  local status=$?
+  if [ "${status}" -eq 2 ]; then
+    exit 1
+  fi
+
+  return 1
 }
 
 ensure_shared_layout
 
-if [ "${MODE}" = "ensure-present" ] && remote_env_exists; then
+if [ "${MODE}" = "ensure-present" ] && remote_env_exists_or_die; then
   echo "Production shared/.env already exists on Ouvaton; deploy will not modify it."
   exit 0
 fi
@@ -342,7 +358,7 @@ remote_candidate_uploaded=1
 echo "Uploaded .env.next to Ouvaton shared/."
 
 backup_exists=0
-if remote_env_exists; then
+if remote_env_exists_or_die; then
   if [ "${MODE}" = "ensure-present" ]; then
     echo "::error::shared/.env appeared during first-install bootstrap; refusing to overwrite it."
     exit 1

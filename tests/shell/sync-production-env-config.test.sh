@@ -37,6 +37,10 @@ assert_contains "script ne dépend pas de CodeIgniter" 'It does not load' "${SCR
 assert_contains "mode first install sans overwrite" 'SYNC_ENV_MODE=ensure-present' "${SCRIPT}"
 assert_contains "ensure-present sort si .env existe" 'Production shared/.env already exists on Ouvaton; deploy will not modify it.' "${SCRIPT}"
 assert_contains "ensure-present refuse la course à l overwrite" 'shared/.env appeared during first-install bootstrap; refusing to overwrite it.' "${SCRIPT}"
+assert_contains "inspection env échoue fermée" 'Unable to inspect Ouvaton shared/.env; refusing to assume first install.' "${SCRIPT}"
+assert_contains "wrapper fail-closed env distant" 'remote_env_exists_or_die()' "${SCRIPT}"
+assert_contains "ensure-present utilise le wrapper fail-closed" 'if [ "${MODE}" = "ensure-present" ] && remote_env_exists_or_die; then' "${SCRIPT}"
+assert_contains "backup utilise le wrapper fail-closed" 'if remote_env_exists_or_die; then' "${SCRIPT}"
 assert_contains "création du layout shared" 'mkdir -p -f %s' "${SCRIPT}"
 assert_contains "session.savePath pointe vers shared/writable" 'session_save_path="${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session"'
 assert_contains "opsActivateBasePath est explicite" 'write_quoted kermesse.opsActivateBasePath "${deploy_remote_path}"'

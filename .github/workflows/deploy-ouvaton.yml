@@ -368,6 +368,11 @@ jobs:
 
           remote_script="${OUVATON_HTTPDOCS_FOLDER}/ops-bootstrap-activate.php"
 
+          if [ -z "${BOOTSTRAP_ACTIVATE_TOKEN:-}" ]; then
+            echo "Aucun script bootstrap généré dans ce run ; cleanup distant ignoré."
+            exit 0
+          fi
+
           echo "Suppression du script d'activation temporaire sur le serveur..."
           {
             printf 'set cmd:fail-exit no\n'
