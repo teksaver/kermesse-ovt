@@ -95,4 +95,49 @@ class KermesseAdminController extends BaseController
 
         return redirect()->to(site_url("kermesse/{$id}"));
     }
+
+    /** POST /kermesse/{id}/edit */
+    public function update(string $kermesseId): mixed
+    {
+        $id       = (int) $kermesseId;
+        $kermesse = model(KermesseModel::class)->find($id);
+
+        if ($kermesse === null) {
+            return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
+        }
+
+        $pName = $this->request->getPost('name');
+        $name  = is_string($pName) ? trim($pName) : '';
+
+        if ($name === '') {
+            return redirect()->back()
+                ->withInput()
+                ->with('kermesse_edit_error', 'Le nom de la kermesse est obligatoire.')
+                ->with('kermesse_form', 'edit');
+        }
+
+        $pDate = $this->request->getPost('event_date');
+        $eventDate = is_string($pDate) ? trim($pDate) : '';
+
+        $pLoc = $this->request->getPost('location');
+        $location = is_string($pLoc) ? trim($pLoc) : '';
+
+        $pDesc = $this->request->getPost('short_description');
+        $description = is_string($pDesc) ? trim($pDesc) : '';
+
+        if (! model(KermesseModel::class)->update($id, [
+            'name'              => $name,
+            'event_date'        => $eventDate,
+            'location'          => $location,
+            'short_description' => $description,
+        ])) {
+            return redirect()->back()
+                ->withInput()
+                ->with('kermesse_edit_error', 'Erreur système lors de la modification.')
+                ->with('kermesse_form', 'edit');
+        }
+
+        session()->setFlashdata('success', 'Caractéristiques de la kermesse mises à jour avec succès.');
+        return redirect()->to(site_url("kermesse/{$id}"));
+    }
 }

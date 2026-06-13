@@ -33,26 +33,21 @@
         <?php endif; ?>
 
         <?php if (! empty($kermesse['event_date']) || ! empty($kermesse['location']) || ! empty($kermesse['short_description'])): ?>
-        <dl class="preview-meta">
-            <?php if (! empty($kermesse['event_date'])): ?>
-            <div>
-                <dt>Date</dt>
-                <dd><?= esc($kermesse['event_date']) ?></dd>
+        <div class="kermesse-characteristics" style="margin-bottom: 24px; padding: 24px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <?php if (! empty($kermesse['event_date'])): ?>
+                <p style="margin:0;">📅 <strong>Date :</strong> <?= esc($kermesse['event_date']) ?></p>
+                <?php endif; ?>
+
+                <?php if (! empty($kermesse['location'])): ?>
+                <p style="margin:0;">📍 <strong>Lieu :</strong> <?= esc($kermesse['location']) ?></p>
+                <?php endif; ?>
+
+                <?php if (! empty($kermesse['short_description'])): ?>
+                <p style="margin:0;">📝 <strong>Description :</strong> <?= esc($kermesse['short_description']) ?></p>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
-            <?php if (! empty($kermesse['location'])): ?>
-            <div>
-                <dt>Lieu</dt>
-                <dd><?= esc($kermesse['location']) ?></dd>
-            </div>
-            <?php endif; ?>
-            <?php if (! empty($kermesse['short_description'])): ?>
-            <div>
-                <dt>Description</dt>
-                <dd><?= esc($kermesse['short_description']) ?></dd>
-            </div>
-            <?php endif; ?>
-        </dl>
+        </div>
         <?php endif; ?>
 
         <?php if (! $isLoggedIn): ?>

@@ -5,20 +5,29 @@
 <div class="kermesse-dashboard">
     <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
 
-    <div class="kermesse-dashboard__info kermesse-characteristics">
-        <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
+    <div class="kermesse-dashboard__info kermesse-characteristics" style="position:relative;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
+            </div>
+            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+            <button type="button" class="btn btn--sm" title="Modifier la kermesse" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier</button>
+            <?php endif; ?>
+        </div>
 
-        <?php if (! empty($kermesse['event_date'])): ?>
-        <p class="kermesse-dashboard__date"><?= esc($kermesse['event_date']) ?></p>
-        <?php endif; ?>
+        <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
+            <?php if (! empty($kermesse['event_date'])): ?>
+            <p class="kermesse-dashboard__date" style="margin:0;">📅 <strong>Date :</strong> <?= esc($kermesse['event_date']) ?></p>
+            <?php endif; ?>
 
-        <?php if (! empty($kermesse['location'])): ?>
-        <p class="kermesse-dashboard__location"><?= esc($kermesse['location']) ?></p>
-        <?php endif; ?>
+            <?php if (! empty($kermesse['location'])): ?>
+            <p class="kermesse-dashboard__location" style="margin:0;">📍 <strong>Lieu :</strong> <?= esc($kermesse['location']) ?></p>
+            <?php endif; ?>
 
-        <?php if (! empty($kermesse['short_description'])): ?>
-        <p class="kermesse-dashboard__description"><?= esc($kermesse['short_description']) ?></p>
-        <?php endif; ?>
+            <?php if (! empty($kermesse['short_description'])): ?>
+            <p class="kermesse-dashboard__description" style="margin:0;">📝 <strong>Description :</strong> <?= esc($kermesse['short_description']) ?></p>
+            <?php endif; ?>
+        </div>
 
         <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
         <?php if ($lifecycleError !== null): ?>
@@ -44,7 +53,7 @@
             <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
                target="_blank"
                rel="noopener noreferrer"
-               class="btn btn--secondary">Prévisualiser</a>
+               class="btn btn--secondary">Accéder à la page publique</a>
 
             <button type="button"
                     class="btn btn--secondary"
@@ -55,6 +64,44 @@
     </div>
 
     <!-- ------------------------------------------------------------------ -->
+    
+    <!-- Modale Édition Kermesse -->
+    <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+    <?php
+        $kermesseForm = session()->getFlashdata('kermesse_form');
+        $kermesseError = session()->getFlashdata('kermesse_edit_error');
+    ?>
+    <dialog id="modal-kermesse-edit" class="k-modal" <?= ($kermesseForm === 'edit') ? 'data-auto-open' : '' ?>>
+        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/edit") ?>" class="k-modal__form" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+            <h3 class="k-modal__title">Modifier la kermesse</h3>
+            <?= csrf_field() ?>
+            <div class="form-group">
+                <label class="form-label">Nom</label>
+                <input type="text" name="name" class="form-control" value="<?= esc($kermesseForm === 'edit' ? old('name', $kermesse['name']) : $kermesse['name']) ?>" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Date</label>
+                <input type="text" name="event_date" class="form-control" value="<?= esc($kermesseForm === 'edit' ? old('event_date', $kermesse['event_date'] ?? '') : ($kermesse['event_date'] ?? '')) ?>">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Lieu</label>
+                <input type="text" name="location" class="form-control" value="<?= esc($kermesseForm === 'edit' ? old('location', $kermesse['location'] ?? '') : ($kermesse['location'] ?? '')) ?>">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Description</label>
+                <textarea name="short_description" class="form-control" rows="3"><?= esc($kermesseForm === 'edit' ? old('short_description', $kermesse['short_description'] ?? '') : ($kermesse['short_description'] ?? '')) ?></textarea>
+            </div>
+            <?php if ($kermesseError): ?>
+            <p class="form-error"><?= esc($kermesseError) ?></p>
+            <?php endif; ?>
+            <div class="k-modal__actions">
+                <button type="button" class="btn btn--secondary" onclick="this.closest('dialog').close()">Annuler</button>
+                <button type="submit" class="btn btn--primary">Enregistrer</button>
+            </div>
+        </form>
+    </dialog>
+    <?php endif; ?>
+
     <!-- Section Stands                                                        -->
     <!-- ------------------------------------------------------------------ -->
     <section class="kermesse-dashboard__section" id="stands">

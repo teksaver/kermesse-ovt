@@ -34,6 +34,7 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
+$routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::update/$1', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Lifecycle management — Owner/Admin only (Story 2.5)
