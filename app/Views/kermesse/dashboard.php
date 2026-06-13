@@ -31,7 +31,7 @@
             <p class="kermesse-dashboard__public-link" style="margin:0; margin-top:8px;">🔗 <strong>Lien à partager pour les inscriptions :</strong> 
                 <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
                 <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; vertical-align:middle; padding: 0 4px;">📋</button>
-                <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-left: 8px;" hidden>Copié !</span>
+                <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-left: 8px; display: inline-block; margin-top: 4px;" hidden>Lien copié avec succès, vous pouvez le coller dans un email ou un message pour partager à vos futurs bénévoles</span>
             </p>
         </div>
 
@@ -459,18 +459,47 @@ document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
     var btn      = document.getElementById('copy-link-btn');
     var feedback = document.getElementById('copy-link-feedback');
     if (!btn || !feedback) return;
+    
+    function showSuccess() {
+        feedback.hidden = false;
+        if (btn.timer) clearTimeout(btn.timer);
+        btn.timer = setTimeout(function () { feedback.hidden = true; }, 5000);
+    }
+    
+    function fallbackCopyTextToClipboard(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            var successful = document.execCommand('copy');
+            if (successful) {
+                showSuccess();
+            } else {
+                alert('Erreur lors de la copie manuelle. Veuillez copier le lien manuellement.');
+            }
+        } catch (err) {
+            console.error('Erreur lors de la copie fallback', err);
+            alert('Erreur lors de la copie. Copie manuelle requise.');
+        }
+        document.body.removeChild(textArea);
+    }
+
     btn.addEventListener('click', function () {
+        var text = btn.getAttribute('data-copy-url');
         if (!navigator.clipboard) {
-            alert('Copie manuelle requise : votre navigateur ne supporte pas la copie automatique.');
+            fallbackCopyTextToClipboard(text);
             return;
         }
-        navigator.clipboard.writeText(btn.getAttribute('data-copy-url')).then(function () {
-            feedback.hidden = false;
-            if (btn.timer) clearTimeout(btn.timer);
-            btn.timer = setTimeout(function () { feedback.hidden = true; }, 2500);
+        navigator.clipboard.writeText(text).then(function () {
+            showSuccess();
         }).catch(function(err) {
-            console.error('Erreur lors de la copie du lien:', err);
-            alert('Erreur lors de la copie. Copie manuelle requise.');
+            console.warn('Erreur navigator.clipboard, essai du fallback:', err);
+            fallbackCopyTextToClipboard(text);
         });
     });
 }());
