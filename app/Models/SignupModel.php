@@ -177,4 +177,31 @@ class SignupModel extends Model
 
         return $counts;
     }
+
+    /**
+     * Return a connected user's ACTIVE signups for one kermesse, joined to the slot
+     * and stand for the dashboard "Mes participations" section (Story 4.2).
+     *
+     * Active = status NOT IN ('cancelled','deactivated','deleted') AND deleted_at IS NULL —
+     * the SAME definition as countActiveBySlotIds(), so a cancelled inscription the public
+     * availability already treats as freed never reappears here (UX-DR23). Scoped to the
+     * single user (privacy boundary) and ordered chronologically by slot start.
+     *
+     * @return list<array{stand_name: string, starts_at: string, ends_at: string}>
+     */
+    public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
+    {
+        return $this->db->table($this->table . ' si')
+            ->select('st.name AS stand_name, sl.starts_at, sl.ends_at')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->where('si.user_id', $userId)
+            ->where('st.kermesse_id', $kermesseId)
+            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.deleted_at', null)
+            ->orderBy('sl.starts_at', 'ASC')
+            ->orderBy('sl.id', 'ASC')
+            ->get()
+            ->getResultArray();
+    }
 }

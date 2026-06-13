@@ -389,11 +389,27 @@
     </section>
     <?php endif; ?>
 
-    <!-- Section « Mes participations » — tout rôle (Story 4.1).
-         Contenu détaillé (inscriptions actives) livré en Story 4.2. -->
+    <!-- Section « Mes participations » — tout rôle (garde Story 4.1 ; contenu Story 4.2).
+         N'affiche que les inscriptions actives de l'utilisateur courant (UX-DR23). -->
     <section class="kermesse-dashboard__section" id="my-signups">
         <h2 class="section-title">Mes participations</h2>
-        <p class="section-placeholder">La liste de vos inscriptions actives sera disponible ici prochainement.</p>
+
+        <?php $myParticipations = $myParticipations ?? []; ?>
+        <?php if (empty($myParticipations)): ?>
+        <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
+        <?php else: ?>
+        <ul class="my-signups-list">
+            <?php foreach ($myParticipations as $participation): ?>
+            <li class="my-signups-list__item">
+                <span class="my-signups-list__stand"><strong><?= esc($participation['stand_name']) ?></strong></span>
+                <span class="my-signups-list__when">
+                    📅 <?= esc(date('d/m/Y', strtotime((string) $participation['starts_at']))) ?>
+                    · 🕐 <?= esc(date('H:i', strtotime((string) $participation['starts_at']))) ?> – <?= esc(date('H:i', strtotime((string) $participation['ends_at']))) ?>
+                </span>
+            </li>
+            <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
     </section>
 
     <div class="kermesse-dashboard__actions">
@@ -467,6 +483,27 @@
 .subsection-title {
     font-size: 1.05rem;
     margin: 8px 0 16px;
+}
+.my-signups-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.my-signups-list__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+}
+.my-signups-list__when {
+    color: #555;
+    font-size: 14px;
 }
 </style>
 <?= $this->endSection() ?>

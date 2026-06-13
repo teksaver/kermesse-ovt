@@ -4,6 +4,7 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
@@ -28,8 +29,9 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
+        $userId      = (int) session()->get('user_id');
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
-        $userRole    = $roleService->getRoleForUser($id, (int) session()->get('user_id'));
+        $userRole    = $roleService->getRoleForUser($id, $userId);
 
         // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
         // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
@@ -61,12 +63,17 @@ class KermesseAdminController extends BaseController
             unset($stand);
         }
 
+        // "Mes participations" : inscriptions actives de l'utilisateur courant
+        // (tout rôle). ViewModel structuré — la vue ne fait aucune requête (NFR).
+        $myParticipations = model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id);
+
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
             'kermesse'              => $kermesse,
             'stands'                => $stands,
             'canModify'             => $canModify,
             'canManageParticipants' => $canManageParticipants,
+            'myParticipations'      => $myParticipations,
         ]);
     }
 
