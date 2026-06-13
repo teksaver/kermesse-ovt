@@ -92,6 +92,9 @@ class KermesseAdminController extends BaseController
             'canModify'             => $canModify,
             'canManageParticipants' => $canManageParticipants,
             'myParticipations'      => $myParticipations,
+            // Décision métier préparée pour la vue : l'annulation d'une participation
+            // n'est proposée que lorsque les inscriptions sont ouvertes (Story 4.3, AC2).
+            'signupsOpen'           => $kermesse['status'] === KermesseModel::STATUS_OPEN,
         ]);
     }
 

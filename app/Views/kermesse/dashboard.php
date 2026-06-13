@@ -402,8 +402,8 @@
         <?php endif; ?>
 
         <?php $myParticipations = $myParticipations ?? []; ?>
-        <?php // L'annulation n'est proposée que lorsque les inscriptions sont ouvertes (AC2). ?>
-        <?php $signupsOpen = ($kermesse['status'] === 'open'); ?>
+        <?php // Décision « inscriptions ouvertes » préparée par le contrôleur (AC2) ; défaut sûr = fermé. ?>
+        <?php $signupsOpen = $signupsOpen ?? false; ?>
         <?php if (empty($myParticipations)): ?>
         <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
         <?php else: ?>
@@ -419,7 +419,7 @@
                 <form method="post"
                       action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
                       class="my-signups-list__cancel"
-                      onsubmit="return confirm('Voulez-vous vraiment annuler cette participation ?');">
+                      onsubmit="if (!confirm('Voulez-vous vraiment annuler cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn--danger btn--sm">Annuler ma participation</button>
                 </form>
