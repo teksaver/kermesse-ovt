@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Guardrails for deploy-ouvaton.yml webhook diagnostics.
+# Guardrails for deploy-ouvaton.yml bootstrap activation and diagnostics.
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -9,7 +9,7 @@ fail=0
 
 assert_contains() {
   local label="$1" needle="$2"
-  if ! grep -Fq "${needle}" "${WORKFLOW}"; then
+  if ! grep -Fq -- "${needle}" "${WORKFLOW}"; then
     printf 'FAIL %s\n  attendu de trouver : %s\n' "${label}" "${needle}" >&2
     fail=1
   else
@@ -19,7 +19,7 @@ assert_contains() {
 
 assert_not_contains() {
   local label="$1" needle="$2"
-  if grep -Fq "${needle}" "${WORKFLOW}"; then
+  if grep -Fq -- "${needle}" "${WORKFLOW}"; then
     printf 'FAIL %s\n  ne devait pas contenir : %s\n' "${label}" "${needle}" >&2
     fail=1
   else
@@ -27,23 +27,22 @@ assert_not_contains() {
   fi
 }
 
+assert_contains "bootstrap script généré" 'Generate bootstrap activation script'
+assert_contains "bootstrap token aléatoire" 'BOOTSTRAP_ACTIVATE_TOKEN="$(openssl rand -hex 32)"'
+assert_contains "bootstrap token masqué" 'echo "::add-mask::${BOOTSTRAP_ACTIVATE_TOKEN}"'
+assert_contains "bootstrap token transmis entre steps" 'printf '"'"'BOOTSTRAP_ACTIVATE_TOKEN=%s\n'"'"' "${BOOTSTRAP_ACTIVATE_TOKEN}" >> "${GITHUB_ENV}"'
+assert_contains "bootstrap script déployé" 'deploy/ops-bootstrap-activate.tpl.php > deploy-staging/public/ops-bootstrap-activate.php'
+assert_contains "activation bootstrap directe" 'ACTIVATE_URL="${BASE_URL}/ops-bootstrap-activate.php"'
+assert_contains "activation utilise POST" 'curl --max-time 120 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST'
+assert_contains "activation token en header" '-H "X-Kermesse-Bootstrap-Token: ${BOOTSTRAP_ACTIVATE_TOKEN}"'
+assert_not_contains "activation ne met pas le token en query string" 'token='
 assert_contains "body activation capturé" 'activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response.json"'
 assert_contains "body activation affiché" 'cat "${activate_response_body}" >&2'
-assert_not_contains "activation ne masque pas les 4xx avec curl -f" 'curl --max-time 60 --retry 3 -fsS'
-assert_contains "activation utilise un helper curl partagé" 'call_activate()'
-assert_contains "activation helper accepte une route cible" 'local target_route="${3:-${ROUTE}}"'
-assert_contains "activation utilise un helper query string" 'call_activate_query()'
-assert_contains "activation query string contient timestamp nonce signature" '?kts=${SIGN_TS}&kn=${SIGN_NONCE}&ks=${SIGN_SIG}'
-assert_contains "activation tente le routePath canonique" 'HTTP_CODE=$(call_activate "$ROUTE" "${activate_response_body}")'
-assert_contains "activation fallback seulement sur ops_unauthorized" 'is_ops_unauthorized()'
-assert_contains "activation helper détecte ops_unauthorized" 'grep -Fq '"'"'"ops_unauthorized"'"'"' "${response_body}"'
-assert_contains "activation fallback routePath historique" 'HTTP_CODE=$(call_activate "ops/migrate" "${legacy_activate_response_body}")'
-assert_contains "activation retry front-controller direct" 'HTTP_CODE=$(call_activate "$ROUTE" "${direct_activate_response_body}" "index.php/${ROUTE}")'
-assert_contains "activation retry front-controller historique" 'HTTP_CODE=$(call_activate "ops/migrate" "${direct_legacy_activate_response_body}" "index.php/${ROUTE}")'
-assert_contains "activation retry query routePath canonique" 'HTTP_CODE=$(call_activate_query "$ROUTE" "${query_activate_response_body}")'
-assert_contains "activation retry query routePath historique" 'HTTP_CODE=$(call_activate_query "ops/migrate" "${query_legacy_activate_response_body}")'
+assert_contains "cleanup bootstrap always" 'if: always()'
+assert_contains "cleanup cible le script temporaire" 'remote_script="${OUVATON_HTTPDOCS_FOLDER}/ops-bootstrap-activate.php"'
 assert_contains "prévol compare le secret HMAC distant" 'Production ops HMAC secret verified against shared/.env.'
 assert_contains "prévol échoue avant activation si secret divergent" 'Le secret HMAC de shared/.env ne correspond pas au secret GitHub OPS_MIGRATION_HMAC_SECRET.'
+assert_contains "migrations restent signées HMAC" 'ROUTE="ops/migrate"'
 assert_contains "diagnostic récupère les logs après échec" 'Fetch production log tail on deploy failure'
 assert_contains "diagnostic tente les logs CodeIgniter .log" 'for extension in log php; do'
 assert_contains "diagnostic n'imprime que la fin du log" 'tail -n 120 "${fetched_log}"'

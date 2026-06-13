@@ -86,7 +86,16 @@ SHIM_FILE="${HTTPDOCS_SHIM_FILE:-$(mktemp "${TMPDIR:-/tmp}/kermesse-httpdocs-ind
   printf "\$deployRoot = realpath(__DIR__ . '/../%s');\n" "${OUVATON_DEPLOY_REMOTE_FOLDER}"
   printf "if (\$deployRoot === false) { http_response_code(500); exit('Deploy root is not available.'); }\n"
   printf "\$appRoot = realpath(\$deployRoot . '/current');\n"
-  printf "if (\$appRoot === false) { \$appRoot = \$deployRoot; }\n"
+  printf "if (\$appRoot === false) {\n"
+  printf "    \$pointerContent = @file_get_contents(\$deployRoot . '/CURRENT_RELEASE');\n"
+  printf "    if (\$pointerContent !== false) {\n"
+  printf "        \$releaseName = basename(trim((string) \$pointerContent));\n"
+  printf "        if (\$releaseName !== '') {\n"
+  printf "            \$appRoot = realpath(\$deployRoot . '/releases/' . \$releaseName);\n"
+  printf "        }\n"
+  printf "    }\n"
+  printf "}\n"
+  printf "if (\$appRoot === false) { http_response_code(503); exit('No active release is available.'); }\n"
   printf "require \$appRoot . '/app/Config/Paths.php';\n"
   printf '$paths = new Paths();\n'
   printf "\$paths->envDirectory = realpath(\$deployRoot . '/shared');\n"
@@ -117,6 +126,9 @@ SHIM_FILE="${HTTPDOCS_SHIM_FILE:-$(mktemp "${TMPDIR:-/tmp}/kermesse-httpdocs-ind
   printf 'cd %s\n' "$(lftp_q "${OUVATON_HTTPDOCS_FOLDER}")"
   printf 'put %s -o index.php\n' "$(lftp_q "${SHIM_FILE}")"
   printf 'put %s -o .htaccess\n' "$(lftp_q "${PUBLIC_DIR}/.htaccess")"
+  if [ -f "${PUBLIC_DIR}/ops-bootstrap-activate.php" ]; then
+    printf 'put %s -o ops-bootstrap-activate.php\n' "$(lftp_q "${PUBLIC_DIR}/ops-bootstrap-activate.php")"
+  fi
   if [ -f "${PUBLIC_DIR}/robots.txt" ]; then
     printf 'put %s -o robots.txt\n' "$(lftp_q "${PUBLIC_DIR}/robots.txt")"
   fi

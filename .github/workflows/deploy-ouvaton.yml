@@ -177,6 +177,35 @@ jobs:
           fi
           bash scripts/transfer-archive.sh
 
+      - name: Generate bootstrap activation script
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OUVATON_DEPLOY_REMOTE_FOLDER:-}" ]; then
+            echo "::error::OUVATON_DEPLOY_REMOTE_FOLDER est requis pour générer le bootstrap d'activation."
+            exit 1
+          fi
+
+          sed_escape_replacement() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//&/\\&}"
+            value="${value//|/\\|}"
+            printf '%s' "${value}"
+          }
+
+          BOOTSTRAP_ACTIVATE_TOKEN="$(openssl rand -hex 32)"
+          echo "::add-mask::${BOOTSTRAP_ACTIVATE_TOKEN}"
+          printf 'BOOTSTRAP_ACTIVATE_TOKEN=%s\n' "${BOOTSTRAP_ACTIVATE_TOKEN}" >> "${GITHUB_ENV}"
+
+          token_replacement="$(sed_escape_replacement "${BOOTSTRAP_ACTIVATE_TOKEN}")"
+          remote_folder_replacement="$(sed_escape_replacement "${OUVATON_DEPLOY_REMOTE_FOLDER}")"
+
+          sed -e "s|__BOOTSTRAP_TOKEN__|${token_replacement}|g" \
+              -e "s|__REMOTE_FOLDER__|${remote_folder_replacement}|g" \
+              deploy/ops-bootstrap-activate.tpl.php > deploy-staging/public/ops-bootstrap-activate.php
+          chmod 600 deploy-staging/public/ops-bootstrap-activate.php
+
       - name: Deploy httpdocs entry point and static assets
         env:
           OUVATON_DEPLOY_HOST: ${{ vars.OUVATON_DEPLOY_HOST }}
@@ -260,153 +289,74 @@ jobs:
 
           echo "Production ops HMAC secret verified against shared/.env."
 
-      - name: Activate release via webhook
-        env:
-          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
-          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+      - name: Activate release via bootstrap script
         run: |
           set -euo pipefail
-          # MÊME signature qu'en répétition (scripts/deploy-rehearsal.sh) — source unique (FR-18).
           source scripts/lib/ops-sign.sh
 
-          # Sanitize BASE_URL by stripping any trailing slashes
           BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
           ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
 
-          if [ -z "$BASE_URL" ] || [ -z "${OPS_HMAC_SECRET:-}" ]; then
-            echo "::error::KERMESSE_PUBLIC_BASE_URL et OPS_MIGRATION_HMAC_SECRET sont requis."
+          if [ -z "$BASE_URL" ] || [ -z "${BOOTSTRAP_ACTIVATE_TOKEN:-}" ]; then
+            echo "::error::KERMESSE_PUBLIC_BASE_URL et BOOTSTRAP_ACTIVATE_TOKEN sont requis."
             exit 1
           fi
           ops_require_https_endpoint "$BASE_URL" 32
 
-          ROUTE="ops/activate"
-          BODY='{"archive":"kermesse-deploy.tar.gz"}'
-
           CURL_TLS_ARGS=()
           if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
-            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour l'activation. À retirer dès que le certificat de production est valide."
+            echo "::warning::KERMESSE_ALLOW_INSECURE_TLS=true : vérification TLS désactivée pour l'activation."
             CURL_TLS_ARGS+=(--insecure)
           fi
 
-          call_activate() {
-            local signed_route="$1"
-            local response_body="$2"
-            local target_route="${3:-${ROUTE}}"
+          ACTIVATE_URL="${BASE_URL}/ops-bootstrap-activate.php"
 
-            ops_sign "$signed_route" "$BODY"
-            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${target_route}" \
-              -H "Content-Type: application/json" \
-              -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
-              -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
-              -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-              -w "%{http_code}" -o "${response_body}" \
-              -d "$BODY"
-          }
-
-          call_activate_query() {
-            local signed_route="$1"
-            local response_body="$2"
-            local target_route="${3:-${ROUTE}}"
-
-            ops_sign "$signed_route" "$BODY"
-            curl --max-time 60 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${target_route}?kts=${SIGN_TS}&kn=${SIGN_NONCE}&ks=${SIGN_SIG}" \
-              -H "Content-Type: application/json" \
-              -w "%{http_code}" -o "${response_body}" \
-              -d "$BODY"
-          }
-
-          is_ops_unauthorized() {
-            local status_code="$1"
-            local response_body="$2"
-
-            [[ "$status_code" == "403" ]] && grep -Fq '"ops_unauthorized"' "${response_body}"
-          }
-
-          # Ne pas utiliser curl -f ici : sur HTTP 4xx/5xx il masque le body JSON
-          # utile au diagnostic (archive_missing, checksum_mismatch, release_invalid).
+          echo "Appel du bootstrap d'activation..."
           activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response.json"
-          if ! HTTP_CODE=$(call_activate "$ROUTE" "${activate_response_body}"); then
-            echo "::error::Webhook d'activation injoignable."
-            if [ -s "${activate_response_body}" ]; then
-              cat "${activate_response_body}" >&2
-            fi
-            exit 1
-          fi
 
-          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
-            echo "::warning::Activation refusée avec routePath=${ROUTE}; retry compatibilité avec routePath historique ops/migrate."
-            legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-legacy.json"
-            if ! HTTP_CODE=$(call_activate "ops/migrate" "${legacy_activate_response_body}"); then
-              echo "::error::Webhook d'activation injoignable après retry compatibilité."
-              if [ -s "${legacy_activate_response_body}" ]; then
-                cat "${legacy_activate_response_body}" >&2
-              fi
-              exit 1
-            fi
-            activate_response_body="${legacy_activate_response_body}"
-          fi
-
-          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
-            echo "::warning::Activation toujours refusée via pretty URL; retry via front-controller direct index.php/ops/activate."
-            direct_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-index.json"
-            if ! HTTP_CODE=$(call_activate "$ROUTE" "${direct_activate_response_body}" "index.php/${ROUTE}"); then
-              echo "::error::Webhook d'activation injoignable via front-controller direct."
-              if [ -s "${direct_activate_response_body}" ]; then
-                cat "${direct_activate_response_body}" >&2
-              fi
-              exit 1
-            fi
-            activate_response_body="${direct_activate_response_body}"
-          fi
-
-          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
-            echo "::warning::Activation front-controller refusée avec routePath=${ROUTE}; retry front-controller avec routePath historique ops/migrate."
-            direct_legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-index-legacy.json"
-            if ! HTTP_CODE=$(call_activate "ops/migrate" "${direct_legacy_activate_response_body}" "index.php/${ROUTE}"); then
-              echo "::error::Webhook d'activation injoignable via front-controller direct après retry compatibilité."
-              if [ -s "${direct_legacy_activate_response_body}" ]; then
-                cat "${direct_legacy_activate_response_body}" >&2
-              fi
-              exit 1
-            fi
-            activate_response_body="${direct_legacy_activate_response_body}"
-          fi
-
-          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
-            echo "::warning::Activation refusée avec headers HMAC; retry via query string HMAC sur routePath=${ROUTE}."
-            query_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-query.json"
-            if ! HTTP_CODE=$(call_activate_query "$ROUTE" "${query_activate_response_body}"); then
-              echo "::error::Webhook d'activation injoignable via query string HMAC."
-              if [ -s "${query_activate_response_body}" ]; then
-                cat "${query_activate_response_body}" >&2
-              fi
-              exit 1
-            fi
-            activate_response_body="${query_activate_response_body}"
-          fi
-
-          if is_ops_unauthorized "$HTTP_CODE" "${activate_response_body}"; then
-            echo "::warning::Activation query string refusée avec routePath=${ROUTE}; retry query string avec routePath historique ops/migrate."
-            query_legacy_activate_response_body="${RUNNER_TEMP:-/tmp}/ops-activate-response-query-legacy.json"
-            if ! HTTP_CODE=$(call_activate_query "ops/migrate" "${query_legacy_activate_response_body}"); then
-              echo "::error::Webhook d'activation injoignable via query string HMAC après retry compatibilité."
-              if [ -s "${query_legacy_activate_response_body}" ]; then
-                cat "${query_legacy_activate_response_body}" >&2
-              fi
-              exit 1
-            fi
-            activate_response_body="${query_legacy_activate_response_body}"
-          fi
+          HTTP_CODE=$(curl --max-time 120 --retry 3 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST \
+            -H "X-Kermesse-Bootstrap-Token: ${BOOTSTRAP_ACTIVATE_TOKEN}" \
+            -w "%{http_code}" -o "${activate_response_body}" \
+            "${ACTIVATE_URL}")
 
           if [ -s "${activate_response_body}" ]; then
             cat "${activate_response_body}" >&2
             printf '\n' >&2
           fi
-          
+
           if [[ "$HTTP_CODE" != "200" ]]; then
-            echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
+            echo "::error::L'activation autonome a échoué (HTTP $HTTP_CODE)."
             exit 1
           fi
+
+          echo "Activation réussie avec succès !"
+
+      - name: Cleanup bootstrap script from server
+        if: always()
+        run: |
+          set -euo pipefail
+
+          lftp_quote() {
+            local value="$1"
+            value="${value//\\/\\\\}"
+            value="${value//\"/\\\"}"
+            printf '"%s"' "${value}"
+          }
+
+          remote_script="${OUVATON_HTTPDOCS_FOLDER}/ops-bootstrap-activate.php"
+
+          echo "Suppression du script d'activation temporaire sur le serveur..."
+          {
+            printf 'set cmd:fail-exit no\n'
+            printf 'set net:max-retries 2\n'
+            printf 'set net:timeout 30\n'
+            printf 'open -u %s,%s -p 115 sftp://%s\n' \
+              "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
+              "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
+              "${OUVATON_DEPLOY_HOST}"
+            printf 'rm %s\n' "$(lftp_quote "${remote_script}")"
+            printf 'bye\n'
+          } | lftp || echo "::warning::Impossible de supprimer le script temporaire."
 
       - name: Run post-deploy migrations
         env:

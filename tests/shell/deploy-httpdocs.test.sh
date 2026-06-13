@@ -13,6 +13,7 @@ shim_file="${tmpdir}/index.php"
 mkdir -p "${public_dir}/assets"
 printf 'RewriteEngine On\n' > "${public_dir}/.htaccess"
 printf 'User-agent: *\n' > "${public_dir}/robots.txt"
+printf '<?php echo "bootstrap";\n' > "${public_dir}/ops-bootstrap-activate.php"
 printf 'body{}\n' > "${public_dir}/assets/app.css"
 
 fail=0
@@ -58,12 +59,15 @@ assert_contains "création cache idempotente" "${output}" "mkdir -p -f 'kermesse
 assert_contains "vérification cache par cd" "${output}" "cd 'kermesse/shared/writable/cache'"
 assert_contains "upload shim" "${output}" "put '${shim_file}' -o index.php"
 assert_contains "upload htaccess" "${output}" "put '${public_dir}/.htaccess' -o .htaccess"
+assert_contains "upload bootstrap temporaire" "${output}" "put '${public_dir}/ops-bootstrap-activate.php' -o ops-bootstrap-activate.php"
 assert_contains "upload robots" "${output}" "put '${public_dir}/robots.txt' -o robots.txt"
 assert_contains "assets seuls synchronisés en mirror" "${output}" "mirror --reverse --delete assets/ assets/"
 assert_contains "quote simple échappée" "${output}" "open -u 'deploy\\'user','pa\$\$word'"
 
 assert_contains "shim pointe hors httpdocs" "${shim}" "../kermesse"
 assert_contains "shim release courante" "${shim}" "\$deployRoot . '/current'"
+assert_contains "shim fallback fichier pointeur" "${shim}" "\$deployRoot . '/CURRENT_RELEASE'"
+assert_contains "shim fallback releases" "${shim}" "\$deployRoot . '/releases/' . \$releaseName"
 assert_contains "shim shared env" "${shim}" "\$deployRoot . '/shared'"
 assert_contains "shim shared writable" "${shim}" "\$deployRoot . '/shared/writable'"
 
