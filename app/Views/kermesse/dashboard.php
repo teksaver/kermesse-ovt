@@ -5,7 +5,7 @@
 <div class="kermesse-dashboard">
     <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
 
-    <div class="kermesse-dashboard__info">
+    <div class="kermesse-dashboard__info kermesse-characteristics">
         <?= $this->include('partials/status_badge', ['status' => $kermesse['status']]) ?>
 
         <?php if (! empty($kermesse['event_date'])): ?>
@@ -248,20 +248,32 @@
                 <!-- Bouton Ajouter un créneau -->
                 <button type="button" class="btn btn--sm btn--secondary" style="margin-top:16px;" onclick="document.getElementById('modal-slot-add-<?= $sid ?>').showModal()">Ajouter un créneau</button>
 
+                
                 <!-- Modale Ajouter Créneau -->
-                <?php $isAddingHere = ($slotForm === 'add' && $slotFormStandId === $sid); ?>
+                <?php 
+                    $isAddingHere = ($slotForm === 'add' && $slotFormStandId === $sid);
+                    $defaultStartsAt = '';
+                    $defaultEndsAt = '';
+                    if (!empty($stand['slots'])) {
+                        $lastSlot = end($stand['slots']);
+                        $defaultStartsAt = date('H:i', strtotime($lastSlot['ends_at']));
+                        $dur = strtotime($lastSlot['ends_at']) - strtotime($lastSlot['starts_at']);
+                        $defaultEndsAt = date('H:i', strtotime($defaultStartsAt) + $dur);
+                    }
+                ?>
                 <dialog id="modal-slot-add-<?= $sid ?>" class="k-modal" <?= $isAddingHere ? 'data-auto-open' : '' ?>>
+>
                     <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/slots") ?>" class="k-modal__form" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                         <h3 class="k-modal__title">Ajouter un créneau</h3>
                         <?= csrf_field() ?>
                         <div class="form-group">
                             <label class="form-label">Début</label>
-                            <input type="time" name="starts_at" class="form-control<?= $isAddingHere && isset($slotErrors['starts_at']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('starts_at', '')) : '' ?>" required>
+                            <input type="time" name="starts_at" class="form-control<?= $isAddingHere && isset($slotErrors['starts_at']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('starts_at', '')) : esc($defaultStartsAt) ?>" required>
                             <?php if ($isAddingHere && isset($slotErrors['starts_at'])): ?><span class="form-error"><?= esc($slotErrors['starts_at']) ?></span><?php endif; ?>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Fin</label>
-                            <input type="time" name="ends_at" class="form-control<?= $isAddingHere && isset($slotErrors['ends_at']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('ends_at', '')) : '' ?>" required>
+                            <input type="time" name="ends_at" class="form-control<?= $isAddingHere && isset($slotErrors['ends_at']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('ends_at', '')) : esc($defaultEndsAt) ?>" required>
                             <?php if ($isAddingHere && isset($slotErrors['ends_at'])): ?><span class="form-error"><?= esc($slotErrors['ends_at']) ?></span><?php endif; ?>
                         </div>
                         <div class="form-group">
@@ -352,6 +364,30 @@
     justify-content: flex-end;
     gap: 12px;
     margin-top: 8px;
+}
+
+.form-success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.form-success::before {
+    content: "✅";
+}
+.kermesse-characteristics {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    padding: 24px;
+    border-radius: 12px;
+    margin-bottom: 32px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
 </style>
 <?= $this->endSection() ?>

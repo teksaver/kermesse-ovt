@@ -206,7 +206,10 @@ class StandController extends BaseController
             return redirect()->back()->with('error', 'Erreur système lors de la duplication des créneaux.');
         }
 
-        session()->setFlashdata('success', 'Stand dupliqué avec succès : « ' . esc($newName) . ' ».');
+        session()->setFlashdata('success', 'Stand dupliqué avec succès. Veuillez lui donner un nom définitif.');
+        session()->setFlashdata('stand_form', 'edit');
+        session()->setFlashdata('editing_stand_id', $newStandId);
+        session()->setFlashdata('stand_name', $newName);
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
