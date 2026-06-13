@@ -6,7 +6,7 @@
     <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
 
     <div class="kermesse-dashboard__info kermesse-characteristics">
-        <?= $this->include('partials/status_badge', ['status' => $kermesse['status']]) ?>
+        <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
 
         <?php if (! empty($kermesse['event_date'])): ?>
         <p class="kermesse-dashboard__date"><?= esc($kermesse['event_date']) ?></p>
@@ -68,7 +68,10 @@
             $standError     = session()->getFlashdata('stand_error')    ?? ($stand_error ?? null);
             $standForm      = session()->getFlashdata('stand_form')     ?? ($stand_form ?? null);
             $standName      = session()->getFlashdata('stand_name')     ?? ($stand_name ?? '');
-            $editingStandId = session()->getFlashdata('editing_stand_id') ?? ($editing_stand_id ?? null);
+            
+            $editingStandIdRaw = session()->getFlashdata('editing_stand_id') ?? ($editing_stand_id ?? null);
+            $editingStandId = $editingStandIdRaw !== null ? (int) $editingStandIdRaw : null;
+            
             $stands         = $stands ?? [];
 
             $slotErrors     = session()->getFlashdata('slot_errors')        ?? [];
