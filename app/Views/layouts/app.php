@@ -9,7 +9,7 @@
 <body>
     <nav class="app-nav">
         <div class="app-nav__inner">
-            <a href="<?= site_url('/') ?>" class="app-nav__brand">Kermesse</a>
+            <a href="<?= base_url('/') ?>" class="app-nav__brand">Kermesse</a>
             <form method="post" action="<?= site_url('auth/logout') ?>" class="app-nav__logout">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn-secondary">Se déconnecter</button>

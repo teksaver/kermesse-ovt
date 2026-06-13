@@ -16,9 +16,15 @@
 
         <ul class="kermesse-list" role="list">
             <?php foreach ($kermesses as $k): ?>
-                <li class="kermesse-card">
-                    <span class="kermesse-card__name"><?= esc($k['name']) ?></span>
-                    <span class="kermesse-status-badge"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
+                <li class="kermesse-card" style="display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="kermesse-card__name"><?= esc($k['name']) ?></span>
+                        <span class="kermesse-status-badge"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary">Administration</a>
+                        <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary">Page publique</a>
+                    </div>
                 </li>
             <?php endforeach; ?>
         </ul>
