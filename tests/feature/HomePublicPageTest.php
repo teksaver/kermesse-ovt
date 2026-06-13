@@ -44,6 +44,6 @@ class HomePublicPageTest extends CIUnitTestCase
     {
         $result = $this->get('/');
 
-        $result->assertSee(site_url('create'));
+        $result->assertSee(site_url('kermesse/create'));
     }
 }
