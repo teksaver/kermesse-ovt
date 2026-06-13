@@ -305,11 +305,13 @@
                     $isAddingHere = ($slotForm === 'add' && $slotFormStandId === $sid);
                     $defaultStartsAt = '';
                     $defaultEndsAt = '';
+                    $defaultCapacity = '';
                     if (!empty($stand['slots'])) {
                         $lastSlot = end($stand['slots']);
                         $defaultStartsAt = date('H:i', strtotime($lastSlot['ends_at']));
                         $dur = strtotime($lastSlot['ends_at']) - strtotime($lastSlot['starts_at']);
                         $defaultEndsAt = date('H:i', strtotime($defaultStartsAt) + $dur);
+                        $defaultCapacity = $lastSlot['capacity'];
                     }
                 ?>
                 <dialog id="modal-slot-add-<?= $sid ?>" class="k-modal" <?= $isAddingHere ? 'data-auto-open' : '' ?>>
@@ -329,7 +331,7 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Capacité</label>
-                            <input type="number" name="capacity" class="form-control<?= $isAddingHere && isset($slotErrors['capacity']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('capacity', '')) : '' ?>" min="1" required>
+                            <input type="number" name="capacity" class="form-control<?= $isAddingHere && isset($slotErrors['capacity']) ? ' is-invalid' : '' ?>" value="<?= $isAddingHere ? esc(old('capacity', '')) : esc($defaultCapacity) ?>" min="1" required>
                             <?php if ($isAddingHere && isset($slotErrors['capacity'])): ?><span class="form-error"><?= esc($slotErrors['capacity']) ?></span><?php endif; ?>
                         </div>
                         <?php if ($isAddingHere && isset($slotErrors['general'])): ?><p class="form-error"><?= esc($slotErrors['general']) ?></p><?php endif; ?>

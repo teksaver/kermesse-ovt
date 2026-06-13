@@ -52,7 +52,7 @@ class UserRoleModel extends Model
     {
         return $this->db
             ->table('kermesse_user_roles kur')
-            ->select('k.id, k.name, k.public_slug, k.event_date, k.status, kur.role')
+            ->select('k.id, k.name, k.public_slug, k.event_date, k.location, k.status, kur.role')
             ->join('kermesses k', 'k.id = kur.kermesse_id')
             ->where('kur.user_id', $userId)
             ->orderBy('k.name', 'ASC')
