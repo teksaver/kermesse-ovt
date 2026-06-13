@@ -46,6 +46,8 @@ assert_contains "deploy appelle le sync env partagé" 'bash scripts/sync-product
 assert_contains "deploy peut générer le env initial" 'KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}'
 assert_contains "prévol compare le secret HMAC distant" 'Production ops HMAC secret verified against shared/.env.'
 assert_contains "prévol échoue avant activation si secret divergent" 'Le secret HMAC de shared/.env ne correspond pas au secret GitHub OPS_MIGRATION_HMAC_SECRET.'
+assert_contains "activation bootstrap valide https sans HMAC" 'ops_require_https "$BASE_URL"'
+assert_contains "migrations gardent le pré-vol HMAC" 'ops_require_https_endpoint "$BASE_URL" 32'
 assert_contains "migrations restent signées HMAC" 'ROUTE="ops/migrate"'
 assert_contains "diagnostic récupère les logs après échec" 'Fetch production log tail on deploy failure'
 assert_contains "diagnostic tente les logs CodeIgniter .log" 'for extension in log php; do'

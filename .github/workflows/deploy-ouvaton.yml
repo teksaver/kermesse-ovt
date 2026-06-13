@@ -322,7 +322,9 @@ jobs:
             echo "::error::KERMESSE_PUBLIC_BASE_URL et BOOTSTRAP_ACTIVATE_TOKEN sont requis."
             exit 1
           fi
-          ops_require_https_endpoint "$BASE_URL" 32
+          # Flux bootstrap : authentifié au jeton à usage unique, sans HMAC.
+          # On ne valide donc QUE le schéma https:// (pas de OPS_HMAC_SECRET ici).
+          ops_require_https "$BASE_URL"
 
           CURL_TLS_ARGS=()
           if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
