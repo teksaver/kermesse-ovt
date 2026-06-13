@@ -37,19 +37,33 @@ ops_sign() {
   SIGN_SIG="$(printf '%s' "${payload}" | openssl dgst -sha256 -hmac "${OPS_HMAC_SECRET}" | awk '{print $NF}')"
 }
 
-# ops_require_https_endpoint <base_url> <min_secret_len>
-# Pré-vol de PRODUCTION : mutualise la validation jusqu'ici dupliquée entre les étapes
-# « activate » et « migrate » de deploy-ouvaton.yml. Impose https:// et une longueur
-# minimale du secret HMAC. Renvoie non-zéro si une condition échoue (fail-fast appelant).
-ops_require_https_endpoint() {
+# ops_require_https <base_url>
+# Pré-vol HTTPS isolé : impose https:// sans rien lire de l'environnement HMAC.
+# Utilisé par l'étape « activate » (flux bootstrap, authentifié au jeton à usage
+# unique — PAS en HMAC) qui ne définit donc pas OPS_HMAC_SECRET. Séparer ce check
+# du contrôle de secret évite un `unbound variable` fatal sous `set -u`.
+ops_require_https() {
   local base_url="$1"
-  local min_secret_len="$2"
 
   if ! printf '%s' "${base_url}" | grep -iq '^https://'; then
     echo "::error::BASE_URL doit commencer par https:// pour les opérations de production." >&2
     return 1
   fi
-  if [ "${#OPS_HMAC_SECRET}" -lt "${min_secret_len}" ]; then
+}
+
+# ops_require_https_endpoint <base_url> <min_secret_len>
+# Pré-vol de PRODUCTION pour les étapes signées HMAC (« migrate ») : impose https://
+# ET une longueur minimale du secret HMAC. Renvoie non-zéro si une condition échoue
+# (fail-fast appelant). La garde `${OPS_HMAC_SECRET:-}` rend la fonction sûre sous
+# `set -u` : secret absent → erreur métier ci-dessous, jamais `unbound variable`.
+ops_require_https_endpoint() {
+  local base_url="$1"
+  local min_secret_len="$2"
+
+  ops_require_https "${base_url}" || return 1
+
+  local secret="${OPS_HMAC_SECRET:-}"
+  if [ "${#secret}" -lt "${min_secret_len}" ]; then
     echo "::error::OPS_HMAC_SECRET doit faire au moins ${min_secret_len} caractères." >&2
     return 1
   fi
