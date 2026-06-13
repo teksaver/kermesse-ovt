@@ -143,6 +143,68 @@ class SlotController extends BaseController
     }
 
     /**
+     * POST /kermesse/{kermesse_id}/slots/{slot_id}/delete
+     *
+     * Soft-deletes a slot. Requires strong confirmation if active signups exist.
+     */
+    public function delete(string $kermesseId, string $slotId): mixed
+    {
+        $id     = (int) $kermesseId;
+        $slotId = (int) $slotId;
+
+        $slot = model(SlotModel::class)
+            ->where('id', $slotId)
+            ->where('status', SlotModel::STATUS_ACTIVE)
+            ->first();
+
+        if ($slot === null) {
+            return $this->response->setStatusCode(404);
+        }
+
+        $stand = model(StandModel::class)
+            ->where('id', $slot['stand_id'])
+            ->where('kermesse_id', $id)
+            ->where('status', StandModel::STATUS_ACTIVE)
+            ->first();
+
+        if ($stand === null) {
+            return $this->response->setStatusCode(404);
+        }
+
+        $service = new \App\Services\SlotDeletionService();
+
+        if ($service->confirmationModeFor($slotId) === \App\Services\StandDeletionService::CONFIRM_STRONG) {
+            $p       = $this->request->getPost('confirm');
+            $confirm = is_string($p) ? trim($p) : '';
+
+            if (mb_strtoupper($confirm) !== 'SUPPRIMER') {
+                return redirect()->back()
+                    ->with('delete_slot_error_' . $slotId, 'Ce créneau a des bénévoles inscrits. Saisissez SUPPRIMER pour confirmer la suppression.');
+            }
+
+            $confirmedMode = \App\Services\StandDeletionService::CONFIRM_STRONG;
+        } else {
+            $confirmedMode = \App\Services\StandDeletionService::CONFIRM_SIMPLE;
+        }
+
+        $result = $service->deactivate($slotId, $confirmedMode);
+
+        if ($result === \App\Services\SlotDeletionService::RESULT_CONFIRMATION_CHANGED) {
+            return redirect()->back()
+                ->with('delete_slot_error_' . $slotId, 'Des inscriptions ont été ajoutées entre-temps. Saisissez SUPPRIMER pour confirmer la suppression.');
+        }
+
+        if ($result !== \App\Services\SlotDeletionService::RESULT_SUCCESS) {
+            return redirect()->back()
+                ->with('delete_slot_error_' . $slotId, 'Ce créneau a déjà été modifié ou une erreur système est survenue.');
+        }
+
+        session()->setFlashdata('success', 'Créneau supprimé avec succès.');
+
+        return redirect()->to(site_url("kermesse/{$id}") . '#slots-stand-' . $stand['id']);
+    }
+
+    /**
      * Validates slot times and capacity.
      * Returns an array of field-specific error messages.
      */

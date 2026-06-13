@@ -458,4 +458,19 @@ final class ManageSlotsTest extends CIUnitTestCase
         $result->assertSessionHas('slot_errors');
         $result->assertSessionHas('slot_form');
     }
+
+    public function testOwnerCanDeleteSlotWithoutSignups(): void
+    {
+        $slotId = $this->insertSlot();
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/slots/{$slotId}/delete", []);
+
+        $result->assertRedirect();
+
+        $row = db_connect()
+            ->query("SELECT status FROM db_slots WHERE id = {$slotId}")
+            ->getRowArray();
+        $this->assertSame('deactivated', $row['status']);
+    }
 }

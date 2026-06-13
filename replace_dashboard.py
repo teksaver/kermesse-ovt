@@ -1,63 +1,9 @@
-<?= $this->extend('layouts/app') ?>
+import re
 
-<?= $this->section('content') ?>
+with open('app/Views/kermesse/dashboard.php', 'r') as f:
+    content = f.read()
 
-<div class="kermesse-dashboard">
-    <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
-
-    <div class="kermesse-dashboard__info">
-        <?= $this->include('partials/status_badge', ['status' => $kermesse['status']]) ?>
-
-        <?php if (! empty($kermesse['event_date'])): ?>
-        <p class="kermesse-dashboard__date"><?= esc($kermesse['event_date']) ?></p>
-        <?php endif; ?>
-
-        <?php if (! empty($kermesse['location'])): ?>
-        <p class="kermesse-dashboard__location"><?= esc($kermesse['location']) ?></p>
-        <?php endif; ?>
-
-        <?php if (! empty($kermesse['short_description'])): ?>
-        <p class="kermesse-dashboard__description"><?= esc($kermesse['short_description']) ?></p>
-        <?php endif; ?>
-
-        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
-        <?php if ($lifecycleError !== null): ?>
-        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
-        <?php endif; ?>
-
-        <!-- Actions lifecycle (UX-DR17) -->
-        <div class="kermesse-dashboard__lifecycle">
-            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
-                <?php if ($kermesse['status'] === 'open'): ?>
-                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
-                </form>
-                <?php elseif ($kermesse['status'] === 'preparation'): ?>
-                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
-                </form>
-                <?php endif; ?>
-            <?php endif; ?>
-
-            <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="btn btn--secondary">Prévisualiser</a>
-
-            <button type="button"
-                    class="btn btn--secondary"
-                    data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>"
-                    id="copy-link-btn">Copier le lien</button>
-            <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" hidden>Lien copié.</span>
-        </div>
-    </div>
-
-    <!-- ------------------------------------------------------------------ -->
-    <!-- Section Stands                                                        -->
-    <!-- ------------------------------------------------------------------ -->
-    <section class="kermesse-dashboard__section" id="stands">
+replacement = """    <section class="kermesse-dashboard__section" id="stands">
         <h2 class="section-title">Stands</h2>
 
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
@@ -276,45 +222,9 @@
             </details>
         </div>
         <?php endif; ?>
-    </section>
+    </section>"""
 
-    <div class="kermesse-dashboard__actions">
-        <a href="<?= site_url('/') ?>" class="btn btn--secondary">Retour à mes kermesses</a>
-    </div>
-</div>
+new_content = re.sub(r'    <section class="kermesse-dashboard__section" id="stands">.*?</section>', replacement, content, flags=re.DOTALL)
 
-<?= $this->endSection() ?>
-
-<?= $this->section('scripts') ?>
-<script>
-document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
-    var btnId = input.getAttribute('data-delete-confirm');
-    var btn   = document.getElementById(btnId);
-    if (!btn) return;
-    btn.disabled = input.value.trim().toUpperCase() !== 'SUPPRIMER';
-    input.addEventListener('input', function () {
-        btn.disabled = this.value.trim().toUpperCase() !== 'SUPPRIMER';
-    });
-});
-
-(function () {
-    var btn      = document.getElementById('copy-link-btn');
-    var feedback = document.getElementById('copy-link-feedback');
-    if (!btn || !feedback) return;
-    btn.addEventListener('click', function () {
-        if (!navigator.clipboard) {
-            alert('Copie manuelle requise : votre navigateur ne supporte pas la copie automatique.');
-            return;
-        }
-        navigator.clipboard.writeText(btn.getAttribute('data-copy-url')).then(function () {
-            feedback.hidden = false;
-            if (btn.timer) clearTimeout(btn.timer);
-            btn.timer = setTimeout(function () { feedback.hidden = true; }, 2500);
-        }).catch(function(err) {
-            console.error('Erreur lors de la copie du lien:', err);
-            alert('Erreur lors de la copie. Copie manuelle requise.');
-        });
-    });
-}());
-</script>
-<?= $this->endSection() ?>
+with open('app/Views/kermesse/dashboard.php', 'w') as f:
+    f.write(new_content)
