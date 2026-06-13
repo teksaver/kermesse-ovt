@@ -10,7 +10,7 @@
             <div>
                 <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
             </div>
-            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+            <?php if (! empty($canModify)): ?>
             <button type="button" class="btn btn--sm" title="Modifier la kermesse" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier</button>
             <?php endif; ?>
         </div>
@@ -42,7 +42,7 @@
 
         <!-- Actions lifecycle (UX-DR17) -->
         <div class="kermesse-dashboard__lifecycle">
-            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+            <?php if (! empty($canModify)): ?>
                 <?php if ($kermesse['status'] === 'open'): ?>
                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
                     <?= csrf_field() ?>
@@ -67,7 +67,7 @@
     <!-- ------------------------------------------------------------------ -->
     
     <!-- Modale Édition Kermesse -->
-    <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+    <?php if (! empty($canModify)): ?>
     <?php
         $kermesseForm = session()->getFlashdata('kermesse_form');
         $kermesseError = session()->getFlashdata('kermesse_edit_error');
@@ -103,8 +103,8 @@
     </dialog>
     <?php endif; ?>
 
-    <!-- Section Stands                                                        -->
-    <!-- ------------------------------------------------------------------ -->
+    <?php if (! empty($canModify)): ?>
+    <!-- Section « Modification » (stands & créneaux) — Owner/Admin uniquement (Story 4.1). -->
     <section class="kermesse-dashboard__section" id="stands">
         <h2 class="section-title">Stands</h2>
 
@@ -377,7 +377,23 @@
         </dialog>
 
     </section>
+    <?php endif; ?>
 
+    <?php if (! empty($canManageParticipants)): ?>
+    <!-- Section participants — Owner/Admin/Gestionnaire. Garde de rôle posée
+         en Story 4.1 ; contenu détaillé (liste des bénévoles) livré en Story 4.4. -->
+    <section class="kermesse-dashboard__section" id="participants">
+        <h2 class="section-title">Gestion des participants</h2>
+        <p class="section-placeholder">La liste des bénévoles inscrits sera disponible ici prochainement.</p>
+    </section>
+    <?php endif; ?>
+
+    <!-- Section « Mes participations » — tout rôle (Story 4.1).
+         Contenu détaillé (inscriptions actives) livré en Story 4.2. -->
+    <section class="kermesse-dashboard__section" id="my-signups">
+        <h2 class="section-title">Mes participations</h2>
+        <p class="section-placeholder">La liste de vos inscriptions actives sera disponible ici prochainement.</p>
+    </section>
 
     <div class="kermesse-dashboard__actions">
         <a href="<?= site_url('/') ?>" class="btn btn--secondary">Retour à mes kermesses</a>
@@ -441,6 +457,11 @@
     border-radius: 12px;
     margin-bottom: 32px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.section-placeholder {
+    color: #555;
+    font-size: 14px;
+    margin: 8px 0 0;
 }
 </style>
 <?= $this->endSection() ?>

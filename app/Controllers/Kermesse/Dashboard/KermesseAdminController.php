@@ -6,7 +6,10 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Models\UserModel;
+use App\Models\UserRoleModel;
 use App\Services\KermesseLifecycleService;
+use App\Services\RoleService;
 use App\Services\StandDeletionService;
 
 /**
@@ -25,32 +28,45 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
-        $standModel = model(StandModel::class);
-        $stands     = $standModel->getActiveForKermesse($id);
-        $standIds   = array_column($stands, 'id');
-        $allSlots   = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
-
-        $slotsByStand = [];
-        foreach ($allSlots as $slot) {
-            $slotsByStand[(int) $slot['stand_id']][] = $slot;
-        }
-
-        $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
-
-        foreach ($stands as &$stand) {
-            $stand['slots']                  = $slotsByStand[(int) $stand['id']] ?? [];
-            $stand['requires_strong_confirm'] = $requiresStrong[(int) $stand['id']];
-        }
-        unset($stand);
-
-        $roleService = new \App\Services\RoleService(model(\App\Models\UserRoleModel::class), model(\App\Models\UserModel::class));
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
         $userRole    = $roleService->getRoleForUser($id, (int) session()->get('user_id'));
 
+        // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
+        // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
+        // "Gestion des participants": Owner/Admin/Gestionnaire.
+        // "Mes participations"      : tout rôle.
+        $canModify             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
+        $canManageParticipants = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN, UserRoleModel::ROLE_GESTIONNAIRE], true);
+
+        // Minimisation des données : ne charger les stands/créneaux que pour les
+        // rôles autorisés à la section "Modification".
+        $stands = [];
+        if ($canModify) {
+            $standModel = model(StandModel::class);
+            $stands     = $standModel->getActiveForKermesse($id);
+            $standIds   = array_column($stands, 'id');
+            $allSlots   = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
+
+            $slotsByStand = [];
+            foreach ($allSlots as $slot) {
+                $slotsByStand[(int) $slot['stand_id']][] = $slot;
+            }
+
+            $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
+
+            foreach ($stands as &$stand) {
+                $stand['slots']                   = $slotsByStand[(int) $stand['id']] ?? [];
+                $stand['requires_strong_confirm'] = $requiresStrong[(int) $stand['id']];
+            }
+            unset($stand);
+        }
+
         return view('kermesse/dashboard', [
-            'title'              => esc($kermesse['name']),
-            'kermesse'           => $kermesse,
-            'stands'             => $stands,
-            'canManageLifecycle' => in_array($userRole, [\App\Models\UserRoleModel::ROLE_OWNER, \App\Models\UserRoleModel::ROLE_ADMIN], true),
+            'title'                 => esc($kermesse['name']),
+            'kermesse'              => $kermesse,
+            'stands'                => $stands,
+            'canModify'             => $canModify,
+            'canManageParticipants' => $canManageParticipants,
         ]);
     }
 
