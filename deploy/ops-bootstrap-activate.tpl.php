@@ -22,10 +22,15 @@ try {
         respond(405, ['ok' => false, 'error' => 'method_not_allowed']);
     }
 
+    $providedToken = $_SERVER['HTTP_X_KERMESSE_BOOTSTRAP_TOKEN'] ?? '';
+    if (!is_string($providedToken)) {
+        $providedToken = '';
+    }
+
     if (
         $expectedToken === ''
         || $expectedToken === '__' . 'BOOTSTRAP_TOKEN__'
-        || !hash_equals($expectedToken, (string) ($_SERVER['HTTP_X_KERMESSE_BOOTSTRAP_TOKEN'] ?? ''))
+        || !hash_equals($expectedToken, $providedToken)
     ) {
         respond(403, ['ok' => false, 'error' => 'ops_unauthorized']);
     }
@@ -72,6 +77,11 @@ try {
  */
 function activate_release(string $kermDir, string $archivePath, string $checksumPath, string $releasesDir): array
 {
+    $envFile = $kermDir . '/shared/.env';
+    if (!is_file($envFile)) {
+        respond(500, ['ok' => false, 'error' => 'production_env_missing', 'message' => 'shared/.env introuvable. Exécutez sync-production-env d\'abord.']);
+    }
+
     if (!is_file($archivePath) || !is_readable($archivePath)) {
         respond(400, ['ok' => false, 'error' => 'archive_missing']);
     }
@@ -119,17 +129,24 @@ function activate_release(string $kermDir, string $archivePath, string $checksum
     }
 
     $symlinkUpdated = switch_current($kermDir, $releaseDir, $releaseName);
+    if (!$symlinkUpdated) {
+        respond(500, ['ok' => false, 'error' => 'symlink_failed', 'message' => 'Impossible de basculer le symlink current vers la nouvelle release.']);
+    }
     @unlink($archivePath);
     @unlink($checksumPath);
 
     $pruned = prune_old_releases($releasesDir, $releaseName, read_retention($kermDir));
 
-    return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned, 'symlink' => $symlinkUpdated];
+    return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned, 'symlink' => true];
 }
 
 function read_expected_checksum(string $checksumPath): string
 {
-    $rawChecksum = trim((string) file_get_contents($checksumPath));
+    $fileContent = file_get_contents($checksumPath);
+    if ($fileContent === false) {
+        respond(400, ['ok' => false, 'error' => 'checksum_unreadable']);
+    }
+    $rawChecksum = trim((string) $fileContent);
     $expectedChecksum = strtolower((string) preg_split('/\s+/', $rawChecksum, 2)[0]);
 
     if (strlen($expectedChecksum) !== 64 || !ctype_xdigit($expectedChecksum)) {
@@ -210,35 +227,42 @@ function prune_old_releases(string $releasesDir, string $currentRelease, int $re
             continue;
         }
 
-        remove_release_dir($dir, $releasesDir);
-        $pruned++;
+        if (remove_release_dir($dir, $releasesDir)) {
+            $pruned++;
+        }
     }
 
     return $pruned;
 }
 
-function remove_release_dir(string $dir, string $releasesDir): void
+function remove_release_dir(string $dir, string $releasesDir): bool
 {
     $realDir = realpath($dir);
     $realBase = realpath($releasesDir);
     if ($realDir === false || $realBase === false || !str_starts_with($realDir, $realBase . DIRECTORY_SEPARATOR)) {
-        return;
+        return false;
     }
 
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::CHILD_FIRST
-    );
+    try {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
 
-    foreach ($iterator as $file) {
-        if ($file->isLink() || $file->isFile()) {
-            @unlink($file->getPathname());
-        } else {
-            @rmdir($file->getPathname());
+        foreach ($iterator as $file) {
+            if ($file->isLink() || $file->isFile()) {
+                @unlink($file->getPathname());
+            } else {
+                @rmdir($file->getPathname());
+            }
         }
+
+        @rmdir($dir);
+    } catch (Throwable $e) {
+        // Fallback for failed iterations
     }
 
-    @rmdir($dir);
+    return !is_dir($dir);
 }
 
 function validate_tar_gz_archive(string $archivePath): bool
