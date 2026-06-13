@@ -17,7 +17,7 @@ class HomeController extends BaseController
         $userId = (int) session()->get('user_id');
 
         if ($userId <= 0) {
-            return view('home/public', ['title' => 'Kermesse']);
+            return view('home/public', ['title' => 'Padlapin']);
         }
 
         $roleLabels = [
