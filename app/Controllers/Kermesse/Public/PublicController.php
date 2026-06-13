@@ -17,7 +17,8 @@ class PublicController extends BaseController
 {
     public function index(string $publicSlug): mixed
     {
-        $viewModel = (new PublicVolunteerPageService())->buildForSlug($publicSlug);
+        $userId = session()->get('is_logged_in') ? (int) session()->get('user_id') : null;
+        $viewModel = (new PublicVolunteerPageService())->buildForSlug($publicSlug, $userId);
 
         if ($viewModel === null) {
             return service('response')

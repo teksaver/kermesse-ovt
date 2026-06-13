@@ -1216,3 +1216,32 @@ body {
     cursor: pointer;
     flex-shrink: 0;
 }
+
+/* Responsive classes for slots */
+.slot-desktop-only { display: none; }
+.slot-mobile-only { display: block; }
+
+@media (min-width: 768px) {
+    .slot-desktop-only { display: block; }
+    .slot-mobile-only { display: none !important; }
+}
+
+/* Mobile tooltip toggling */
+.slot-row--disabled.show-tooltip .slot-tooltip {
+    display: block !important;
+    animation: fadeIn 0.2s ease-in-out;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Make available slots look like buttons on mobile */
+@media (max-width: 767px) {
+    .slot-row--available {
+        background: #fff;
+        border: 1px solid #c8e6c9;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: background 0.2s;
+    }
+    .slot-row--available:active {
+        background: #e8f5e9;
+    }
+}

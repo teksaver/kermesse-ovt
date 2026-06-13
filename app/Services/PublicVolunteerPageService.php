@@ -31,7 +31,7 @@ class PublicVolunteerPageService
      *
      * @return array<string, mixed>|null
      */
-    public function buildForSlug(string $publicSlug): ?array
+    public function buildForSlug(string $publicSlug, ?int $userId = null): ?array
     {
         $kermesse = model(KermesseModel::class)
             ->where('public_slug', $publicSlug)
@@ -55,7 +55,7 @@ class PublicVolunteerPageService
 
         $stands = [];
         if ($status === KermesseModel::STATUS_OPEN) {
-            $stands = $this->buildStands((int) $kermesse['id'], $publicSlug);
+            $stands = $this->buildStands((int) $kermesse['id'], $publicSlug, $userId);
         }
 
         return [
@@ -125,7 +125,7 @@ class PublicVolunteerPageService
      *
      * @return array<int, array<string, mixed>>
      */
-    private function buildStands(int $kermesseId, string $publicSlug): array
+    private function buildStands(int $kermesseId, string $publicSlug, ?int $userId = null): array
     {
         $stands = model(StandModel::class)->getActiveForKermesse($kermesseId);
         if (empty($stands)) {
@@ -141,12 +141,23 @@ class PublicVolunteerPageService
 
         $signupCounts = model(SignupModel::class)->countActiveBySlotIds(array_column($allSlots, 'id'));
 
+        $userSignups = [];
+        if ($userId !== null && !empty($allSlots)) {
+            $signups = model(SignupModel::class)
+                ->where('user_id', $userId)
+                ->where('status', \App\Models\SignupModel::STATUS_ACTIVE)
+                ->whereIn('slot_id', array_column($allSlots, 'id'))
+                ->findAll();
+            $userSignups = array_flip(array_column($signups, 'slot_id'));
+        }
+
         $slotsByStand = [];
         foreach ($allSlots as $slot) {
             $slotsByStand[(int) $slot['stand_id']][] = $this->buildSlot(
                 $slot,
                 $signupCounts[(int) $slot['id']] ?? 0,
                 $publicSlug,
+                isset($userSignups[(int) $slot['id']])
             );
         }
 
@@ -167,7 +178,7 @@ class PublicVolunteerPageService
      * @param array<string, mixed> $slot
      * @return array<string, mixed>
      */
-    private function buildSlot(array $slot, int $activeSignups, string $publicSlug): array
+    private function buildSlot(array $slot, int $activeSignups, string $publicSlug, bool $isSignedUp = false): array
     {
         $capacity = (int) $slot['capacity'];
 
@@ -179,11 +190,12 @@ class PublicVolunteerPageService
 
         return [
             'slotId'         => $slotId,
-            'signupHref'     => $isFull ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
+            'signupHref'     => ($isFull || $isSignedUp) ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
             'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
             'capacity'       => $capacity,
             'remainingSpots' => $remainingSpots,
             'isFull'         => $isFull,
+            'isSignedUp'     => $isSignedUp,
         ];
     }
 
