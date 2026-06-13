@@ -136,6 +136,27 @@ jobs:
           printf '%s\n' "${OUVATON_SFTP_KNOWN_HOST}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Ensure production .env exists for first install
+        env:
+          SYNC_ENV_MODE: ensure-present
+          KERMESSE_OUVATON_ROOT: ${{ vars.KERMESSE_OUVATON_ROOT }}
+          KERMESSE_DATABASE_HOSTNAME: ${{ vars.KERMESSE_DATABASE_HOSTNAME }}
+          KERMESSE_DATABASE_DATABASE: ${{ vars.KERMESSE_DATABASE_DATABASE }}
+          KERMESSE_DATABASE_USERNAME: ${{ vars.KERMESSE_DATABASE_USERNAME }}
+          KERMESSE_EMAIL_SMTP_HOST: ${{ vars.KERMESSE_EMAIL_SMTP_HOST }}
+          KERMESSE_EMAIL_SMTP_USER: ${{ vars.KERMESSE_EMAIL_SMTP_USER }}
+          KERMESSE_EMAIL_FROM_EMAIL: ${{ vars.KERMESSE_EMAIL_FROM_EMAIL }}
+          KERMESSE_APP_TIMEZONE: ${{ vars.KERMESSE_APP_TIMEZONE }}
+          KERMESSE_EMAIL_FROM_NAME: ${{ vars.KERMESSE_EMAIL_FROM_NAME }}
+          KERMESSE_EMAIL_SMTP_PORT: ${{ vars.KERMESSE_EMAIL_SMTP_PORT }}
+          KERMESSE_EMAIL_SMTP_CRYPTO: ${{ vars.KERMESSE_EMAIL_SMTP_CRYPTO }}
+          KERMESSE_OPS_PROBE_ENABLED: ${{ vars.KERMESSE_OPS_PROBE_ENABLED }}
+          KERMESSE_DATABASE_PASSWORD: ${{ secrets.KERMESSE_DATABASE_PASSWORD }}
+          KERMESSE_EMAIL_SMTP_PASS: ${{ secrets.KERMESSE_EMAIL_SMTP_PASS }}
+          KERMESSE_TOKEN_SECRET: ${{ secrets.KERMESSE_TOKEN_SECRET }}
+          OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: bash scripts/sync-production-env.sh
+
       - name: Download deploy artifact
         uses: actions/download-artifact@v4
         with:

@@ -31,14 +31,15 @@ Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement
 1. Checkout, setup PHP, validation Composer, tests
 2. Exécution de `scripts/package-deploy-artifact.sh`
 3. Publication de l'archive de déploiement comme artefact GitHub (14 jours)
-4. Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
-5. Génération d'un script PHP autonome et éphémère `ops-bootstrap-activate.php`, sécurisé par token aléatoire de déploiement
-6. Déploiement du shim `httpdocs/index.php`, du bootstrap temporaire et des assets publics via `scripts/deploy-httpdocs.sh`
-7. Appel de `POST /ops-bootstrap-activate.php` : le serveur vérifie l'archive sans charger CodeIgniter, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`/`CURRENT_RELEASE`
-8. Suppression du script `ops-bootstrap-activate.php` du web root, y compris si l'activation échoue
-9. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+4. Amorçage de `shared/.env` via SFTP uniquement s'il est absent (première installation)
+5. Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
+6. Génération d'un script PHP autonome et éphémère `ops-bootstrap-activate.php`, sécurisé par token aléatoire de déploiement
+7. Déploiement du shim `httpdocs/index.php`, du bootstrap temporaire et des assets publics via `scripts/deploy-httpdocs.sh`
+8. Appel de `POST /ops-bootstrap-activate.php` : le serveur vérifie l'archive sans charger CodeIgniter, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`/`CURRENT_RELEASE`
+9. Suppression du script `ops-bootstrap-activate.php` du web root, y compris si l'activation échoue
+10. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
 
-> **Règle absolue (NFR-2) :** le déploiement de routine **ne génère ni ne transfère jamais** le `.env` de production. La configuration de production (`shared/.env`) est gérée par une opération séparée et manuelle — voir « Déploiement du `.env` de production » plus bas. _(Implémenté par la Story 5.4.)_
+> **Règle absolue (NFR-2) :** le déploiement de routine n'écrase jamais le `.env` de production. Il peut seulement créer `shared/.env` s'il est absent, avant la première activation applicative ; les mises à jour et rotations restent une opération manuelle dédiée — voir « Déploiement du `.env` de production » plus bas.
 
 Ce workflow ne déclare pas de service MariaDB Docker : la production Ouvaton utilise la base MariaDB managée déjà fournie par l'hébergeur.
 
@@ -175,11 +176,11 @@ echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 
 **Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 6 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
 
-Déclencher ensuite `.github/workflows/sync-production-env.yml` en cochant `confirm_first_install_env` pour la première installation.
+Au premier déploiement, `deploy-ouvaton.yml` amorce automatiquement `shared/.env` uniquement s'il est absent. Pour une mise à jour volontaire de la configuration ou une rotation de secret, déclencher manuellement `.github/workflows/sync-production-env.yml`.
 
 ## Variables `.env` de production
 
-Le fichier `.env` de production est généré et déployé **uniquement** par le workflow manuel dédié `sync-production-env.yml` (jamais par le déploiement de routine), depuis les secrets GitHub `production`.
+Le fichier `.env` de production est généré depuis les secrets GitHub `production` par le script autonome `scripts/sync-production-env.sh`. Le workflow manuel dédié `sync-production-env.yml` reste le seul chemin de mise à jour/rotation d'un `.env` existant ; le déploiement de routine ne peut l'utiliser qu'en mode `ensure-present`, pour amorcer une première installation si `shared/.env` est absent.
 Voir `.env.example` pour la liste complète des variables et leurs formats.
 
 Variables critiques à configurer :
@@ -202,14 +203,14 @@ Les changements de schéma sont appliqués après déploiement par l'endpoint ap
 
 ## Déploiement du `.env` de production
 
-**Règle absolue (NFR-2, ADR §3.1) :** le déploiement de routine (livraison de code) n'écrit, n'écrase ni ne supprime **jamais** le `.env` de production. Le `.env` vit dans `shared/.env` (hors des releases) ; chaque release le référence par chemin stable et `/ops/activate` n'y touche jamais.
+**Règle absolue (NFR-2, ADR §3.1) :** le déploiement de routine (livraison de code) n'écrase ni ne supprime **jamais** le `.env` de production. Le `.env` vit dans `shared/.env` (hors des releases) ; chaque release le référence par chemin stable et `/ops/activate` n'y touche jamais.
 
 La configuration de production est gérée par une **opération explicite et séparée** :
 
 - **Workflow dédié `sync-production-env.yml`** (déclenchement **manuel** `workflow_dispatch`, environnement GitHub `production`) : génère `.env.next` depuis les secrets, sauvegarde le `shared/.env` distant en `shared/.env.backup-<timestamp>`, puis remplace atomiquement `shared/.env`. Aucune valeur secrète n'apparaît dans les logs.
-- Le déploiement de routine (`deploy-ouvaton.yml`) **ne génère pas** de `.env` et **ne le transfère pas** : un `git push` ne peut jamais corrompre les secrets de prod.
+- Le déploiement de routine (`deploy-ouvaton.yml`) appelle le même script en mode `ensure-present` : si `shared/.env` existe, il sort sans modifier le fichier ; s'il est absent, il crée le layout `shared/` et amorce `shared/.env` avant l'activation applicative. Un `git push` ne peut donc pas écraser les secrets de prod.
 - L'artefact (`package-deploy-artifact.sh`) refuse tout `.env` / `.env.next` / secret (FR-7, NFR-1).
-- **Première installation :** exécuter `sync-production-env.yml` une fois (sans backup possible) pour amorcer `shared/.env`.
+- **Première installation :** aucune release CodeIgniter fonctionnelle n'est requise pour créer `shared/.env` ; l'amorçage passe par Bash + SFTP (`scripts/sync-production-env.sh`), pas par l'application déployée.
 
 > Cette séparation est conforme à la spec gelée `spec-github-actions-production-env-ouvaton.md` et à l'ADR. Elle a été restaurée par la **Story 5.4** après la régression du commit `a8238d6` (qui avait fondu la génération du `.env` dans chaque déploiement).
 
