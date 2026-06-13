@@ -32,9 +32,11 @@ Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement
 2. Exécution de `scripts/package-deploy-artifact.sh`
 3. Publication de l'archive de déploiement comme artefact GitHub (14 jours)
 4. Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
-5. Déploiement du shim `httpdocs/index.php` et des assets publics via `scripts/deploy-httpdocs.sh`
-6. Appel de `POST /ops/activate` via HTTPS/HMAC : le serveur vérifie l'archive, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`
-7. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+5. Génération d'un script PHP autonome et éphémère `ops-bootstrap-activate.php`, sécurisé par token aléatoire de déploiement
+6. Déploiement du shim `httpdocs/index.php`, du bootstrap temporaire et des assets publics via `scripts/deploy-httpdocs.sh`
+7. Appel de `POST /ops-bootstrap-activate.php` : le serveur vérifie l'archive sans charger CodeIgniter, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`/`CURRENT_RELEASE`
+8. Suppression du script `ops-bootstrap-activate.php` du web root, y compris si l'activation échoue
+9. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
 
 > **Règle absolue (NFR-2) :** le déploiement de routine **ne génère ni ne transfère jamais** le `.env` de production. La configuration de production (`shared/.env`) est gérée par une opération séparée et manuelle — voir « Déploiement du `.env` de production » plus bas. _(Implémenté par la Story 5.4.)_
 
@@ -53,11 +55,11 @@ Le document root Ouvaton est fixé à `httpdocs/`. Le workflow de déploiement g
 
 `OUVATON_DEPLOY_REMOTE_FOLDER` et `OUVATON_HTTPDOCS_FOLDER` sont des **noms de dossier**, passés tels quels à `lftp cd`. Le FTP Ouvaton est chroot dans le home du compte — pas de chemin absolu du filesystem.
 
-Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis l'endpoint `/ops/activate` la décompresse côté serveur dans `releases/` et met à jour le lien `current`. L'extraction est réalisée par PHP (`PharData`) après validation des entrées TAR : chemins absolus, `..`, liens symboliques, liens durs et types spéciaux sont rejetés avant toute bascule. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
+Le workflow n'utilise pas de mirror applicatif : l'archive applicative est transférée telle quelle en staging, puis le bootstrap autonome `ops-bootstrap-activate.php` la décompresse côté serveur dans `releases/` et met à jour le lien `current` ainsi que le pointeur `CURRENT_RELEASE`. L'extraction est réalisée par PHP (`PharData`) après validation des entrées TAR : chemins absolus, `..`, liens symboliques, liens durs et types spéciaux sont rejetés avant toute bascule. Seul `public/assets/` est synchronisé en mirror dans `httpdocs/assets/`, car ce dossier ne contient que des fichiers statiques publics.
 
 `KERMESSE_OUVATON_ROOT` contient le chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`). Il n'est pas utilisé par lftp mais permet de générer explicitement les chemins runtime dans `shared/.env` : `session.savePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}/shared/writable/session` et `kermesse.opsActivateBasePath=${KERMESSE_OUVATON_ROOT}/${OUVATON_DEPLOY_REMOTE_FOLDER}`.
 
-Le `index.php` déposé dans `httpdocs/` est un shim généré par `scripts/deploy-httpdocs.sh`. Il définit `FCPATH=httpdocs/`, résout l'application via `../${OUVATON_DEPLOY_REMOTE_FOLDER}/current`, et force les chemins persistants vers `shared/.env` et `shared/writable`. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
+Le `index.php` déposé dans `httpdocs/` est un shim généré par `scripts/deploy-httpdocs.sh`. Il définit `FCPATH=httpdocs/`, résout l'application via `../${OUVATON_DEPLOY_REMOTE_FOLDER}/current`, puis via `CURRENT_RELEASE` si le lien symbolique n'est pas disponible, et force les chemins persistants vers `shared/.env` et `shared/writable`. `app/`, `vendor/` et `.env` restent hors du web root et ne sont pas accessibles par URL.
 
 ### Inclus
 
