@@ -27,6 +27,12 @@
             <?php if (! empty($kermesse['short_description'])): ?>
             <p class="kermesse-dashboard__description" style="margin:0;">📝 <strong>Description :</strong> <?= esc($kermesse['short_description']) ?></p>
             <?php endif; ?>
+            
+            <p class="kermesse-dashboard__public-link" style="margin:0; margin-top:8px;">🔗 <strong>Lien à partager pour les inscriptions :</strong> 
+                <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
+                <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; vertical-align:middle; padding: 0 4px;">📋</button>
+                <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-left: 8px;" hidden>Copié !</span>
+            </p>
         </div>
 
         <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
@@ -55,11 +61,6 @@
                rel="noopener noreferrer"
                class="btn btn--secondary">Accéder à la page publique</a>
 
-            <button type="button"
-                    class="btn btn--secondary"
-                    data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>"
-                    id="copy-link-btn">Copier le lien</button>
-            <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" hidden>Lien copié.</span>
         </div>
     </div>
 
