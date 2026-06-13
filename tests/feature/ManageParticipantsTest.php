@@ -112,6 +112,30 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertDontSee('quentin.lefebvre@participant.test');
     }
 
+    public function testManagerOnKermesseWithoutStandsSeesEmptyState(): void
+    {
+        // Kermesse sans aucun stand : la section s'affiche avec un état vide,
+        // sans erreur (chemin « pas de stand » — évite la lecture participants).
+        $db = db_connect();
+        $db->table('kermesses')->insert([
+            'created_by'  => $this->ownerId,
+            'public_slug' => 'manage-participants-44-empty',
+            'name'        => 'Kermesse Sans Stand 4.4',
+            'location'    => 'Salle de test',
+            'status'      => 'open',
+        ]);
+        $emptyKermesseId = (int) $db->insertID();
+        $db->table('kermesse_user_roles')->insert(
+            ['kermesse_id' => $emptyKermesseId, 'user_id' => $this->adminId, 'role' => 'admin']
+        );
+
+        $result = $this->withSession($this->session($this->adminId))->get("kermesse/{$emptyKermesseId}");
+
+        $result->assertStatus(200);
+        $result->assertSee('Gestion des participants');
+        $result->assertSee("Aucun stand n'a encore été créé");
+    }
+
     // ------------------------------------------------------------------
     // NFR5 — Confidentialité : un Bénévole ne voit ni la section ni aucune PII
     // ------------------------------------------------------------------

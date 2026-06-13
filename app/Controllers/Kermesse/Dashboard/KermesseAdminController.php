@@ -131,6 +131,12 @@ class KermesseAdminController extends BaseController
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
+        // Aucun stand actif → aucun créneau possible : on évite la lecture des
+        // participants (la jointure ne pourrait rien rattacher de toute façon).
+        if ($stands === []) {
+            return [];
+        }
+
         $participantsBySlot = [];
         foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
             $participantsBySlot[(int) $p['slot_id']][] = [
