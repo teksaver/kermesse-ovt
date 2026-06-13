@@ -114,6 +114,7 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | `KERMESSE_EMAIL_FROM_NAME` | Optionnel ; nom d'expéditeur. Défaut : `Kermesse` |
 | `KERMESSE_EMAIL_SMTP_PORT` | Optionnel ; port SMTP. Défaut : `587` |
 | `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
+| `KERMESSE_OPS_PROBE_ENABLED` | Optionnel ; `true` active la sonde `POST /ops/probe` (mesure runtime, écrit `kermesse.opsProbeEnabled`). Défaut : `false`. Ne passer à `true` que le temps d'une mesure |
 | `KERMESSE_ALLOW_INSECURE_TLS` | Optionnel ; `true` autorise temporairement l'appel post-déploiement `/ops/migrate` avec vérification TLS désactivée |
 
 ### Secrets à configurer (`Settings → Environments → production → Secrets`)
@@ -124,8 +125,15 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | `OUVATON_SFTP_KNOWN_HOST` | Entrée known_hosts SSH Ouvaton — générer avec `ssh-keyscan -p 115 <OUVATON_DEPLOY_HOST>` |
 | `KERMESSE_DATABASE_PASSWORD` | Mot de passe MariaDB |
 | `KERMESSE_EMAIL_SMTP_PASS` | Mot de passe SMTP |
-| `KERMESSE_TOKEN_SECRET` | Clé applicative — générer avec `openssl rand -hex 32` |
-| `OPS_MIGRATION_HMAC_SECRET` | Clé HMAC ops — générer avec `openssl rand -hex 32` |
+| `KERMESSE_TOKEN_SECRET` | Clé applicative (≥ 32 caractères) — générer avec `openssl rand -hex 32` |
+| `OPS_MIGRATION_HMAC_SECRET` | Clé HMAC ops (≥ 32 caractères) — générer avec `openssl rand -hex 32`. Voir l'encart « Nommage du secret HMAC » ci-dessous |
+
+> **Nommage du secret HMAC — un seul secret, trois noms selon la couche.** La même valeur HMAC apparaît sous trois noms, ce qui prête à confusion lors de la vérification :
+> - **`OPS_MIGRATION_HMAC_SECRET`** — nom du **secret GitHub** (environnement `production`). C'est le **seul** que vous créez à la main.
+> - **`OPS_HMAC_SECRET`** — nom de la **variable d'environnement** injectée au niveau des étapes webhook du workflow (`Verify production ops HMAC secret`, `Run post-deploy migrations`) ; c'est ce que lit `scripts/lib/ops-sign.sh` pour signer les requêtes. Elle est mappée depuis `OPS_MIGRATION_HMAC_SECRET` — jamais configurée séparément.
+> - **`kermesse.opsMigrationHmacSecret`** — clé écrite dans `shared/.env` par `sync-production-env.sh` ; c'est ce que lit `OpsAuthFilter` côté application pour valider la signature.
+>
+> Conséquence : vous ne configurez **qu'un seul secret GitHub**, `OPS_MIGRATION_HMAC_SECRET` ; les deux autres noms en dérivent automatiquement. La valeur dans `shared/.env` et le secret GitHub doivent rester **identiques** — l'étape `Verify production ops HMAC secret` les compare avant l'activation et échoue si elles divergent (relancer alors `sync-production-env.yml`).
 
 Valeurs fixées par le workflow (rien à configurer) : protocole SFTP port 115, port MariaDB `3306`, nom expéditeur `Kermesse`.
 
@@ -144,16 +152,16 @@ Toutes les entrées sont à configurer dans l'**environnement GitHub `production
 | 2 | `OUVATON_DEPLOY_USERNAME` | `monidentifiant` |
 | 3 | `OUVATON_DEPLOY_REMOTE_FOLDER` | `kermesse` |
 | 4 | `OUVATON_HTTPDOCS_FOLDER` | `httpdocs` |
-| 4 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
-| 5 | `KERMESSE_OUVATON_ROOT` | chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`) — dérive automatiquement `session.savePath` |
-| 6 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
-| 7 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
-| 8 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
-| 9 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP du fournisseur d'email |
-| 10 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
-| 11 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
+| 5 | `KERMESSE_PUBLIC_BASE_URL` | `https://kermesse.monasso.fr/` |
+| 6 | `KERMESSE_OUVATON_ROOT` | chemin absolu filesystem du home Ouvaton (ex. `/var/www/vhosts/monsite.fr`) — dérive automatiquement `session.savePath` |
+| 7 | `KERMESSE_DATABASE_HOSTNAME` | fourni par Ouvaton dans l'espace client |
+| 8 | `KERMESSE_DATABASE_DATABASE` | nom de la base MariaDB Ouvaton |
+| 9 | `KERMESSE_DATABASE_USERNAME` | utilisateur MariaDB Ouvaton |
+| 10 | `KERMESSE_EMAIL_SMTP_HOST` | hôte SMTP du fournisseur d'email |
+| 11 | `KERMESSE_EMAIL_SMTP_USER` | identifiant SMTP |
+| 12 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
 
-Variables optionnelles (défauts appliqués si absentes) : `KERMESSE_APP_TIMEZONE` (`Europe/Paris`), `KERMESSE_EMAIL_SMTP_PORT` (`587`), `KERMESSE_EMAIL_SMTP_CRYPTO` (`tls`).
+Variables optionnelles (défauts appliqués si absentes) : `KERMESSE_APP_TIMEZONE` (`Europe/Paris`), `KERMESSE_EMAIL_FROM_NAME` (`Kermesse`), `KERMESSE_EMAIL_SMTP_PORT` (`587`), `KERMESSE_EMAIL_SMTP_CRYPTO` (`tls`), `KERMESSE_OPS_PROBE_ENABLED` (`false`).
 
 Variable de secours temporaire : `KERMESSE_ALLOW_INSECURE_TLS=true` permet au workflow de terminer l'étape post-déploiement même si le certificat HTTPS ne correspond pas au nom d'hôte. Ne l'activer que le temps de corriger le certificat, puis supprimer la variable ou la remettre à `false`.
 
@@ -174,7 +182,7 @@ echo "KERMESSE_TOKEN_SECRET=$(openssl rand -hex 32)"
 echo "OPS_MIGRATION_HMAC_SECRET=$(openssl rand -hex 32)"
 ```
 
-**Vérification** : dans **Settings → Environments → production**, s'assurer que 12 variables et 6 secrets sont listés (+ les 4 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`). Aucun ne doit être vide.
+**Vérification** : dans **Settings → Environments → production**, s'assurer que les 12 variables requises et les 6 secrets sont listés (+ les 5 optionnels si nécessaire : `KERMESSE_APP_TIMEZONE`, `KERMESSE_EMAIL_FROM_NAME`, `KERMESSE_EMAIL_SMTP_PORT`, `KERMESSE_EMAIL_SMTP_CRYPTO`, `KERMESSE_OPS_PROBE_ENABLED` ; plus `KERMESSE_ALLOW_INSECURE_TLS` en secours temporaire). Aucun secret ni variable requise ne doit être vide.
 
 Au premier déploiement, `deploy-ouvaton.yml` amorce automatiquement `shared/.env` uniquement s'il est absent. Pour une mise à jour volontaire de la configuration ou une rotation de secret, déclencher manuellement `.github/workflows/sync-production-env.yml`.
 
@@ -394,7 +402,7 @@ Les migrations sont appliquées via `POST /ops/migrate`, protégé par HMAC-SHA2
 
 Après chaque déploiement applicatif, une étape post-deploy doit appeler cette route pour appliquer les migrations SQL en attente sur la MariaDB managée Ouvaton déjà configurée. Voir `docs/migration-runner.md` pour le contrat complet (en-têtes, payload signé, codes de réponse, verrouillage).
 
-Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`.
+Le secret `OPS_MIGRATION_HMAC_SECRET` doit être configuré dans l'environnement GitHub `production`. Le workflow le mappe sur la variable d'environnement `OPS_HMAC_SECRET` lue par `scripts/lib/ops-sign.sh` au niveau des étapes webhook, et `sync-production-env.sh` l'écrit dans `shared/.env` sous la clé `kermesse.opsMigrationHmacSecret` — voir l'encart « Nommage du secret HMAC ».
 
 Si le certificat de production est temporairement invalide, définir la variable d'environnement GitHub `KERMESSE_ALLOW_INSECURE_TLS=true` pour que le `curl` post-déploiement utilise `--insecure`. Ce mode conserve HTTPS et la signature HMAC, mais désactive la validation du certificat : il doit rester strictement temporaire.
 
