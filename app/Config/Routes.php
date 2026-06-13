@@ -34,6 +34,7 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
+$routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::update/$1', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Lifecycle management — Owner/Admin only (Story 2.5)
@@ -47,12 +48,14 @@ $routes->post('kermesse/(:num)/close', '\App\Controllers\Kermesse\Dashboard\Kerm
 $routes->post('kermesse/(:num)/stands', '\App\Controllers\Kermesse\Dashboard\StandController::store/$1', ['filter' => 'role:owner,admin']);
 $routes->post('kermesse/(:num)/stands/(:num)', '\App\Controllers\Kermesse\Dashboard\StandController::update/$1/$2', ['filter' => 'role:owner,admin']);
 $routes->post('kermesse/(:num)/stands/(:num)/delete', '\App\Controllers\Kermesse\Dashboard\StandController::delete/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/stands/(:num)/duplicate', '\App\Controllers\Kermesse\Dashboard\StandController::duplicate/$1/$2', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Slot management — Owner/Admin only (Story 2.3)
 // ---------------------------------------------------------------------------
 $routes->post('kermesse/(:num)/stands/(:num)/slots', '\App\Controllers\Kermesse\Dashboard\SlotController::store/$1/$2', ['filter' => 'role:owner,admin']);
 $routes->post('kermesse/(:num)/slots/(:num)', '\App\Controllers\Kermesse\Dashboard\SlotController::update/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/slots/(:num)/delete', '\App\Controllers\Kermesse\Dashboard\SlotController::delete/$1/$2', ['filter' => 'role:owner,admin']);
 
 // ---------------------------------------------------------------------------
 // Public volunteer page & signup (Stories 3.1–3.5)

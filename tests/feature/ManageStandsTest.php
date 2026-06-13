@@ -372,4 +372,19 @@ final class ManageStandsTest extends CIUnitTestCase
 
         $result->assertStatus(404);
     }
+
+    public function testOwnerCanDuplicateStand(): void
+    {
+        $standId = $this->insertStand('Stand Original');
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", []);
+
+        $result->assertRedirect();
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE name = 'Stand Original (copie)'")
+            ->getRowArray()['cnt'];
+        $this->assertSame(1, $count);
+    }
 }

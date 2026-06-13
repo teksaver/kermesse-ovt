@@ -18,10 +18,18 @@
                 En cas de doute, contactez l'organisateur de la kermesse.
             </p>
             <?php else: ?>
-            <p class="confirmation-email-notice">
-                Un email de confirmation vous a été envoyé. Si vous ne le recevez pas
-                d'ici quelques minutes, vérifiez vos courriers indésirables.
-            </p>
+                <?php if (! ($isAuthenticated ?? false)): ?>
+                <p class="confirmation-email-notice" style="line-height: 1.5;">
+                    Un email de confirmation vous a été envoyé. Cliquez sur le lien qu'il contient si vous souhaitez vous inscrire plus facilement à d'autres créneaux ou modifier vos inscriptions.<br><br>
+                    Si vous ne le recevez pas d'ici quelques minutes, vérifiez vos courriers indésirables.<br><br>
+                    Vous pouvez également vous inscrire à d'autres créneaux sans vous connecter en cliquant sur le lien "Retour aux créneaux" ci-dessous.
+                </p>
+                <?php else: ?>
+                <p class="confirmation-email-notice">
+                    Un email de confirmation vous a été envoyé. Si vous ne le recevez pas
+                    d'ici quelques minutes, vérifiez vos courriers indésirables.
+                </p>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 

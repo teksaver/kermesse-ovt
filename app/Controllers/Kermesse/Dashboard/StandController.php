@@ -143,6 +143,78 @@ class StandController extends BaseController
     }
 
     /**
+     * POST /kermesse/{kermesse_id}/stands/{stand_id}/duplicate
+     *
+     * Duplicates a stand and all its active slots.
+     */
+    public function duplicate(string $kermesseId, string $standId): mixed
+    {
+        $id      = (int) $kermesseId;
+        $standId = (int) $standId;
+
+        $standModel = model(StandModel::class);
+        $stand = $standModel->where('kermesse_id', $id)
+            ->where('status', StandModel::STATUS_ACTIVE)
+            ->find($standId);
+
+        if ($stand === null) {
+            return $this->response->setStatusCode(404);
+        }
+
+        $baseName = $stand['name'];
+        $newName = $baseName . ' (copie)';
+        $counter = 2;
+
+        while ($standModel->hasActiveDuplicate($id, $newName)) {
+            $newName = $baseName . ' (copie ' . $counter . ')';
+            $counter++;
+        }
+
+        $db = db_connect();
+        $db->transBegin();
+
+        $newStandId = $standModel->insert([
+            'kermesse_id'   => $id,
+            'name'          => $newName,
+            'display_order' => $standModel->nextDisplayOrder($id),
+            'status'        => StandModel::STATUS_ACTIVE,
+        ]);
+
+        if (! $newStandId) {
+            $db->transRollback();
+            return redirect()->back()->with('error', 'Erreur système lors de la duplication du stand.');
+        }
+
+        $slotModel = model(\App\Models\SlotModel::class);
+        $slots = $slotModel->where('stand_id', $standId)
+            ->where('status', \App\Models\SlotModel::STATUS_ACTIVE)
+            ->findAll();
+
+        foreach ($slots as $slot) {
+            $slotModel->insert([
+                'stand_id'  => $newStandId,
+                'starts_at' => $slot['starts_at'],
+                'ends_at'   => $slot['ends_at'],
+                'capacity'  => $slot['capacity'],
+                'status'    => \App\Models\SlotModel::STATUS_ACTIVE,
+            ]);
+        }
+
+        $db->transCommit();
+
+        if (! $db->transStatus()) {
+            return redirect()->back()->with('error', 'Erreur système lors de la duplication des créneaux.');
+        }
+
+        session()->setFlashdata('success', 'Stand dupliqué avec succès. Veuillez lui donner un nom définitif.');
+        session()->setFlashdata('stand_form', 'edit');
+        session()->setFlashdata('editing_stand_id', $newStandId);
+        session()->setFlashdata('stand_name', $newName);
+
+        return redirect()->to(site_url("kermesse/{$id}") . '#stands');
+    }
+
+    /**
      * Redirects back with input and flashdata for the dashboard stands section.
      */
     private function redirectWithError(

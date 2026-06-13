@@ -17,7 +17,8 @@ class PublicController extends BaseController
 {
     public function index(string $publicSlug): mixed
     {
-        $viewModel = (new PublicVolunteerPageService())->buildForSlug($publicSlug);
+        $userId = session()->get('is_logged_in') ? (int) session()->get('user_id') : null;
+        $viewModel = (new PublicVolunteerPageService())->buildForSlug($publicSlug, $userId);
 
         if ($viewModel === null) {
             return service('response')
@@ -27,8 +28,16 @@ class PublicController extends BaseController
                 ]));
         }
 
+        $isLoggedIn = (bool) session()->get('is_logged_in');
+        $user = null;
+        if ($isLoggedIn) {
+            $user = model(\App\Models\UserModel::class)->find(session()->get('user_id'));
+        }
+
         return view('kermesse/public/volunteer_page', array_merge($viewModel, [
-            'isLoggedIn' => (bool) session()->get('is_logged_in'),
+            'isLoggedIn' => $isLoggedIn,
+            'user'       => $user,
+            'publicSlug' => $publicSlug,
         ]));
     }
 }

@@ -209,10 +209,14 @@ class SignupController extends BaseController
             return redirect()->to(site_url("k/{$publicSlug}"));
         }
 
+        $authUserId      = (int) session()->get('user_id');
+        $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
+
         return view('kermesse/public/signup_confirmation', [
-            'kermesseName' => (string) ($flash['kermesseName'] ?? ''),
-            'publicSlug'   => $publicSlug,
-            'emailSent'    => $flash['emailSent'] ?? null,
+            'kermesseName'    => (string) ($flash['kermesseName'] ?? ''),
+            'publicSlug'      => $publicSlug,
+            'emailSent'       => $flash['emailSent'] ?? null,
+            'isAuthenticated' => $isAuthenticated,
         ]);
     }
 
