@@ -27,8 +27,15 @@ class PublicController extends BaseController
                 ]));
         }
 
+        $isLoggedIn = (bool) session()->get('is_logged_in');
+        $user = null;
+        if ($isLoggedIn) {
+            $user = model(\App\Models\UserModel::class)->find(session()->get('user_id'));
+        }
+
         return view('kermesse/public/volunteer_page', array_merge($viewModel, [
-            'isLoggedIn' => (bool) session()->get('is_logged_in'),
+            'isLoggedIn' => $isLoggedIn,
+            'user'       => $user,
         ]));
     }
 }

@@ -50,12 +50,20 @@
         </div>
         <?php endif; ?>
 
-        <?php if (! $isLoggedIn): ?>
+        <?php if (! $isLoggedIn || ! is_array($user)): ?>
         <p class="public-intro">
             Déjà inscrit ?
             <a href="<?= route_to('auth.login') ?>">Connectez-vous</a>
             pour retrouver vos participations.
         </p>
+        <?php else: ?>
+        <div class="public-intro" style="display:flex; justify-content:space-between; align-items:center; background:#f8f9fa; padding:16px 24px; border-radius:8px; border:1px solid #e9ecef; margin-bottom:24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <p style="margin:0;">Bonjour <strong><?= esc(trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Bénévole') ?></strong> (<?= esc($user['email'] ?? '') ?>)</p>
+            <form method="post" action="<?= site_url('auth/logout') ?>" style="margin:0;">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn--secondary btn--sm">Ce n'est pas vous ? Se déconnecter</button>
+            </form>
+        </div>
         <?php endif; ?>
 
         <?php if ($status === 'preparation'): ?>
