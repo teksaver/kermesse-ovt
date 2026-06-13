@@ -4,6 +4,7 @@
 
 <div class="home-connected">
     <h1 class="page-title">Mes kermesses</h1>
+    <p style="margin-top:-16px; margin-bottom:24px; color:var(--color-text-muted);">Avec Padlapin, évitez les lapins dans vos événements ! Organisez vos kermesses et gérez les inscriptions des bénévoles facilement.</p>
 
     <?php if (empty($kermesses)): ?>
 
