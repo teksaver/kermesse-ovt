@@ -403,8 +403,8 @@
             <li class="my-signups-list__item">
                 <span class="my-signups-list__stand"><strong><?= esc($participation['stand_name']) ?></strong></span>
                 <span class="my-signups-list__when">
-                    📅 <?= esc(date('d/m/Y', strtotime((string) $participation['starts_at']))) ?>
-                    · 🕐 <?= esc(date('H:i', strtotime((string) $participation['starts_at']))) ?> – <?= esc(date('H:i', strtotime((string) $participation['ends_at']))) ?>
+                    <span aria-hidden="true">📅</span> <?= esc($participation['date']) ?>
+                    · <span aria-hidden="true">🕐</span> <?= esc($participation['start_time']) ?> – <?= esc($participation['end_time']) ?>
                 </span>
             </li>
             <?php endforeach; ?>

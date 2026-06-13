@@ -187,6 +187,12 @@ class SignupModel extends Model
      * availability already treats as freed never reappears here (UX-DR23). Scoped to the
      * single user (privacy boundary) and ordered chronologically by slot start.
      *
+     * Filtering on signup status alone is sufficient (no slot/stand status filter needed):
+     * deactivating a stand or a slot cascades to its signups in the same transaction
+     * (StandDeletionService / SlotDeletionService set them to 'deactivated'), so an active
+     * signup can never point at a removed slot/stand. The signup status is the single
+     * source of truth for "active" across the whole codebase.
+     *
      * @return list<array{stand_name: string, starts_at: string, ends_at: string}>
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array

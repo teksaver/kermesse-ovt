@@ -12,6 +12,7 @@ use App\Models\UserRoleModel;
 use App\Services\KermesseLifecycleService;
 use App\Services\RoleService;
 use App\Services\StandDeletionService;
+use CodeIgniter\I18n\Time;
 
 /**
  * Kermesse admin dashboard: stands, slots, lifecycle, participants.
@@ -64,8 +65,24 @@ class KermesseAdminController extends BaseController
         }
 
         // "Mes participations" : inscriptions actives de l'utilisateur courant
-        // (tout rôle). ViewModel structuré — la vue ne fait aucune requête (NFR).
-        $myParticipations = model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id);
+        // (tout rôle). ViewModel pré-formaté — la vue ne fait ni requête ni
+        // formatage (NFR). Date/heures interprétées dans le fuseau de la kermesse,
+        // symétriquement à la création du créneau (SlotController, Time::parse).
+        $timezone         = (string) ($kermesse['timezone'] ?? 'Europe/Paris');
+        $myParticipations = array_map(
+            static function (array $p) use ($timezone): array {
+                $start = Time::parse((string) $p['starts_at'], $timezone);
+                $end   = Time::parse((string) $p['ends_at'], $timezone);
+
+                return [
+                    'stand_name' => $p['stand_name'],
+                    'date'       => $start->format('d/m/Y'),
+                    'start_time' => $start->format('H:i'),
+                    'end_time'   => $end->format('H:i'),
+                ];
+            },
+            model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
+        );
 
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
