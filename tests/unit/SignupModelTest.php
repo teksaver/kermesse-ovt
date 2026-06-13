@@ -185,8 +185,86 @@ final class SignupModelTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Story 4.4 — findActiveParticipantsForKermesse() : récapitulatif nominatif
+    // ------------------------------------------------------------------
+
+    public function testFindActiveParticipantsReturnsVolunteerIdentityAndContact(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->setPhone($this->userId, '0612345678');
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($slotId, (int) $rows[0]['slot_id']);
+        $this->assertSame($this->standId, (int) $rows[0]['stand_id']);
+        $this->assertSame('Benevole', $rows[0]['first_name']);
+        $this->assertSame('Test', $rows[0]['last_name']);
+        $this->assertSame('benevole@signupmodel.test', $rows[0]['email']);
+        $this->assertSame('0612345678', $rows[0]['phone']);
+    }
+
+    public function testFindActiveParticipantsExcludesInactiveAndSoftDeleted(): void
+    {
+        $active      = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $cancelled   = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
+        $deactivated = $this->insertSlot($this->standId, '2026-10-10 11:00:00', '2026-10-10 12:00:00');
+        $deleted     = $this->insertSlot($this->standId, '2026-10-10 12:00:00', '2026-10-10 13:00:00');
+        $softDeleted = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
+
+        $this->insertSignup($active, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($cancelled, $this->userId, SignupModel::STATUS_CANCELLED);
+        $this->insertSignup($deactivated, $this->userId, SignupModel::STATUS_DEACTIVATED);
+        $this->insertSignup($deleted, $this->userId, SignupModel::STATUS_DELETED);
+        $this->insertSignup($softDeleted, $this->userId, SignupModel::STATUS_ACTIVE, '2026-01-01 00:00:00');
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        // Même définition « actif » que la disponibilité publique : seule l'inscription
+        // active non soft-deleted remonte (cohérence places occupées/restantes).
+        $this->assertCount(1, $rows);
+        $this->assertSame($active, (int) $rows[0]['slot_id']);
+    }
+
+    public function testFindActiveParticipantsScopedToKermesse(): void
+    {
+        $slotHere = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $this->insertSignup($slotHere, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        // Inscription active dans une AUTRE kermesse : ne doit pas fuiter ici.
+        $otherStandId = $this->insertStand($this->otherKermesseId, 'Stand Ailleurs');
+        $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $this->insertSignup($otherSlot, $this->otherUserId, SignupModel::STATUS_ACTIVE);
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($slotHere, (int) $rows[0]['slot_id']);
+    }
+
+    public function testFindActiveParticipantsListsEveryVolunteerOnASlot(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->otherUserId, SignupModel::STATUS_ACTIVE);
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(2, $rows);
+        foreach ($rows as $row) {
+            $this->assertSame($slotId, (int) $row['slot_id']);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private function setPhone(int $userId, string $phone): void
+    {
+        db_connect()->table('users')->where('id', $userId)->update(['phone' => $phone]);
+    }
 
     private function insertSignupReturningId(int $slotId, int $userId, string $status): int
     {

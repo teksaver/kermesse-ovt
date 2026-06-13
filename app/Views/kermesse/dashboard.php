@@ -381,11 +381,59 @@
     <?php endif; ?>
 
     <?php if (! empty($canManageParticipants)): ?>
-    <!-- Section participants — Owner/Admin/Gestionnaire. Garde de rôle posée
-         en Story 4.1 ; contenu détaillé (liste des bénévoles) livré en Story 4.4. -->
+    <!-- Section participants — Owner/Admin/Gestionnaire (garde Story 4.1 ; contenu
+         Story 4.4). SEULE surface autorisée pour la PII des bénévoles (NFR5) :
+         nom, prénom, téléphone, email. Le ViewModel est préparé par le contrôleur ;
+         la vue ne fait aucun calcul ni requête (UX-DR24). -->
     <section class="kermesse-dashboard__section" id="participants">
         <h2 class="section-title">Gestion des participants</h2>
-        <p class="section-placeholder">La liste des bénévoles inscrits sera disponible ici prochainement.</p>
+
+        <?php $participantStands = $participantStands ?? []; ?>
+        <?php if (empty($participantStands)): ?>
+        <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
+        <?php else: ?>
+        <?php foreach ($participantStands as $pStand): ?>
+        <div class="participants-stand">
+            <h3 class="subsection-title"><?= esc($pStand['name']) ?></h3>
+
+            <?php if (empty($pStand['slots'])): ?>
+            <p class="section-placeholder">Aucun créneau pour ce stand.</p>
+            <?php else: ?>
+            <?php foreach ($pStand['slots'] as $pSlot): ?>
+            <div class="participants-slot">
+                <div class="participants-slot__header">
+                    <span class="participants-slot__when">
+                        <span aria-hidden="true">📅</span> <?= esc($pSlot['date']) ?>
+                        · <span aria-hidden="true">🕐</span> <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
+                    </span>
+                    <span class="participants-slot__fill">Occupé : <?= (int) $pSlot['occupied'] ?> / <?= (int) $pSlot['capacity'] ?> · Restant : <?= (int) $pSlot['remaining'] ?></span>
+                </div>
+
+                <?php if (empty($pSlot['volunteers'])): ?>
+                <p class="participants-slot__empty">Aucun bénévole inscrit sur ce créneau.</p>
+                <?php else: ?>
+                <ul class="participants-list">
+                    <?php foreach ($pSlot['volunteers'] as $vol): ?>
+                    <li class="participants-list__item">
+                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <span class="participants-list__contact">
+                            <?php if ($vol['phone'] !== ''): ?>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <?php endif; ?>
+                            <?php if ($vol['email'] !== ''): ?>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <?php endif; ?>
+                        </span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
     </section>
     <?php endif; ?>
 
@@ -528,6 +576,67 @@
 }
 .my-signups-list__cancel .btn {
     width: 100%;
+}
+
+/* Section participants — récapitulatif nominatif (Story 4.4) */
+.participants-stand {
+    margin: 8px 0 24px;
+}
+.participants-slot {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.participants-slot__header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin-bottom: 8px;
+}
+.participants-slot__when {
+    color: #333;
+    font-size: 14px;
+}
+.participants-slot__fill {
+    color: #555;
+    font-size: 14px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.participants-slot__empty {
+    color: #555;
+    font-size: 14px;
+    margin: 0;
+}
+.participants-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.participants-list__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border-top: 1px solid #f0f0f0;
+}
+.participants-list__contact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 14px;
+}
+.participants-list__contact a {
+    /* Cible tactile confortable sur mobile (UX : 44px). */
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
 }
 </style>
 <?= $this->endSection() ?>

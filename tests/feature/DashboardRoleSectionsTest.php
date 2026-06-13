@@ -39,12 +39,17 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
 
     // Outils individuels de la section « Modification ». UX-DR16 exige que TOUS
     // soient absents (pas seulement désactivés) pour Gestionnaire/Bénévole.
+    //
+    // Note Story 4.4 : MARKER_STAND_DATA ne fait PLUS partie de cette liste. Le nom
+    // d'un stand apparaît désormais aussi dans la section « Gestion des participants »
+    // (visible Owner/Admin/Gestionnaire) ; ce n'est donc plus un marqueur exclusif de
+    // « Modification ». Seuls les outils d'édition ci-dessous restent réservés à
+    // Owner/Admin.
     private const MODIFICATION_TOOLS = [
         'Modification',            // titre de section
         'Ajouter un stand',        // gestion des stands
         'Modifier la kermesse',    // édition des caractéristiques (bouton + modale)
         'Fermer les inscriptions', // action lifecycle (kermesse fixée à « open »)
-        self::MARKER_STAND_DATA,   // données de stands (minimisation)
     ];
 
     protected function setUp(): void
@@ -219,6 +224,8 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
+        // Données de stands présentes (section Modification et/ou Participants).
+        $result->assertSee(self::MARKER_STAND_DATA);
 
         // Tous les outils de la section « Modification » sont présents : cela
         // donne du sens aux assertions d'absence pour les autres rôles.
@@ -234,6 +241,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
+        $result->assertSee(self::MARKER_STAND_DATA);
 
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertSee($tool);
@@ -251,9 +259,12 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
+        // Story 4.4 : le Gestionnaire voit désormais les stands/créneaux DANS la section
+        // « Gestion des participants » (surface autorisée), donc le nom du stand apparaît.
+        $result->assertSee(self::MARKER_STAND_DATA);
 
-        // UX-DR16 : TOUS les outils de la section Modification sont ABSENTS du HTML
-        // (pas seulement désactivés), et les données de stands ne sont pas chargées.
+        // UX-DR16 : TOUS les outils d'édition de la section Modification restent ABSENTS
+        // du HTML (pas seulement désactivés) pour le Gestionnaire.
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertDontSee($tool);
         }
@@ -270,8 +281,10 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
 
-        // Ni Modification ni Gestion des participants ne doivent apparaître.
+        // Ni Modification ni Gestion des participants ne doivent apparaître, et aucune
+        // donnée de stand ne doit fuiter au Bénévole (minimisation maintenue — NFR5).
         $result->assertDontSee(self::MARKER_PARTICIPANTS);
+        $result->assertDontSee(self::MARKER_STAND_DATA);
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertDontSee($tool);
         }
