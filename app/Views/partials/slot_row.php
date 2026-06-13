@@ -18,11 +18,12 @@
  */
 $isFull     = ! empty($slot['isFull']);
 $isSignedUp = ! empty($slot['isSignedUp']);
+$isOverlapping = ! empty($slot['isOverlapping']);
 $signupHref = $slot['signupHref'] ?? null;
 $standName  = $standName ?? '';
 
 // Determine disabled state
-$isDisabled = $isFull || $isSignedUp;
+$isDisabled = $isFull || $isSignedUp || $isOverlapping;
 ?>
 <?php if (! $isDisabled && $signupHref): ?>
 <a href="<?= esc($signupHref) ?>" class="slot-row slot-row--public slot-row--available slot-action" style="display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: inherit;">
@@ -38,10 +39,22 @@ $isDisabled = $isFull || $isSignedUp;
 </a>
 <?php else: ?>
 <?php 
-$disabledReason = $isSignedUp ? "Vous êtes déjà inscrit sur ce créneau" : "Plus de place pour ce créneau";
-$statusLabel = $isSignedUp ? "Inscrit(e) ✅" : "Complet 🔒";
-$statusClass = $isSignedUp ? "slot-row__status--signed-up" : "slot-row__status--full";
-$divClass    = $isSignedUp ? "slot-row--signed-up" : "slot-row--full";
+if ($isSignedUp) {
+    $disabledReason = "Vous êtes déjà inscrit sur ce créneau";
+    $statusLabel = "Inscrit(e) ✅";
+    $statusClass = "slot-row__status--signed-up";
+    $divClass    = "slot-row--signed-up";
+} elseif ($isOverlapping) {
+    $disabledReason = "Créneau incompatible avec vos inscriptions";
+    $statusLabel = "Incompatible ⚠️";
+    $statusClass = "slot-row__status--overlapping";
+    $divClass    = "slot-row--overlapping";
+} else {
+    $disabledReason = "Plus de place pour ce créneau";
+    $statusLabel = "Complet 🔒";
+    $statusClass = "slot-row__status--full";
+    $divClass    = "slot-row--full";
+}
 ?>
 <div class="slot-row slot-row--public slot-row--disabled <?= $divClass ?>" aria-disabled="true" tabindex="0" onclick="this.classList.toggle('show-tooltip')" style="display: flex; justify-content: space-between; align-items: center; opacity: 0.65; cursor: not-allowed; position: relative;">
     <div class="slot-row__info">

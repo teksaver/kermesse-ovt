@@ -142,22 +142,45 @@ class PublicVolunteerPageService
         $signupCounts = model(SignupModel::class)->countActiveBySlotIds(array_column($allSlots, 'id'));
 
         $userSignups = [];
+        $userIntervals = [];
         if ($userId !== null && !empty($allSlots)) {
             $signups = model(SignupModel::class)
                 ->where('user_id', $userId)
                 ->where('status', \App\Models\SignupModel::STATUS_ACTIVE)
-                ->whereIn('slot_id', array_column($allSlots, 'id'))
                 ->findAll();
+            
             $userSignups = array_flip(array_column($signups, 'slot_id'));
+            
+            $signedUpSlotIds = array_keys($userSignups);
+            if (!empty($signedUpSlotIds)) {
+                $signedUpSlots = model(SlotModel::class)->whereIn('id', $signedUpSlotIds)->findAll();
+                foreach ($signedUpSlots as $s) {
+                    $userIntervals[] = [
+                        'start' => $s['starts_at'],
+                        'end'   => $s['ends_at']
+                    ];
+                }
+            }
         }
 
         $slotsByStand = [];
         foreach ($allSlots as $slot) {
+            $isOverlapping = false;
+            if (!isset($userSignups[(int) $slot['id']])) {
+                foreach ($userIntervals as $interval) {
+                    if (max($slot['starts_at'], $interval['start']) < min($slot['ends_at'], $interval['end'])) {
+                        $isOverlapping = true;
+                        break;
+                    }
+                }
+            }
+
             $slotsByStand[(int) $slot['stand_id']][] = $this->buildSlot(
                 $slot,
                 $signupCounts[(int) $slot['id']] ?? 0,
                 $publicSlug,
-                isset($userSignups[(int) $slot['id']])
+                isset($userSignups[(int) $slot['id']]),
+                $isOverlapping
             );
         }
 
@@ -178,7 +201,7 @@ class PublicVolunteerPageService
      * @param array<string, mixed> $slot
      * @return array<string, mixed>
      */
-    private function buildSlot(array $slot, int $activeSignups, string $publicSlug, bool $isSignedUp = false): array
+    private function buildSlot(array $slot, int $activeSignups, string $publicSlug, bool $isSignedUp = false, bool $isOverlapping = false): array
     {
         $capacity = (int) $slot['capacity'];
 
@@ -190,12 +213,13 @@ class PublicVolunteerPageService
 
         return [
             'slotId'         => $slotId,
-            'signupHref'     => ($isFull || $isSignedUp) ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
+            'signupHref'     => ($isFull || $isSignedUp || $isOverlapping) ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
             'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
             'capacity'       => $capacity,
             'remainingSpots' => $remainingSpots,
             'isFull'         => $isFull,
             'isSignedUp'     => $isSignedUp,
+            'isOverlapping'  => $isOverlapping,
         ];
     }
 
