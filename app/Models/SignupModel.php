@@ -193,12 +193,15 @@ class SignupModel extends Model
      * signup can never point at a removed slot/stand. The signup status is the single
      * source of truth for "active" across the whole codebase.
      *
-     * @return list<array{stand_name: string, starts_at: string, ends_at: string}>
+     * The signup id rides along so the dashboard can target the per-row cancel
+     * action (Story 4.3) without a second query.
+     *
+     * @return list<array{signup_id: int, stand_name: string, starts_at: string, ends_at: string}>
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
     {
         return $this->db->table($this->table . ' si')
-            ->select('st.name AS stand_name, sl.starts_at, sl.ends_at')
+            ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('si.user_id', $userId)
@@ -209,5 +212,58 @@ class SignupModel extends Model
             ->orderBy('sl.id', 'ASC')
             ->get()
             ->getResultArray();
+    }
+
+    /**
+     * Return an ACTIVE signup that belongs to $userId AND to $kermesseId, or null.
+     *
+     * Ownership + scope guard for Story 4.3 cancellation: the signup is bound to the
+     * kermesse through slot→stand, so a volunteer cannot target a signup id from
+     * another kermesse, and the user_id match enforces that one can only cancel one's
+     * own inscription. A miss (wrong owner, wrong kermesse, already inactive,
+     * soft-deleted) returns null so the service can answer neutrally.
+     *
+     * @return array{id: int, user_id: int, slot_id: int}|null
+     */
+    public function findActiveOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
+    {
+        $row = $this->db->table($this->table . ' si')
+            ->select('si.id, si.user_id, si.slot_id')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->where('si.id', $signupId)
+            ->where('si.user_id', $userId)
+            ->where('st.kermesse_id', $kermesseId)
+            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.deleted_at', null)
+            ->get()
+            ->getRowArray();
+
+        return $row ?: null;
+    }
+
+    /**
+     * Transition an ACTIVE signup to CANCELLED, scoped to its owner. Returns true only
+     * when exactly one active row flipped.
+     *
+     * The status guard makes this safe under a double submit / already-cancelled row
+     * (no row matches → false, so the place is never "freed twice"), and the user_id
+     * guard is defence in depth on top of the service's ownership read. Setting
+     * CANCELLED frees the slot instantly: every active-signup count excludes
+     * INACTIVE_STATUSES, so public availability recovers the place with no extra write.
+     */
+    public function markCancelled(int $signupId, int $userId): bool
+    {
+        $this->builder()
+            ->where('id', $signupId)
+            ->where('user_id', $userId)
+            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('deleted_at', null)
+            ->update([
+                'status'     => self::STATUS_CANCELLED,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+        return $this->db->affectedRows() === 1;
     }
 }

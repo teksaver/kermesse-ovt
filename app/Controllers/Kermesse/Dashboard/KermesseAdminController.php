@@ -75,6 +75,7 @@ class KermesseAdminController extends BaseController
                 $end   = Time::parse((string) $p['ends_at'], $timezone);
 
                 return [
+                    'signup_id'  => (int) $p['signup_id'],
                     'stand_name' => $p['stand_name'],
                     'date'       => $start->format('d/m/Y'),
                     'start_time' => $start->format('H:i'),

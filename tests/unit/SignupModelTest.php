@@ -122,8 +122,84 @@ final class SignupModelTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Story 4.3 — findActiveOwnedInKermesse() : garde ownership + scope kermesse
+    // ------------------------------------------------------------------
+
+    public function testFindActiveOwnedInKermesseScopesToOwnerKermesseAndActive(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $model = model(SignupModel::class);
+
+        // Propriétaire + bonne kermesse + actif → trouvé.
+        $row = $model->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId);
+        $this->assertNotNull($row);
+        $this->assertSame($signupId, (int) $row['id']);
+
+        // Mauvais utilisateur → null (ownership).
+        $this->assertNull($model->findActiveOwnedInKermesse($signupId, $this->otherUserId, $this->kermesseId));
+
+        // Mauvaise kermesse → null (scope, lié via slot→stand).
+        $this->assertNull($model->findActiveOwnedInKermesse($signupId, $this->userId, $this->otherKermesseId));
+    }
+
+    public function testFindActiveOwnedInKermesseExcludesCancelled(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_CANCELLED);
+
+        $this->assertNull(
+            model(SignupModel::class)->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId)
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Story 4.3 — markCancelled() : libère la place, garde ownership
+    // ------------------------------------------------------------------
+
+    public function testMarkCancelledFreesTheSlotForOwnerOnly(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $model = model(SignupModel::class);
+
+        // Mauvais propriétaire → no-op : la place reste occupée.
+        $this->assertFalse($model->markCancelled($signupId, $this->otherUserId));
+        $this->assertSame(1, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
+
+        // Bon propriétaire → annulé : la place est libérée instantanément
+        // (même définition « actif » que la disponibilité publique — UX-DR23).
+        $this->assertTrue($model->markCancelled($signupId, $this->userId));
+        $this->assertSame(0, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
+    }
+
+    public function testMarkCancelledIsIdempotentOnAlreadyCancelled(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_CANCELLED);
+
+        // Already cancelled → no active row to transition → false (no double-free).
+        $this->assertFalse(model(SignupModel::class)->markCancelled($signupId, $this->userId));
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private function insertSignupReturningId(int $slotId, int $userId, string $status): int
+    {
+        $db = db_connect();
+        $db->table('signups')->insert([
+            'slot_id'    => $slotId,
+            'user_id'    => $userId,
+            'status'     => $status,
+            'deleted_at' => null,
+        ]);
+
+        return (int) $db->insertID();
+    }
 
     private function insertBaseFixtures(): void
     {

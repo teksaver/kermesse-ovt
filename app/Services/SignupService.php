@@ -111,6 +111,41 @@ class SignupService
     }
 
     /**
+     * Cancel (withdraw from) a volunteer's own signup — Story 4.3.
+     *
+     * Failure codes: not_found | signups_not_open | cancel_failed
+     *
+     * Ownership is enforced server-side: only the signup's owner may cancel it, and
+     * only while the kermesse is open. Cancellation never needs a transaction or a
+     * capacity check — freeing a place can never overbook — and the place is recovered
+     * the instant the status becomes CANCELLED (every active count excludes it).
+     */
+    public function cancelSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    {
+        // Ownership + kermesse scope. A miss is reported neutrally so a volunteer
+        // cannot probe other users' or other kermesses' signup ids.
+        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        // Lifecycle invariant: withdrawal is only allowed while signups are open
+        // (AC2). Defence in depth — the dashboard hides the button when closed.
+        $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
+        if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
+            return SignupResult::failure('signups_not_open');
+        }
+
+        if (! $this->signupModel->markCancelled($signupId, $userId)) {
+            // The active row vanished between the read and the write (concurrent
+            // cancel / double submit). Treat as a no-op failure, not a crash.
+            return SignupResult::failure('cancel_failed');
+        }
+
+        return SignupResult::success($signupId, $userId);
+    }
+
+    /**
      * Run the invariant checks and inserts. Never commits or rolls back: the caller
      * owns the transaction boundary (single rollback point, exception-safe).
      */

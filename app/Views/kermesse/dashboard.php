@@ -389,12 +389,21 @@
     </section>
     <?php endif; ?>
 
-    <!-- Section « Mes participations » — tout rôle (garde Story 4.1 ; contenu Story 4.2).
-         N'affiche que les inscriptions actives de l'utilisateur courant (UX-DR23). -->
+    <!-- Section « Mes participations » — tout rôle (garde Story 4.1 ; contenu Story 4.2 ;
+         annulation Story 4.3). N'affiche que les inscriptions actives de l'utilisateur (UX-DR23). -->
     <section class="kermesse-dashboard__section" id="my-signups">
         <h2 class="section-title">Mes participations</h2>
 
+        <?php if (! empty($participationNotice = session()->getFlashdata('participation_notice'))): ?>
+        <p class="form-success"><?= esc($participationNotice) ?></p>
+        <?php endif; ?>
+        <?php if (! empty($participationError = session()->getFlashdata('participation_error'))): ?>
+        <p class="form-error" role="alert"><?= esc($participationError) ?></p>
+        <?php endif; ?>
+
         <?php $myParticipations = $myParticipations ?? []; ?>
+        <?php // L'annulation n'est proposée que lorsque les inscriptions sont ouvertes (AC2). ?>
+        <?php $signupsOpen = ($kermesse['status'] === 'open'); ?>
         <?php if (empty($myParticipations)): ?>
         <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
         <?php else: ?>
@@ -406,6 +415,15 @@
                     <span aria-hidden="true">📅</span> <?= esc($participation['date']) ?>
                     · <span aria-hidden="true">🕐</span> <?= esc($participation['start_time']) ?> – <?= esc($participation['end_time']) ?>
                 </span>
+                <?php if ($signupsOpen): ?>
+                <form method="post"
+                      action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
+                      class="my-signups-list__cancel"
+                      onsubmit="return confirm('Voulez-vous vraiment annuler cette participation ?');">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--danger btn--sm">Annuler ma participation</button>
+                </form>
+                <?php endif; ?>
             </li>
             <?php endforeach; ?>
         </ul>
@@ -504,6 +522,12 @@
 .my-signups-list__when {
     color: #555;
     font-size: 14px;
+}
+.my-signups-list__cancel {
+    margin: 8px 0 0;
+}
+.my-signups-list__cancel .btn {
+    width: 100%;
 }
 </style>
 <?= $this->endSection() ?>
