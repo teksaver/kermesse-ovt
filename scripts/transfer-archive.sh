@@ -26,6 +26,7 @@ CHECKSUM="${ARCHIVE}.sha256"
 #     (deploy base mounted directly at the SFTP root, set by deploy-rehearsal.sh)
 # See docs/deployment-ouvaton.md §"Écarts profil rehearsal".
 REMOTE_STAGING="${REMOTE_STAGING:-}"
+DRY_RUN="${KERMESSE_TRANSFER_ARCHIVE_DRY_RUN:-false}"
 
 echo "=== Transfert de l'archive vers le staging ==="
 
@@ -45,6 +46,16 @@ if [[ ${missing} -eq 1 ]]; then
   echo "Variables requises : TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS REMOTE_STAGING" >&2
   echo "  REMOTE_STAGING exemples : 'staging' (rehearsal local) ou 'kermesse/staging' (Ouvaton prod)" >&2
   echo "Variable optionnelle : TARGET_KEY (chemin vers la clé SSH, pour SFTP sans mot de passe)" >&2
+  exit 1
+fi
+
+if [[ "${REMOTE_STAGING}" = /* || "${REMOTE_STAGING}" = *..* ]]; then
+  echo "ERREUR : REMOTE_STAGING doit être un chemin relatif sans '..'." >&2
+  exit 1
+fi
+
+if [[ ! "${REMOTE_STAGING}" =~ ^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$ ]]; then
+  echo "ERREUR : REMOTE_STAGING contient des caractères invalides." >&2
   exit 1
 fi
 
@@ -108,7 +119,7 @@ case "${TARGET_PROTO}" in
     ;;
 esac
 
-lftp -f <(
+emit_lftp_commands() {
   echo "set cmd:fail-exit true;"
   # Robustesse réseau (reprise sur coupure transitoire) — alignée sur l'ancien
   # bloc inline du workflow de production, désormais factorisé ici.
@@ -116,13 +127,19 @@ lftp -f <(
   echo "set net:timeout 60;"
   [[ -n "${PROTO_SETTINGS}" ]] && echo "${PROTO_SETTINGS}"
   echo "open -u '$(lftp_squote "${TARGET_USER}")','${ESCAPED_PASS}' -p ${TARGET_PORT} ${TARGET_PROTO}://${TARGET_HOST};"
-  # Disable fail-exit for mkdir: the directory may already exist (idempotent).
-  # The "mkdir: Failure" message is harmless when the directory already exists.
-  echo "set cmd:fail-exit false; mkdir -p \"${REMOTE_STAGING}\"; set cmd:fail-exit true;"
-  echo "put \"${ARCHIVE}\" -o \"${REMOTE_STAGING}/$(basename "${ARCHIVE}")\";"
-  echo "put \"${CHECKSUM}\" -o \"${REMOTE_STAGING}/$(basename "${CHECKSUM}")\";"
+  echo "mkdir -p -f \"${REMOTE_STAGING}\";"
+  echo "cd \"${REMOTE_STAGING}\";"
+  echo "put \"${ARCHIVE}\" -o \"$(basename "${ARCHIVE}")\";"
+  echo "put \"${CHECKSUM}\" -o \"$(basename "${CHECKSUM}")\";"
   echo "bye"
-)
+}
+
+if [ "${DRY_RUN}" = "true" ]; then
+  emit_lftp_commands
+  exit 0
+fi
+
+lftp -f <(emit_lftp_commands)
 
 echo "=== Transfert réussi ! ==="
 echo "Archive déposée : ${TARGET_PROTO}://${TARGET_HOST}:${TARGET_PORT}/${REMOTE_STAGING}/"
