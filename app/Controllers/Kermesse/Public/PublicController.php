@@ -37,6 +37,7 @@ class PublicController extends BaseController
         return view('kermesse/public/volunteer_page', array_merge($viewModel, [
             'isLoggedIn' => $isLoggedIn,
             'user'       => $user,
+            'publicSlug' => $publicSlug,
         ]));
     }
 }

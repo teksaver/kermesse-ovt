@@ -61,6 +61,7 @@
             <p style="margin:0;">Bonjour <strong><?= esc(trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?: 'Bénévole') ?></strong> (<?= esc($user['email'] ?? '') ?>)</p>
             <form method="post" action="<?= site_url('auth/logout') ?>" style="margin:0;">
                 <?= csrf_field() ?>
+                <input type="hidden" name="return_to" value="<?= esc(site_url("k/{$publicSlug}")) ?>">
                 <button type="submit" class="btn btn--secondary btn--sm">Ce n'est pas vous ? Se déconnecter</button>
             </form>
         </div>
