@@ -377,7 +377,7 @@ jobs:
               "${OUVATON_DEPLOY_HOST}"
             printf 'rm %s\n' "$(lftp_quote "${remote_script}")"
             printf 'bye\n'
-          } | lftp || echo "::warning::Impossible de supprimer le script temporaire."
+          } | lftp || { echo "::error::Impossible de supprimer le script temporaire."; exit 1; }
 
       - name: Run post-deploy migrations
         env:
