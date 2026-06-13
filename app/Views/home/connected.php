@@ -17,10 +17,21 @@
         <ul class="kermesse-list" role="list">
             <?php foreach ($kermesses as $k): ?>
                 <li class="kermesse-card" style="display:flex; flex-direction:column; gap:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span class="kermesse-card__name"><?= esc($k['name']) ?></span>
-                        <span class="kermesse-status-badge"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                        <span class="kermesse-card__name" style="flex:1; overflow:hidden; text-overflow:ellipsis;"><?= esc($k['name']) ?></span>
+                        <span class="kermesse-status-badge" style="flex-shrink:0;"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
                     </div>
+
+                    <?php if (!empty($k['event_date']) || !empty($k['location'])): ?>
+                    <div style="font-size:14px; color:var(--color-text-muted); display:flex; flex-direction:column; gap:4px;">
+                        <?php if (!empty($k['event_date'])): ?>
+                        <span>📅 <?= esc($k['event_date']) ?></span>
+                        <?php endif; ?>
+                        <?php if (!empty($k['location'])): ?>
+                        <span>📍 <?= esc($k['location']) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                     <div style="display:flex; gap:8px;">
                         <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary">Administration</a>
                         <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary">Page publique</a>
