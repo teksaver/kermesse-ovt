@@ -71,7 +71,12 @@
         </div>
 
         <?php elseif ($hasSlots): ?>
-        <p class="public-intro">Choisissez un créneau pour vous inscrire.</p>
+        <div class="call-to-action" style="background: #e3f2fd; border: 2px solid #90caf9; padding: 24px; border-radius: 12px; margin: 32px 0; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <h2 style="color: #1565c0; margin-top: 0; margin-bottom: 12px; font-size: 1.5em;">🎉 Choisissez un créneau pour vous inscrire !</h2>
+            <p style="margin: 0; color: #0d47a1; font-size: 1.1em; line-height: 1.5;">
+                Cliquez sur un créneau disponible ci-dessous pour vous inscrire. Vous recevrez un email avec un lien pour modifier ou annuler votre participation en cas de besoin.
+            </p>
+        </div>
         <div class="stand-list" aria-label="Stands et créneaux">
             <?php foreach ($stands as $stand): ?>
             <?= view('partials/stand_group', ['stand' => $stand]) ?>
