@@ -32,10 +32,20 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
     private int $kermesseId = 0;
 
     // Marqueurs stables de chaque section dans le HTML rendu.
-    private const MARKER_MODIFICATION = 'Ajouter un stand';
+    private const MARKER_MODIFICATION = 'Modification';
     private const MARKER_PARTICIPANTS = 'Gestion des participants';
     private const MARKER_MY_SIGNUPS   = 'Mes participations';
     private const MARKER_STAND_DATA   = 'Stand Test 4.1';
+
+    // Outils individuels de la section « Modification ». UX-DR16 exige que TOUS
+    // soient absents (pas seulement désactivés) pour Gestionnaire/Bénévole.
+    private const MODIFICATION_TOOLS = [
+        'Modification',            // titre de section
+        'Ajouter un stand',        // gestion des stands
+        'Modifier la kermesse',    // édition des caractéristiques (bouton + modale)
+        'Fermer les inscriptions', // action lifecycle (kermesse fixée à « open »)
+        self::MARKER_STAND_DATA,   // données de stands (minimisation)
+    ];
 
     protected function setUp(): void
     {
@@ -207,10 +217,14 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->ownerId);
 
         $result->assertStatus(200);
-        $result->assertSee(self::MARKER_MODIFICATION);
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
-        $result->assertSee(self::MARKER_STAND_DATA);
+
+        // Tous les outils de la section « Modification » sont présents : cela
+        // donne du sens aux assertions d'absence pour les autres rôles.
+        foreach (self::MODIFICATION_TOOLS as $tool) {
+            $result->assertSee($tool);
+        }
     }
 
     public function testAdminSeesAllThreeSections(): void
@@ -218,10 +232,12 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        $result->assertSee(self::MARKER_MODIFICATION);
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
-        $result->assertSee(self::MARKER_STAND_DATA);
+
+        foreach (self::MODIFICATION_TOOLS as $tool) {
+            $result->assertSee($tool);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -236,10 +252,11 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
 
-        // UX-DR16 : la section Modification est ABSENTE (pas seulement désactivée),
-        // et les données de stands ne sont pas chargées (minimisation).
-        $result->assertDontSee(self::MARKER_MODIFICATION);
-        $result->assertDontSee(self::MARKER_STAND_DATA);
+        // UX-DR16 : TOUS les outils de la section Modification sont ABSENTS du HTML
+        // (pas seulement désactivés), et les données de stands ne sont pas chargées.
+        foreach (self::MODIFICATION_TOOLS as $tool) {
+            $result->assertDontSee($tool);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -253,9 +270,11 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
 
-        $result->assertDontSee(self::MARKER_MODIFICATION);
+        // Ni Modification ni Gestion des participants ne doivent apparaître.
         $result->assertDontSee(self::MARKER_PARTICIPANTS);
-        $result->assertDontSee(self::MARKER_STAND_DATA);
+        foreach (self::MODIFICATION_TOOLS as $tool) {
+            $result->assertDontSee($tool);
+        }
     }
 
     // ------------------------------------------------------------------

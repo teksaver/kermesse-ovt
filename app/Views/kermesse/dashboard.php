@@ -105,8 +105,9 @@
 
     <?php if (! empty($canModify)): ?>
     <!-- Section « Modification » (stands & créneaux) — Owner/Admin uniquement (Story 4.1). -->
-    <section class="kermesse-dashboard__section" id="stands">
-        <h2 class="section-title">Stands</h2>
+    <section class="kermesse-dashboard__section" id="modification">
+        <h2 class="section-title">Modification</h2>
+        <h3 class="subsection-title">Stands</h3>
 
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
@@ -462,6 +463,10 @@
     color: #555;
     font-size: 14px;
     margin: 8px 0 0;
+}
+.subsection-title {
+    font-size: 1.05rem;
+    margin: 8px 0 16px;
 }
 </style>
 <?= $this->endSection() ?>
