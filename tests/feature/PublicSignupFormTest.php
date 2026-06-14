@@ -1337,4 +1337,33 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertSame(302, $result->response()->getStatusCode(), 'Une inscription annulée ne doit pas bloquer la capacité');
         $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
     }
+
+    public function testSameUserCanReSignUpAfterCancellation(): void
+    {
+        $kermesseId = $this->insertKermesse('ecole-resignup');
+        $standId    = $this->insertStand($kermesseId);
+        $slotId     = $this->insertSlot($standId, 2);
+
+        // Alice a une inscription annulée sur ce créneau (même user_id, même slot_id).
+        $db    = db_connect();
+        $email = 'alice-resignup@cancel.fr';
+        $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
+            VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $aliceId = (int) $db->insertID();
+        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, 'cancelled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        // Alice soumet à nouveau le formulaire pour le même créneau.
+        $result = $this->csrfPost("k/ecole-resignup/slots/{$slotId}/signup", [
+            'first_name' => 'Alice',
+            'last_name'  => 'Martin',
+            'email'      => $email,
+            'phone'      => '',
+        ]);
+
+        // Régression uq_signups_user_slot : l'inscription annulée ne doit pas bloquer
+        // un second INSERT pour la même paire (user_id, slot_id).
+        $this->assertSame(302, $result->response()->getStatusCode(), 'Un bénévole doit pouvoir se réinscrire après avoir annulé');
+        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+    }
 }
