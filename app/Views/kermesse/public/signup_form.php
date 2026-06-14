@@ -31,6 +31,11 @@
         <?php if (isset($errors['_service'])): ?>
         <div class="form-service-error" role="alert">
             <?= esc($errors['_service']) ?>
+            <?php if (str_contains($errors['_service'], 'qui se chevauche') && !($isAuthenticated ?? false)): ?>
+            <p style="margin-top: 8px;">
+                Vous souhaitez gérer vos inscriptions ? <a href="<?= site_url('auth/login') ?>" style="text-decoration: underline;">Connectez-vous</a>.
+            </p>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
