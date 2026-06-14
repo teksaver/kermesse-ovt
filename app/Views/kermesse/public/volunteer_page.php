@@ -66,6 +66,11 @@
                 <button type="submit" class="btn btn--secondary btn--sm" title="Se déconnecter" aria-label="Se déconnecter" style="font-size: 1.2rem; padding: 4px 8px; border: none; background: transparent;">🚪</button>
             </form>
         </div>
+        <?php if (! empty($hasActiveSignups)): ?>
+        <div style="margin-bottom: 16px; text-align: right;">
+            <a href="<?= site_url('kermesse/' . (int) $kermesseId) ?>" class="btn btn--primary btn--sm">Gérer mes inscriptions</a>
+        </div>
+        <?php endif; ?>
         <?php endif; ?>
 
         <?php if ($status === 'preparation'): ?>
