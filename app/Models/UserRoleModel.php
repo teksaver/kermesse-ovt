@@ -59,4 +59,24 @@ class UserRoleModel extends Model
             ->get()
             ->getResultArray();
     }
+
+    /**
+     * Returns the organization team members for a given kermesse.
+     * Includes owner, admin, and gestionnaire. Excludes benevole.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findTeamMembers(int $kermesseId): array
+    {
+        return $this->db
+            ->table('kermesse_user_roles kur')
+            ->select('kur.role, u.email, u.first_name, u.last_name')
+            ->join('users u', 'u.id = kur.user_id')
+            ->where('kur.kermesse_id', $kermesseId)
+            ->whereIn('kur.role', [self::ROLE_OWNER, self::ROLE_ADMIN, self::ROLE_GESTIONNAIRE])
+            ->orderBy('kur.role', 'ASC')
+            ->orderBy('u.last_name', 'ASC')
+            ->get()
+            ->getResultArray();
+    }
 }

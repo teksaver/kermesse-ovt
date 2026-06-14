@@ -177,4 +177,129 @@ class SignupModel extends Model
 
         return $counts;
     }
+
+    /**
+     * Return a connected user's ACTIVE signups for one kermesse, joined to the slot
+     * and stand for the dashboard "Mes participations" section (Story 4.2).
+     *
+     * Active = status NOT IN ('cancelled','deactivated','deleted') AND deleted_at IS NULL —
+     * the SAME definition as countActiveBySlotIds(), so a cancelled inscription the public
+     * availability already treats as freed never reappears here (UX-DR23). Scoped to the
+     * single user (privacy boundary) and ordered chronologically by slot start.
+     *
+     * Filtering on signup status alone is sufficient (no slot/stand status filter needed):
+     * deactivating a stand or a slot cascades to its signups in the same transaction
+     * (StandDeletionService / SlotDeletionService set them to 'deactivated'), so an active
+     * signup can never point at a removed slot/stand. The signup status is the single
+     * source of truth for "active" across the whole codebase.
+     *
+     * The signup id rides along so the dashboard can target the per-row cancel
+     * action (Story 4.3) without a second query.
+     *
+     * @return list<array{signup_id: int, stand_name: string, starts_at: string, ends_at: string}>
+     */
+    public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
+    {
+        return $this->db->table($this->table . ' si')
+            ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->where('si.user_id', $userId)
+            ->where('st.kermesse_id', $kermesseId)
+            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.deleted_at', null)
+            ->orderBy('sl.starts_at', 'ASC')
+            ->orderBy('sl.id', 'ASC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Return every ACTIVE signup for a kermesse, joined to each volunteer's identity and
+     * contact details, for the dashboard "Gestion des participants" section (Story 4.4).
+     *
+     * PRIVACY (NFR5): this is the ONLY read that exposes volunteer PII (first_name,
+     * last_name, phone, email). Its result must never reach a public view — it is gated
+     * behind the Owner/Admin/Gestionnaire role check in KermesseAdminController.
+     *
+     * Active = status NOT IN INACTIVE_STATUSES AND deleted_at IS NULL — the SAME
+     * definition as countActiveBySlotIds() / findActiveForUserAndKermesse(), so the
+     * occupied/remaining counts derived from this list match public availability exactly
+     * (a cancelled inscription the public planning already freed never reappears here).
+     *
+     * Each row carries slot_id (to group volunteers under their slot) and stand_id;
+     * rows are ordered by volunteer name for a stable nominative list. Empty slots simply
+     * have no row — the controller overlays them onto the full slot list for the recap.
+     *
+     * @return list<array{slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string}>
+     */
+    public function findActiveParticipantsForKermesse(int $kermesseId): array
+    {
+        return $this->db->table($this->table . ' si')
+            ->select('si.slot_id, sl.stand_id, u.first_name, u.last_name, u.phone, u.email')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->join('users u', 'u.id = si.user_id')
+            ->where('st.kermesse_id', $kermesseId)
+            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.deleted_at', null)
+            ->orderBy('u.last_name', 'ASC')
+            ->orderBy('u.first_name', 'ASC')
+            ->orderBy('si.id', 'ASC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Return an ACTIVE signup that belongs to $userId AND to $kermesseId, or null.
+     *
+     * Ownership + scope guard for Story 4.3 cancellation: the signup is bound to the
+     * kermesse through slot→stand, so a volunteer cannot target a signup id from
+     * another kermesse, and the user_id match enforces that one can only cancel one's
+     * own inscription. A miss (wrong owner, wrong kermesse, already inactive,
+     * soft-deleted) returns null so the service can answer neutrally.
+     *
+     * @return array{id: int, user_id: int, slot_id: int}|null
+     */
+    public function findActiveOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
+    {
+        $row = $this->db->table($this->table . ' si')
+            ->select('si.id, si.user_id, si.slot_id')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->where('si.id', $signupId)
+            ->where('si.user_id', $userId)
+            ->where('st.kermesse_id', $kermesseId)
+            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.deleted_at', null)
+            ->get()
+            ->getRowArray();
+
+        return $row ?: null;
+    }
+
+    /**
+     * Transition an ACTIVE signup to CANCELLED, scoped to its owner. Returns true only
+     * when exactly one active row flipped.
+     *
+     * The status guard makes this safe under a double submit / already-cancelled row
+     * (no row matches → false, so the place is never "freed twice"), and the user_id
+     * guard is defence in depth on top of the service's ownership read. Setting
+     * CANCELLED frees the slot instantly: every active-signup count excludes
+     * INACTIVE_STATUSES, so public availability recovers the place with no extra write.
+     */
+    public function markCancelled(int $signupId, int $userId): bool
+    {
+        $this->builder()
+            ->where('id', $signupId)
+            ->where('user_id', $userId)
+            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('deleted_at', null)
+            ->update([
+                'status'     => self::STATUS_CANCELLED,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+        return $this->db->affectedRows() === 1;
+    }
 }

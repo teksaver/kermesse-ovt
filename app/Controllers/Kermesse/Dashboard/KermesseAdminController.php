@@ -4,10 +4,15 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Models\UserModel;
+use App\Models\UserRoleModel;
 use App\Services\KermesseLifecycleService;
+use App\Services\RoleService;
 use App\Services\StandDeletionService;
+use CodeIgniter\I18n\Time;
 
 /**
  * Kermesse admin dashboard: stands, slots, lifecycle, participants.
@@ -25,33 +30,162 @@ class KermesseAdminController extends BaseController
             return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
         }
 
-        $standModel = model(StandModel::class);
-        $stands     = $standModel->getActiveForKermesse($id);
-        $standIds   = array_column($stands, 'id');
-        $allSlots   = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
+        $userId      = (int) session()->get('user_id');
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+        $userRole    = $roleService->getRoleForUser($id, $userId);
 
-        $slotsByStand = [];
-        foreach ($allSlots as $slot) {
-            $slotsByStand[(int) $slot['stand_id']][] = $slot;
+        // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
+        // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
+        // "Gestion des participants": Owner/Admin/Gestionnaire.
+        // "Mes participations"      : tout rôle.
+        $canModify             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
+        $canManageParticipants = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN, UserRoleModel::ROLE_GESTIONNAIRE], true);
+        // Story 4.5 — inviter Admin/Gestionnaire : réservé à Owner/Admin. Un Gestionnaire gère
+        // les participants mais ne peut pas constituer l'équipe d'administration (Dev Notes 4.5).
+        $canInvite             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
+
+        // Charger stands + créneaux dès qu'une section en a besoin : « Modification »
+        // (Owner/Admin) ET « Gestion des participants » (Owner/Admin/Gestionnaire).
+        // Minimisation des données : un Bénévole ne déclenche aucun de ces chargements.
+        $stands = [];
+        if ($canModify || $canManageParticipants) {
+            $standModel = model(StandModel::class);
+            $stands     = $standModel->getActiveForKermesse($id);
+            $standIds   = array_column($stands, 'id');
+            $allSlots   = empty($standIds) ? [] : model(SlotModel::class)->getActiveForStandIds($standIds);
+
+            $slotsByStand = [];
+            foreach ($allSlots as $slot) {
+                $slotsByStand[(int) $slot['stand_id']][] = $slot;
+            }
+
+            foreach ($stands as &$stand) {
+                $stand['slots'] = $slotsByStand[(int) $stand['id']] ?? [];
+            }
+            unset($stand);
+
+            // Augmentation propre à « Modification » : confirmation forte de suppression.
+            if ($canModify) {
+                $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
+                foreach ($stands as &$stand) {
+                    $stand['requires_strong_confirm'] = $requiresStrong[(int) $stand['id']];
+                }
+                unset($stand);
+            }
         }
 
-        $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
+        $timezone = (string) ($kermesse['timezone'] ?? 'Europe/Paris');
 
-        foreach ($stands as &$stand) {
-            $stand['slots']                  = $slotsByStand[(int) $stand['id']] ?? [];
-            $stand['requires_strong_confirm'] = $requiresStrong[(int) $stand['id']];
-        }
-        unset($stand);
+        // ViewModel « Gestion des participants » (Story 4.4) : récapitulatif nominatif
+        // par stand/créneau avec places occupées/restantes. La PII (nom, prénom,
+        // téléphone, email) est confinée à ce ViewModel, lui-même gardé par le rôle
+        // (NFR5) ; les places occupées reposent sur la MÊME définition d'inscription
+        // active que la disponibilité publique, donc admin et public ne divergent jamais.
+        $participantStands = $canManageParticipants
+            ? $this->buildParticipantStands($id, $stands, $timezone)
+            : [];
 
-        $roleService = new \App\Services\RoleService(model(\App\Models\UserRoleModel::class), model(\App\Models\UserModel::class));
-        $userRole    = $roleService->getRoleForUser($id, (int) session()->get('user_id'));
+        // "Mes participations" : inscriptions actives de l'utilisateur courant
+        // (tout rôle). ViewModel pré-formaté — la vue ne fait ni requête ni
+        // formatage (NFR). Date/heures interprétées dans le fuseau de la kermesse,
+        // symétriquement à la création du créneau (SlotController, Time::parse).
+        $myParticipations = array_map(
+            static function (array $p) use ($timezone): array {
+                $start = Time::parse((string) $p['starts_at'], $timezone);
+                $end   = Time::parse((string) $p['ends_at'], $timezone);
+
+                return [
+                    'signup_id'  => (int) $p['signup_id'],
+                    'stand_name' => $p['stand_name'],
+                    'date'       => $start->format('d/m/Y'),
+                    'start_time' => $start->format('H:i'),
+                    'end_time'   => $end->format('H:i'),
+                ];
+            },
+            model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
+        );
+
+        $teamMembers = $canInvite
+            ? model(UserRoleModel::class)->findTeamMembers($id)
+            : [];
 
         return view('kermesse/dashboard', [
-            'title'              => esc($kermesse['name']),
-            'kermesse'           => $kermesse,
-            'stands'             => $stands,
-            'canManageLifecycle' => in_array($userRole, [\App\Models\UserRoleModel::ROLE_OWNER, \App\Models\UserRoleModel::ROLE_ADMIN], true),
+            'title'                 => esc($kermesse['name']),
+            'kermesse'              => $kermesse,
+            'stands'                => $stands,
+            'canModify'             => $canModify,
+            'canManageParticipants' => $canManageParticipants,
+            'canInvite'             => $canInvite,
+            'participantStands'     => $participantStands,
+            'myParticipations'      => $myParticipations,
+            'teamMembers'           => $teamMembers,
+            // Décision métier préparée pour la vue : l'annulation d'une participation
+            // n'est proposée que lorsque les inscriptions sont ouvertes (Story 4.3, AC2).
+            'signupsOpen'           => $kermesse['status'] === KermesseModel::STATUS_OPEN,
         ]);
+    }
+
+    /**
+     * Assemble the "Gestion des participants" view model: each active stand with its
+     * slots, and for every slot the occupied/remaining places plus the nominative list
+     * of active volunteers (Story 4.4, UX-DR24).
+     *
+     * Occupancy is derived from SignupModel::findActiveParticipantsForKermesse(), whose
+     * "active" definition is identical to public availability — the recap can therefore
+     * never show a fill level different from the public page (AC). Empty slots keep an
+     * empty volunteer list so the operator still sees the remaining capacity.
+     *
+     * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
+     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string}>}>}>
+     */
+    private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
+    {
+        // Aucun stand actif → aucun créneau possible : on évite la lecture des
+        // participants (la jointure ne pourrait rien rattacher de toute façon).
+        if ($stands === []) {
+            return [];
+        }
+
+        $participantsBySlot = [];
+        foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
+            $participantsBySlot[(int) $p['slot_id']][] = [
+                'first_name' => (string) $p['first_name'],
+                'last_name'  => (string) $p['last_name'],
+                'phone'      => (string) $p['phone'],
+                'email'      => (string) $p['email'],
+            ];
+        }
+
+        $result = [];
+        foreach ($stands as $stand) {
+            $slots = [];
+            foreach ($stand['slots'] ?? [] as $slot) {
+                $slotId     = (int) $slot['id'];
+                $volunteers = $participantsBySlot[$slotId] ?? [];
+                $capacity   = (int) $slot['capacity'];
+                $occupied   = count($volunteers);
+
+                $start = Time::parse((string) $slot['starts_at'], $timezone);
+                $end   = Time::parse((string) $slot['ends_at'], $timezone);
+
+                $slots[] = [
+                    'date'       => $start->format('d/m/Y'),
+                    'start_time' => $start->format('H:i'),
+                    'end_time'   => $end->format('H:i'),
+                    'capacity'   => $capacity,
+                    'occupied'   => $occupied,
+                    'remaining'  => max(0, $capacity - $occupied),
+                    'volunteers' => $volunteers,
+                ];
+            }
+
+            $result[] = [
+                'name'  => (string) $stand['name'],
+                'slots' => $slots,
+            ];
+        }
+
+        return $result;
     }
 
     /** POST /kermesse/{id}/open */
@@ -139,5 +273,68 @@ class KermesseAdminController extends BaseController
 
         session()->setFlashdata('success', 'Caractéristiques de la kermesse mises à jour avec succès.');
         return redirect()->to(site_url("kermesse/{$id}"));
+    }
+
+    /**
+     * POST /kermesse/{id}/invitations — invite an Admin/Gestionnaire (Story 4.5).
+     *
+     * Route is already guarded by role:owner,admin (RBAC); this method only validates
+     * input then delegates the whole invariant (user creation, role assignment, token,
+     * email) to RoleService::invite — no role mutation happens here (PRG on success).
+     */
+    public function invite(string $kermesseId): mixed
+    {
+        $id       = (int) $kermesseId;
+        $kermesse = model(KermesseModel::class)->find($id);
+
+        if ($kermesse === null) {
+            return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
+        }
+
+        // Guard against array-shaped input (email[]=…) which would warn on the string cast.
+        $emailInput = $this->request->getPost('email');
+        $email      = trim(is_array($emailInput) ? '' : (string) $emailInput);
+        $roleInput  = $this->request->getPost('role');
+        $role       = is_string($roleInput) ? $roleInput : '';
+
+        $validation = service('validation');
+        $isValid    = $validation->setRules([
+            'email' => 'required|valid_email',
+            'role'  => 'required|in_list[admin,gestionnaire]',
+        ])->run(['email' => $email, 'role' => $role]);
+
+        if (! $isValid) {
+            return redirect()->back()
+                ->withInput()
+                ->with('invite_error', 'Veuillez saisir un email valide et choisir un rôle (administrateur ou gestionnaire).');
+        }
+
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+        $result      = $roleService->invite($id, $email, $role, (int) session()->get('user_id'));
+
+        if (! $result->success) {
+            $message = match ($result->errorCode) {
+                'cannot_invite_owner' => 'Cette personne est déjà propriétaire de la kermesse ; son rôle ne peut pas être modifié.',
+                'invalid_role'        => 'Le rôle sélectionné est invalide.',
+                'invalid_email'       => 'Veuillez saisir un email valide.',
+                default               => 'Une erreur est survenue lors de l\'envoi de l\'invitation. Veuillez réessayer.',
+            };
+
+            return redirect()->back()->withInput()->with('invite_error', $message);
+        }
+
+        // Le rôle est attribué dans tous les cas de succès ; on reste honnête sur l'email :
+        // si l'envoi a échoué (tracé dans email_events), on le signale plutôt que de
+        // confirmer faussement « Invitation envoyée » (UX-DR20).
+        if ($result->emailSent === false) {
+            session()->setFlashdata(
+                'invite_warning',
+                'Le rôle a été attribué à ' . $email . ", mais l'email d'invitation n'a pas pu être envoyé. Vous pouvez réessayer.",
+            );
+        } else {
+            session()->setFlashdata('invite_success', 'Invitation envoyée à ' . $email . '.');
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}#participants"));
     }
 }

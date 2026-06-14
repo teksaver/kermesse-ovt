@@ -256,6 +256,19 @@ final class ManageKermesseLifecycleTest extends CIUnitTestCase
         $result->assertSessionHas('success');
     }
 
+    public function testOwnerCanReopenClosedKermesse(): void
+    {
+        $this->insertStandWithSlot();
+        $this->setStatus('closed');
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/open");
+
+        $result->assertRedirect();
+        $this->assertSame('open', $this->currentStatus());
+        $result->assertSessionHas('success');
+    }
+
     // ------------------------------------------------------------------
     // T4.2 — Ouverture bloquée si kermesse vide (UX-DR26 / AC1)
     // ------------------------------------------------------------------

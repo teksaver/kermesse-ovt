@@ -33,8 +33,17 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 // ---------------------------------------------------------------------------
 // Kermesse dashboard — admin/management (Stories 2.x, 4.x)
 // ---------------------------------------------------------------------------
-$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role']);
+// Tableau de bord interne accessible à tout rôle (Story 4.1) ; les sections
+// internes sont gardées par rôle côté serveur dans le contrôleur/la vue.
+$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 $routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::update/$1', ['filter' => 'role:owner,admin']);
+
+// Invitation d'un Admin/Gestionnaire (Story 4.5) — réservé Owner/Admin (RBAC route + service).
+$routes->post('kermesse/(:num)/invitations', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::invite/$1', ['filter' => 'role:owner,admin']);
+
+// Désistement bénévole : annuler sa propre inscription depuis « Mes participations »
+// (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
+$routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
 // ---------------------------------------------------------------------------
 // Lifecycle management — Owner/Admin only (Story 2.5)

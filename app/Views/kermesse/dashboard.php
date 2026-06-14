@@ -10,7 +10,7 @@
             <div>
                 <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
             </div>
-            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+            <?php if (! empty($canModify)): ?>
             <button type="button" class="btn btn--sm" title="Modifier la kermesse" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier</button>
             <?php endif; ?>
         </div>
@@ -42,16 +42,16 @@
 
         <!-- Actions lifecycle (UX-DR17) -->
         <div class="kermesse-dashboard__lifecycle">
-            <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+            <?php if (! empty($canModify)): ?>
                 <?php if ($kermesse['status'] === 'open'): ?>
                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
                 </form>
-                <?php elseif ($kermesse['status'] === 'preparation'): ?>
+                <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
                     <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
+                    <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
                 </form>
                 <?php endif; ?>
             <?php endif; ?>
@@ -67,7 +67,7 @@
     <!-- ------------------------------------------------------------------ -->
     
     <!-- Modale Édition Kermesse -->
-    <?php if (isset($canManageLifecycle) && $canManageLifecycle): ?>
+    <?php if (! empty($canModify)): ?>
     <?php
         $kermesseForm = session()->getFlashdata('kermesse_form');
         $kermesseError = session()->getFlashdata('kermesse_edit_error');
@@ -103,10 +103,11 @@
     </dialog>
     <?php endif; ?>
 
-    <!-- Section Stands                                                        -->
-    <!-- ------------------------------------------------------------------ -->
-    <section class="kermesse-dashboard__section" id="stands">
-        <h2 class="section-title">Stands</h2>
+    <?php if (! empty($canModify)): ?>
+    <!-- Section « Modification » (stands & créneaux) — Owner/Admin uniquement (Story 4.1). -->
+    <section class="kermesse-dashboard__section" id="modification">
+        <h2 class="section-title">Gestion des stands et des créneaux</h2>
+        <h3 class="subsection-title">Stands</h3>
 
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
@@ -377,7 +378,168 @@
         </dialog>
 
     </section>
+    <?php endif; ?>
 
+    <?php if (! empty($canInvite)): ?>
+    <section class="kermesse-dashboard__section" id="organization-team">
+        <h2 class="section-title">Gestion de l'équipe d'organisation</h2>
+
+        <div class="team-members">
+            <h3 class="subsection-title">Membres de l'équipe</h3>
+            <?php if (empty($teamMembers)): ?>
+                <p class="section-placeholder">Aucun membre dans l'équipe pour le moment.</p>
+            <?php else: ?>
+                <ul class="participants-list" style="margin-bottom:24px; border: 1px solid #e9ecef; border-radius: 8px; background: #fff;">
+                    <?php foreach ($teamMembers as $member): ?>
+                    <li class="participants-list__item" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span class="participants-list__name">
+                                <strong><?= esc(trim($member['first_name'] . ' ' . $member['last_name']) ?: 'Sans nom') ?></strong>
+                            </span>
+                            <div class="participants-list__contact" style="margin-top:4px;">
+                                <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
+                        </div>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+
+        <div class="invite-form">
+            <h3 class="subsection-title">Inviter un administrateur ou un gestionnaire</h3>
+
+            <?php if (! empty($inviteSuccess = session()->getFlashdata('invite_success'))): ?>
+            <p class="form-success" role="status"><?= esc($inviteSuccess) ?></p>
+            <?php endif; ?>
+            <?php if (! empty($inviteWarning = session()->getFlashdata('invite_warning'))): ?>
+            <p class="form-warning" role="alert"><?= esc($inviteWarning) ?></p>
+            <?php endif; ?>
+            <?php if (! empty($inviteError = session()->getFlashdata('invite_error'))): ?>
+            <p class="form-error" role="alert"><?= esc($inviteError) ?></p>
+            <?php endif; ?>
+
+            <?php $oldEmail = old('email'); $oldEmail = is_array($oldEmail) ? '' : (string) $oldEmail; ?>
+            <?php $oldRole = old('role'); $oldRole = is_array($oldRole) ? '' : (string) $oldRole; ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/invitations") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                <?= csrf_field() ?>
+                <div class="form-group">
+                    <label for="invite-email" class="form-label">Email de la personne à inviter</label>
+                    <input type="email" id="invite-email" name="email" class="form-control" value="<?= esc($oldEmail) ?>" placeholder="Ex. : prenom.nom@exemple.fr" required>
+                </div>
+                <div class="form-group">
+                    <label for="invite-role" class="form-label">Rôle attribué</label>
+                    <select id="invite-role" name="role" class="form-control" required>
+                        <option value="admin"<?= $oldRole === 'admin' ? ' selected' : '' ?>>Administrateur</option>
+                        <option value="gestionnaire"<?= $oldRole === 'gestionnaire' ? ' selected' : '' ?>>Gestionnaire</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn--primary">Envoyer l'invitation</button>
+            </form>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <?php if (! empty($canManageParticipants)): ?>
+    <!-- Section participants — Owner/Admin/Gestionnaire (garde Story 4.1 ; contenu
+         Story 4.4). SEULE surface autorisée pour la PII des bénévoles (NFR5) :
+         nom, prénom, téléphone, email. Le ViewModel est préparé par le contrôleur ;
+         la vue ne fait aucun calcul ni requête (UX-DR24). -->
+    <section class="kermesse-dashboard__section" id="participants">
+        <h2 class="section-title">Gestion des inscriptions</h2>
+
+        <?php $participantStands = $participantStands ?? []; ?>
+        <?php if (empty($participantStands)): ?>
+        <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
+        <?php else: ?>
+        <?php foreach ($participantStands as $pStand): ?>
+        <div class="participants-stand">
+            <h3 class="subsection-title"><?= esc($pStand['name']) ?></h3>
+
+            <?php if (empty($pStand['slots'])): ?>
+            <p class="section-placeholder">Aucun créneau pour ce stand.</p>
+            <?php else: ?>
+            <?php foreach ($pStand['slots'] as $pSlot): ?>
+            <div class="participants-slot">
+                <div class="participants-slot__header">
+                    <span class="participants-slot__when">
+                        <span aria-hidden="true">📅</span> <?= esc($pSlot['date']) ?>
+                        · <span aria-hidden="true">🕐</span> <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
+                    </span>
+                    <span class="participants-slot__fill">Occupé : <?= (int) $pSlot['occupied'] ?> / <?= (int) $pSlot['capacity'] ?> · Restant : <?= (int) $pSlot['remaining'] ?></span>
+                </div>
+
+                <?php if (empty($pSlot['volunteers'])): ?>
+                <p class="participants-slot__empty">Aucun bénévole inscrit sur ce créneau.</p>
+                <?php else: ?>
+                <ul class="participants-list">
+                    <?php foreach ($pSlot['volunteers'] as $vol): ?>
+                    <li class="participants-list__item">
+                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <span class="participants-list__contact">
+                            <?php if ($vol['phone'] !== ''): ?>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <?php endif; ?>
+                            <?php if ($vol['email'] !== ''): ?>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <?php endif; ?>
+                        </span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+
+    <!-- Section « Mes participations » — tout rôle (garde Story 4.1 ; contenu Story 4.2 ;
+         annulation Story 4.3). N'affiche que les inscriptions actives de l'utilisateur (UX-DR23). -->
+    <section class="kermesse-dashboard__section" id="my-signups">
+        <h2 class="section-title">Mes participations</h2>
+
+        <?php if (! empty($participationNotice = session()->getFlashdata('participation_notice'))): ?>
+        <p class="form-success"><?= esc($participationNotice) ?></p>
+        <?php endif; ?>
+        <?php if (! empty($participationError = session()->getFlashdata('participation_error'))): ?>
+        <p class="form-error" role="alert"><?= esc($participationError) ?></p>
+        <?php endif; ?>
+
+        <?php $myParticipations = $myParticipations ?? []; ?>
+        <?php // Décision « inscriptions ouvertes » préparée par le contrôleur (AC2) ; défaut sûr = fermé. ?>
+        <?php $signupsOpen = $signupsOpen ?? false; ?>
+        <?php if (empty($myParticipations)): ?>
+        <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
+        <?php else: ?>
+        <ul class="my-signups-list">
+            <?php foreach ($myParticipations as $participation): ?>
+            <li class="my-signups-list__item">
+                <span class="my-signups-list__stand"><strong><?= esc($participation['stand_name']) ?></strong></span>
+                <span class="my-signups-list__when">
+                    <span aria-hidden="true">📅</span> <?= esc($participation['date']) ?>
+                    · <span aria-hidden="true">🕐</span> <?= esc($participation['start_time']) ?> – <?= esc($participation['end_time']) ?>
+                </span>
+                <?php if ($signupsOpen): ?>
+                <form method="post"
+                      action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
+                      class="my-signups-list__cancel"
+                      onsubmit="if (!confirm('Voulez-vous vraiment annuler cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--danger btn--sm">Annuler ma participation</button>
+                </form>
+                <?php endif; ?>
+            </li>
+            <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+    </section>
 
     <div class="kermesse-dashboard__actions">
         <a href="<?= site_url('/') ?>" class="btn btn--secondary">Retour à mes kermesses</a>
@@ -434,6 +596,21 @@
 .form-success::before {
     content: "✅";
 }
+.form-warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.form-warning::before {
+    content: "⚠️";
+}
 .kermesse-characteristics {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
@@ -441,6 +618,113 @@
     border-radius: 12px;
     margin-bottom: 32px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.section-placeholder {
+    color: #555;
+    font-size: 14px;
+    margin: 8px 0 0;
+}
+.subsection-title {
+    font-size: 1.05rem;
+    margin: 8px 0 16px;
+}
+.my-signups-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.my-signups-list__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+}
+.my-signups-list__when {
+    color: #555;
+    font-size: 14px;
+}
+.my-signups-list__cancel {
+    margin: 8px 0 0;
+}
+.my-signups-list__cancel .btn {
+    width: 100%;
+}
+
+/* Section participants — récapitulatif nominatif (Story 4.4) */
+.invite-form {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    padding: 16px;
+    margin: 8px 0 24px;
+}
+.invite-form .form-group {
+    margin-bottom: 12px;
+}
+.participants-stand {
+    margin: 8px 0 24px;
+}
+.participants-slot {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.participants-slot__header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin-bottom: 8px;
+}
+.participants-slot__when {
+    color: #333;
+    font-size: 14px;
+}
+.participants-slot__fill {
+    color: #555;
+    font-size: 14px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.participants-slot__empty {
+    color: #555;
+    font-size: 14px;
+    margin: 0;
+}
+.participants-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.participants-list__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border-top: 1px solid #f0f0f0;
+}
+.participants-list__contact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 14px;
+}
+.participants-list__contact a {
+    /* Cible tactile confortable sur mobile (UX : 44px). */
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
 }
 </style>
 <?= $this->endSection() ?>

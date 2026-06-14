@@ -123,6 +123,36 @@ class EmailService
         );
     }
 
+    /**
+     * Send a role invitation email (Story 4.5) and record an email_event.
+     *
+     * The link is a universal Magic Link carrying the kermesse intent; the raw token URL
+     * is intentionally kept out of $metadata so it never lands in the email_events trace.
+     */
+    public function sendRoleInvitationEmail(
+        string $recipientEmail,
+        string $kermesseName,
+        string $roleLabel,
+        string $invitationUrl,
+    ): EmailDeliveryResult {
+        return $this->deliver(
+            recipientEmail: $recipientEmail,
+            subject: 'Invitation à gérer la kermesse « ' . $this->safeSubjectPart($kermesseName) . ' »',
+            viewPath: 'emails/role_invitation',
+            viewData: [
+                'kermesseName'  => $kermesseName,
+                'roleLabel'     => $roleLabel,
+                'invitationUrl' => $invitationUrl,
+                'ttlMinutes'    => max(1, (int) round((config('Kermesse')->magicLinkTokenTTL ?? 900) / 60)),
+            ],
+            eventType: 'role_invitation',
+            metadata: [
+                'kermesse_name' => $kermesseName,
+                'role'          => $roleLabel,
+            ],
+        );
+    }
+
     public function hasRecentSuccessfulOwnerValidationEmail(string $recipientEmail, int $cooldownSeconds): bool
     {
         $recipientHash = hash('sha256', strtolower(trim($recipientEmail)));

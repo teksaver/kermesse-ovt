@@ -787,4 +787,91 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $this->assertTrue($result->success, 'Signup must succeed even when the divergence insert fails');
     }
+
+    // ------------------------------------------------------------------
+    // Story 4.3 — cancelSignup: ownership, lifecycle, instant slot recovery
+    // ------------------------------------------------------------------
+
+    /** SignupModel mock exposing only the two cancellation seams. */
+    private function buildCancelSignupModel(?array $owned): SignupModel
+    {
+        $mock = $this->getMockBuilder(SignupModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findActiveOwnedInKermesse', 'markCancelled'])
+            ->getMock();
+        $mock->method('findActiveOwnedInKermesse')->willReturn($owned);
+
+        return $mock;
+    }
+
+    public function testCancelSignupSucceedsForOwnerWhenOpen(): void
+    {
+        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $signupMock->expects($this->once())->method('markCancelled')->with(5, 42)->willReturn(true);
+
+        $result = $this->buildService(
+            signupModel:   $signupMock,
+            kermesseModel: $this->buildMockKermesseModel('open'),
+        )->cancelSignup(5, 42, 10);
+
+        $this->assertTrue($result->success);
+        $this->assertSame(5, $result->signupId);
+    }
+
+    public function testCancelSignupFailsAndDoesNotMutateWhenNotOwner(): void
+    {
+        // findActiveOwnedInKermesse returns null when the signup is not the user's
+        // (or belongs to another kermesse): markCancelled must never be reached.
+        $signupMock = $this->buildCancelSignupModel(null);
+        $signupMock->expects($this->never())->method('markCancelled');
+
+        $result = $this->buildService(
+            signupModel:   $signupMock,
+            kermesseModel: $this->buildMockKermesseModel('open'),
+        )->cancelSignup(5, 999, 10);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('not_found', $result->errorCode);
+    }
+
+    public function testCancelSignupRefusedWhenKermesseClosed(): void
+    {
+        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $signupMock->expects($this->never())->method('markCancelled');
+
+        $result = $this->buildService(
+            signupModel:   $signupMock,
+            kermesseModel: $this->buildMockKermesseModel('closed'),
+        )->cancelSignup(5, 42, 10);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('signups_not_open', $result->errorCode);
+    }
+
+    public function testCancelSignupRefusedWhenKermesseInPreparation(): void
+    {
+        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+
+        $result = $this->buildService(
+            signupModel:   $signupMock,
+            kermesseModel: $this->buildMockKermesseModel('preparation'),
+        )->cancelSignup(5, 42, 10);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('signups_not_open', $result->errorCode);
+    }
+
+    public function testCancelSignupReturnsFailureWhenMarkCancelledFails(): void
+    {
+        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $signupMock->method('markCancelled')->willReturn(false);
+
+        $result = $this->buildService(
+            signupModel:   $signupMock,
+            kermesseModel: $this->buildMockKermesseModel('open'),
+        )->cancelSignup(5, 42, 10);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('cancel_failed', $result->errorCode);
+    }
 }
