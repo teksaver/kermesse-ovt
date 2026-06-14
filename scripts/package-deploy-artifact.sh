@@ -39,6 +39,17 @@ mkdir -p "${STAGING_DIR}"
 
 # 1. Copie des fichiers et dossiers nécessaires
 echo "Copie des fichiers applicatifs..."
+
+# Ouvaton production runs only SQL migrations through MigrationRunnerService.
+# Native CI4 migration classes would be packaged but never executed.
+if [ -d "${PROJECT_ROOT}/app/Database/Migrations" ]; then
+  while IFS= read -r found; do
+    echo "ERREUR : migration CodeIgniter native interdite pour Ouvaton : ${found}"
+    echo "Placez les changements de schéma dans database/migrations_sql/*.sql"
+    exit 1
+  done < <(find "${PROJECT_ROOT}/app/Database/Migrations" -type f -name "*.php" -print)
+fi
+
 cp -R "${PROJECT_ROOT}/app" "${STAGING_DIR}/"
 cp -R "${PROJECT_ROOT}/public" "${STAGING_DIR}/"
 
