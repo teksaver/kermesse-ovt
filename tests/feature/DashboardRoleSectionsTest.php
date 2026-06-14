@@ -32,8 +32,9 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
     private int $kermesseId = 0;
 
     // Marqueurs stables de chaque section dans le HTML rendu.
-    private const MARKER_MODIFICATION = 'Modification';
-    private const MARKER_PARTICIPANTS = 'Gestion des participants';
+    private const MARKER_MODIFICATION = 'Gestion des stands et des créneaux';
+    private const MARKER_PARTICIPANTS = 'Gestion des inscriptions';
+    private const MARKER_TEAM         = 'Gestion de l\'équipe d\'organisation';
     private const MARKER_MY_SIGNUPS   = 'Mes participations';
     private const MARKER_STAND_DATA   = 'Stand Test 4.1';
 
@@ -46,7 +47,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
     // « Modification ». Seuls les outils d'édition ci-dessous restent réservés à
     // Owner/Admin.
     private const MODIFICATION_TOOLS = [
-        'Modification',            // titre de section
+        'Gestion des stands et des créneaux',            // titre de section
         'Ajouter un stand',        // gestion des stands
         'Modifier la kermesse',    // édition des caractéristiques (bouton + modale)
         'Fermer les inscriptions', // action lifecycle (kermesse fixée à « open »)
@@ -226,6 +227,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertSee(self::MARKER_MY_SIGNUPS);
         // Données de stands présentes (section Modification et/ou Participants).
         $result->assertSee(self::MARKER_STAND_DATA);
+        $result->assertSee(self::MARKER_TEAM);
 
         // Tous les outils de la section « Modification » sont présents : cela
         // donne du sens aux assertions d'absence pour les autres rôles.
@@ -242,6 +244,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         $result->assertSee(self::MARKER_PARTICIPANTS);
         $result->assertSee(self::MARKER_MY_SIGNUPS);
         $result->assertSee(self::MARKER_STAND_DATA);
+        $result->assertSee(self::MARKER_TEAM);
 
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertSee($tool);
@@ -268,6 +271,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertDontSee($tool);
         }
+        $result->assertDontSee(self::MARKER_TEAM);
     }
 
     // ------------------------------------------------------------------
@@ -284,6 +288,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
         // Ni Modification ni Gestion des participants ne doivent apparaître, et aucune
         // donnée de stand ne doit fuiter au Bénévole (minimisation maintenue — NFR5).
         $result->assertDontSee(self::MARKER_PARTICIPANTS);
+        $result->assertDontSee(self::MARKER_TEAM);
         $result->assertDontSee(self::MARKER_STAND_DATA);
         foreach (self::MODIFICATION_TOOLS as $tool) {
             $result->assertDontSee($tool);

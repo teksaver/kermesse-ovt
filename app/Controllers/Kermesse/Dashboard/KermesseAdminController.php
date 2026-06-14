@@ -105,6 +105,10 @@ class KermesseAdminController extends BaseController
             model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
         );
 
+        $teamMembers = $canInvite
+            ? model(UserRoleModel::class)->findTeamMembers($id)
+            : [];
+
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
             'kermesse'              => $kermesse,
@@ -114,6 +118,7 @@ class KermesseAdminController extends BaseController
             'canInvite'             => $canInvite,
             'participantStands'     => $participantStands,
             'myParticipations'      => $myParticipations,
+            'teamMembers'           => $teamMembers,
             // Décision métier préparée pour la vue : l'annulation d'une participation
             // n'est proposée que lorsque les inscriptions sont ouvertes (Story 4.3, AC2).
             'signupsOpen'           => $kermesse['status'] === KermesseModel::STATUS_OPEN,

@@ -67,7 +67,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des participants');
+        $result->assertSee('Gestion des inscriptions');
         $result->assertSee(self::STAND_NAME);
 
         // Identité et contact des bénévoles actifs (UX-DR24).
@@ -85,7 +85,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->gestionId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des participants');
+        $result->assertSee('Gestion des inscriptions');
         $result->assertSee(self::STAND_NAME);
         $result->assertSee('Durand');
         $result->assertSee('0611223344');
@@ -132,7 +132,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->adminId))->get("kermesse/{$emptyKermesseId}");
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des participants');
+        $result->assertSee('Gestion des inscriptions');
         $result->assertSee("Aucun stand n'a encore été créé");
     }
 
@@ -145,7 +145,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->benevoleId);
 
         $result->assertStatus(200);
-        $result->assertDontSee('Gestion des participants');
+        $result->assertDontSee('Gestion des inscriptions');
 
         // Aucune donnée personnelle d'un autre bénévole ne doit fuiter.
         $result->assertDontSee('Durand');

@@ -106,7 +106,7 @@
     <?php if (! empty($canModify)): ?>
     <!-- Section « Modification » (stands & créneaux) — Owner/Admin uniquement (Story 4.1). -->
     <section class="kermesse-dashboard__section" id="modification">
-        <h2 class="section-title">Modification</h2>
+        <h2 class="section-title">Gestion des stands et des créneaux</h2>
         <h3 class="subsection-title">Stands</h3>
 
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
@@ -380,16 +380,35 @@
     </section>
     <?php endif; ?>
 
-    <?php if (! empty($canManageParticipants)): ?>
-    <!-- Section participants — Owner/Admin/Gestionnaire (garde Story 4.1 ; contenu
-         Story 4.4). SEULE surface autorisée pour la PII des bénévoles (NFR5) :
-         nom, prénom, téléphone, email. Le ViewModel est préparé par le contrôleur ;
-         la vue ne fait aucun calcul ni requête (UX-DR24). -->
-    <section class="kermesse-dashboard__section" id="participants">
-        <h2 class="section-title">Gestion des participants</h2>
+    <?php if (! empty($canInvite)): ?>
+    <section class="kermesse-dashboard__section" id="organization-team">
+        <h2 class="section-title">Gestion de l'équipe d'organisation</h2>
 
-        <?php // Formulaire d'invitation (Story 4.5, UX-DR20) — réservé Owner/Admin ($canInvite). ?>
-        <?php if (! empty($canInvite)): ?>
+        <div class="team-members">
+            <h3 class="subsection-title">Membres de l'équipe</h3>
+            <?php if (empty($teamMembers)): ?>
+                <p class="section-placeholder">Aucun membre dans l'équipe pour le moment.</p>
+            <?php else: ?>
+                <ul class="participants-list" style="margin-bottom:24px; border: 1px solid #e9ecef; border-radius: 8px; background: #fff;">
+                    <?php foreach ($teamMembers as $member): ?>
+                    <li class="participants-list__item" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span class="participants-list__name">
+                                <strong><?= esc(trim($member['first_name'] . ' ' . $member['last_name']) ?: 'Sans nom') ?></strong>
+                            </span>
+                            <div class="participants-list__contact" style="margin-top:4px;">
+                                <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
+                        </div>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </div>
+
         <div class="invite-form">
             <h3 class="subsection-title">Inviter un administrateur ou un gestionnaire</h3>
 
@@ -403,7 +422,6 @@
             <p class="form-error" role="alert"><?= esc($inviteError) ?></p>
             <?php endif; ?>
 
-            <?php // Repli sûr : old() peut renvoyer un tableau (POST email[]=…) → forcer une chaîne avant esc(). ?>
             <?php $oldEmail = old('email'); $oldEmail = is_array($oldEmail) ? '' : (string) $oldEmail; ?>
             <?php $oldRole = old('role'); $oldRole = is_array($oldRole) ? '' : (string) $oldRole; ?>
             <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/invitations") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
@@ -422,7 +440,16 @@
                 <button type="submit" class="btn btn--primary">Envoyer l'invitation</button>
             </form>
         </div>
-        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+
+    <?php if (! empty($canManageParticipants)): ?>
+    <!-- Section participants — Owner/Admin/Gestionnaire (garde Story 4.1 ; contenu
+         Story 4.4). SEULE surface autorisée pour la PII des bénévoles (NFR5) :
+         nom, prénom, téléphone, email. Le ViewModel est préparé par le contrôleur ;
+         la vue ne fait aucun calcul ni requête (UX-DR24). -->
+    <section class="kermesse-dashboard__section" id="participants">
+        <h2 class="section-title">Gestion des inscriptions</h2>
 
         <?php $participantStands = $participantStands ?? []; ?>
         <?php if (empty($participantStands)): ?>
