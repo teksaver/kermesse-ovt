@@ -34,8 +34,8 @@
                     </div>
                     <?php endif; ?>
                     <div style="display:flex; gap:8px;">
-                        <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary">Administration</a>
-                        <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary">Page publique</a>
+                        <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary"><?= $k['role'] === 'benevole' ? 'Mes inscriptions' : 'Administration' ?></a>
+                        <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary"><?= $k['role'] === 'benevole' ? 'Nouvelle inscription' : 'Page publique' ?></a>
                     </div>
                 </li>
             <?php endforeach; ?>

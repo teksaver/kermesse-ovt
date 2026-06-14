@@ -116,6 +116,7 @@ class KermesseAdminController extends BaseController
             'canModify'             => $canModify,
             'canManageParticipants' => $canManageParticipants,
             'canInvite'             => $canInvite,
+            'isBenevole'            => $userRole === UserRoleModel::ROLE_BENEVOLE,
             'participantStands'     => $participantStands,
             'myParticipations'      => $myParticipations,
             'teamMembers'           => $teamMembers,
