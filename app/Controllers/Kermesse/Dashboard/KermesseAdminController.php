@@ -40,6 +40,9 @@ class KermesseAdminController extends BaseController
         // "Mes participations"      : tout rôle.
         $canModify             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
         $canManageParticipants = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN, UserRoleModel::ROLE_GESTIONNAIRE], true);
+        // Story 4.5 — inviter Admin/Gestionnaire : réservé à Owner/Admin. Un Gestionnaire gère
+        // les participants mais ne peut pas constituer l'équipe d'administration (Dev Notes 4.5).
+        $canInvite             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
 
         // Charger stands + créneaux dès qu'une section en a besoin : « Modification »
         // (Owner/Admin) ET « Gestion des participants » (Owner/Admin/Gestionnaire).
@@ -108,6 +111,7 @@ class KermesseAdminController extends BaseController
             'stands'                => $stands,
             'canModify'             => $canModify,
             'canManageParticipants' => $canManageParticipants,
+            'canInvite'             => $canInvite,
             'participantStands'     => $participantStands,
             'myParticipations'      => $myParticipations,
             // Décision métier préparée pour la vue : l'annulation d'une participation
@@ -264,5 +268,68 @@ class KermesseAdminController extends BaseController
 
         session()->setFlashdata('success', 'Caractéristiques de la kermesse mises à jour avec succès.');
         return redirect()->to(site_url("kermesse/{$id}"));
+    }
+
+    /**
+     * POST /kermesse/{id}/invitations — invite an Admin/Gestionnaire (Story 4.5).
+     *
+     * Route is already guarded by role:owner,admin (RBAC); this method only validates
+     * input then delegates the whole invariant (user creation, role assignment, token,
+     * email) to RoleService::invite — no role mutation happens here (PRG on success).
+     */
+    public function invite(string $kermesseId): mixed
+    {
+        $id       = (int) $kermesseId;
+        $kermesse = model(KermesseModel::class)->find($id);
+
+        if ($kermesse === null) {
+            return $this->response->setStatusCode(404)->setBody(view('errors/html/error_404'));
+        }
+
+        // Guard against array-shaped input (email[]=…) which would warn on the string cast.
+        $emailInput = $this->request->getPost('email');
+        $email      = trim(is_array($emailInput) ? '' : (string) $emailInput);
+        $roleInput  = $this->request->getPost('role');
+        $role       = is_string($roleInput) ? $roleInput : '';
+
+        $validation = service('validation');
+        $isValid    = $validation->setRules([
+            'email' => 'required|valid_email',
+            'role'  => 'required|in_list[admin,gestionnaire]',
+        ])->run(['email' => $email, 'role' => $role]);
+
+        if (! $isValid) {
+            return redirect()->back()
+                ->withInput()
+                ->with('invite_error', 'Veuillez saisir un email valide et choisir un rôle (administrateur ou gestionnaire).');
+        }
+
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+        $result      = $roleService->invite($id, $email, $role, (int) session()->get('user_id'));
+
+        if (! $result->success) {
+            $message = match ($result->errorCode) {
+                'cannot_invite_owner' => 'Cette personne est déjà propriétaire de la kermesse ; son rôle ne peut pas être modifié.',
+                'invalid_role'        => 'Le rôle sélectionné est invalide.',
+                'invalid_email'       => 'Veuillez saisir un email valide.',
+                default               => 'Une erreur est survenue lors de l\'envoi de l\'invitation. Veuillez réessayer.',
+            };
+
+            return redirect()->back()->withInput()->with('invite_error', $message);
+        }
+
+        // Le rôle est attribué dans tous les cas de succès ; on reste honnête sur l'email :
+        // si l'envoi a échoué (tracé dans email_events), on le signale plutôt que de
+        // confirmer faussement « Invitation envoyée » (UX-DR20).
+        if ($result->emailSent === false) {
+            session()->setFlashdata(
+                'invite_warning',
+                'Le rôle a été attribué à ' . $email . ", mais l'email d'invitation n'a pas pu être envoyé. Vous pouvez réessayer.",
+            );
+        } else {
+            session()->setFlashdata('invite_success', 'Invitation envoyée à ' . $email . '.');
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}#participants"));
     }
 }

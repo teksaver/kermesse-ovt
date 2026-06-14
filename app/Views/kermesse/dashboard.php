@@ -388,6 +388,42 @@
     <section class="kermesse-dashboard__section" id="participants">
         <h2 class="section-title">Gestion des participants</h2>
 
+        <?php // Formulaire d'invitation (Story 4.5, UX-DR20) — réservé Owner/Admin ($canInvite). ?>
+        <?php if (! empty($canInvite)): ?>
+        <div class="invite-form">
+            <h3 class="subsection-title">Inviter un administrateur ou un gestionnaire</h3>
+
+            <?php if (! empty($inviteSuccess = session()->getFlashdata('invite_success'))): ?>
+            <p class="form-success" role="status"><?= esc($inviteSuccess) ?></p>
+            <?php endif; ?>
+            <?php if (! empty($inviteWarning = session()->getFlashdata('invite_warning'))): ?>
+            <p class="form-warning" role="alert"><?= esc($inviteWarning) ?></p>
+            <?php endif; ?>
+            <?php if (! empty($inviteError = session()->getFlashdata('invite_error'))): ?>
+            <p class="form-error" role="alert"><?= esc($inviteError) ?></p>
+            <?php endif; ?>
+
+            <?php // Repli sûr : old() peut renvoyer un tableau (POST email[]=…) → forcer une chaîne avant esc(). ?>
+            <?php $oldEmail = old('email'); $oldEmail = is_array($oldEmail) ? '' : (string) $oldEmail; ?>
+            <?php $oldRole = old('role'); $oldRole = is_array($oldRole) ? '' : (string) $oldRole; ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/invitations") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                <?= csrf_field() ?>
+                <div class="form-group">
+                    <label for="invite-email" class="form-label">Email de la personne à inviter</label>
+                    <input type="email" id="invite-email" name="email" class="form-control" value="<?= esc($oldEmail) ?>" placeholder="Ex. : prenom.nom@exemple.fr" required>
+                </div>
+                <div class="form-group">
+                    <label for="invite-role" class="form-label">Rôle attribué</label>
+                    <select id="invite-role" name="role" class="form-control" required>
+                        <option value="admin"<?= $oldRole === 'admin' ? ' selected' : '' ?>>Administrateur</option>
+                        <option value="gestionnaire"<?= $oldRole === 'gestionnaire' ? ' selected' : '' ?>>Gestionnaire</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn--primary">Envoyer l'invitation</button>
+            </form>
+        </div>
+        <?php endif; ?>
+
         <?php $participantStands = $participantStands ?? []; ?>
         <?php if (empty($participantStands)): ?>
         <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
@@ -533,6 +569,21 @@
 .form-success::before {
     content: "✅";
 }
+.form-warning {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.form-warning::before {
+    content: "⚠️";
+}
 .kermesse-characteristics {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
@@ -579,6 +630,16 @@
 }
 
 /* Section participants — récapitulatif nominatif (Story 4.4) */
+.invite-form {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    padding: 16px;
+    margin: 8px 0 24px;
+}
+.invite-form .form-group {
+    margin-bottom: 12px;
+}
 .participants-stand {
     margin: 8px 0 24px;
 }

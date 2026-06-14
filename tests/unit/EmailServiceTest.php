@@ -276,4 +276,66 @@ final class EmailServiceTest extends CIUnitTestCase
         $this->assertSame('failed', $capturedData['status']);
         $this->assertFalse($result->sent);
     }
+
+    // ------------------------------------------------------------------
+    // sendRoleInvitationEmail — Story 4.5
+    // ------------------------------------------------------------------
+
+    public function testSendRoleInvitationEmailRecordsRoleInvitationEvent(): void
+    {
+        $capturedData = null;
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new EmailService($mockModel);
+        $result  = $service->sendRoleInvitationEmail(
+            'invite@example.com',
+            'Kermesse de test',
+            'administrateur',
+            'https://example.com/auth/magic-link/fake-token',
+        );
+
+        $this->assertInstanceOf(EmailDeliveryResult::class, $result);
+        $this->assertNotNull($capturedData);
+        $this->assertSame('role_invitation', $capturedData['event_type'],
+            'event_type must be role_invitation');
+        $this->assertSame('invite@example.com', $capturedData['recipient_email']);
+        $this->assertSame(hash('sha256', 'invite@example.com'), $capturedData['recipient_hash']);
+        $this->assertContains($capturedData['status'], ['sent', 'failed']);
+
+        // Diagnostic metadata identifies the invitation context (no PII beyond the role/kermesse).
+        $metadata = json_decode((string) $capturedData['metadata'], true);
+        $this->assertSame('Kermesse de test', $metadata['kermesse_name'] ?? null);
+        $this->assertSame('administrateur', $metadata['role'] ?? null);
+    }
+
+    public function testRoleInvitationEmailRawTokenAbsentFromMetadata(): void
+    {
+        $capturedData = null;
+        $rawToken     = 'super-secret-invite-token-9876';
+
+        $mockModel = $this->createMock(EmailEventModel::class);
+        $mockModel->method('skipValidation')->willReturnSelf();
+        $mockModel->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+            $capturedData = $data;
+            return 1;
+        });
+
+        $service = new EmailService($mockModel);
+        $service->sendRoleInvitationEmail(
+            'invite@example.com',
+            'Kermesse de test',
+            'gestionnaire',
+            'https://example.com/auth/magic-link/' . $rawToken,
+        );
+
+        // Privacy: the raw Magic Link token must never land in the email_events trace.
+        $this->assertStringNotContainsString($rawToken, (string) $capturedData['metadata'],
+            'Raw Magic Link token must not appear in email_events.metadata');
+    }
 }
