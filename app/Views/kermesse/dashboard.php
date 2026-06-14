@@ -403,14 +403,12 @@
                             </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <?php if ($member['accepted_at'] === null): ?>
+                            <?php if ($member['role'] !== 'owner' && $member['accepted_at'] === null): ?>
                                 <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
-                                    <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation">✉️ Relancer</button>
+                                    <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation" aria-label="Relancer l'invitation" style="font-size:1rem; padding:4px 8px;">🔄</button>
                                 </form>
-                            <?php else: ?>
-                                <span class="kermesse-status-badge" style="background:#d4edda; color:#155724; font-size:12px;">Invitation acceptée</span>
                             <?php endif; ?>
                             <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
 
