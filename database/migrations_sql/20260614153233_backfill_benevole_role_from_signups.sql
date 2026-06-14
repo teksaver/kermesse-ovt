@@ -10,7 +10,8 @@
 -- was already a member of the kermesse before signing up as a volunteer.
 
 INSERT IGNORE INTO `kermesse_user_roles` (`kermesse_id`, `user_id`, `role`)
-SELECT DISTINCT `sl`.`kermesse_id`, `si`.`user_id`, 'benevole'
+SELECT DISTINCT `st`.`kermesse_id`, `si`.`user_id`, 'benevole'
 FROM `signups` `si`
 JOIN `slots` `sl` ON `sl`.`id` = `si`.`slot_id`
+JOIN `stands` `st` ON `st`.`id` = `sl`.`stand_id`
 WHERE `si`.`status` = 'active';
