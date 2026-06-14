@@ -50,6 +50,7 @@ final class ProfileResolutionTest extends CIUnitTestCase
                 first_name TEXT    NOT NULL DEFAULT "",
                 last_name  TEXT    NOT NULL DEFAULT "",
                 phone      TEXT    NOT NULL DEFAULT "",
+                last_login_at DATETIME NULL DEFAULT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -81,6 +82,7 @@ final class ProfileResolutionTest extends CIUnitTestCase
                 submitted_first_name TEXT    NOT NULL DEFAULT "",
                 submitted_last_name  TEXT    NOT NULL DEFAULT "",
                 submitted_phone      TEXT    NOT NULL DEFAULT "",
+                last_login_at DATETIME NULL DEFAULT NULL,
                 resolved_at          DATETIME,
                 created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

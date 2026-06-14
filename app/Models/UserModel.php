@@ -25,6 +25,7 @@ class UserModel extends Model
         'first_name',
         'last_name',
         'phone',
+        'last_login_at',
     ];
 
     /**

@@ -25,6 +25,12 @@ $routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutio
 $routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => ['auth', 'pending-resolution']]);
 
 // ---------------------------------------------------------------------------
+// Profile management
+// ---------------------------------------------------------------------------
+$routes->get('profile', '\App\Controllers\ProfileController::edit', ['filter' => ['auth', 'pending-resolution']]);
+$routes->post('profile', '\App\Controllers\ProfileController::update', ['filter' => ['auth', 'pending-resolution']]);
+
+// ---------------------------------------------------------------------------
 // Kermesse creation — open to all (Story 2.1)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/create', '\App\Controllers\Kermesse\KermesseController::create');
@@ -40,6 +46,9 @@ $routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\Kerme
 
 // Invitation d'un Admin/Gestionnaire (Story 4.5) — réservé Owner/Admin (RBAC route + service).
 $routes->post('kermesse/(:num)/invitations', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::invite/$1', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/team/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::updateTeamMember/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/team/(:num)/resend', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::resendInvite/$1/$2', ['filter' => 'role:owner,admin']);
+$routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::removeTeamMember/$1/$2', ['filter' => 'role:owner,admin']);
 
 // Désistement bénévole : annuler sa propre inscription depuis « Mes participations »
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.

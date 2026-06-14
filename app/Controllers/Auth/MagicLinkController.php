@@ -84,6 +84,10 @@ class MagicLinkController extends BaseController
 
         $db->transComplete();
 
+        // Story 4.x: update last_login_at to mark the global account (and any invitations) as accepted
+        $userModel = new \App\Models\UserModel();
+        $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+
         session()->regenerate();
         session()->set([
             'user_id'      => $userId,
