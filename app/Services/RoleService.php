@@ -233,12 +233,37 @@ class RoleService
     /**
      * Removes the role assignment for a given user on a given kermesse.
      * Cannot remove the OWNER role.
+     *
+     * If the user has active signups on this kermesse, the row is downgraded to
+     * benevole instead of deleted so they keep access to "Mes participations".
      */
     public function removeRole(int $kermesseId, int $userId): void
     {
         $existing = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
-        if ($existing !== null && (string) $existing['role'] !== UserRoleModel::ROLE_OWNER) {
+        if ($existing === null || (string) $existing['role'] === UserRoleModel::ROLE_OWNER) {
+            return;
+        }
+
+        if ($this->hasActiveSignups($kermesseId, $userId)) {
+            $this->userRoleModel->update((int) $existing['id'], ['role' => UserRoleModel::ROLE_BENEVOLE]);
+        } else {
             $this->userRoleModel->delete((int) $existing['id']);
         }
+    }
+
+    /**
+     * Returns true if the user has at least one active signup on the given kermesse.
+     * Used by removeRole() to decide between downgrade and full removal.
+     */
+    private function hasActiveSignups(int $kermesseId, int $userId): bool
+    {
+        return db_connect()
+            ->table('signups')
+            ->join('slots', 'slots.id = signups.slot_id')
+            ->join('stands', 'stands.id = slots.stand_id')
+            ->where('stands.kermesse_id', $kermesseId)
+            ->where('signups.user_id', $userId)
+            ->where('signups.status', 'active')
+            ->countAllResults() > 0;
     }
 }

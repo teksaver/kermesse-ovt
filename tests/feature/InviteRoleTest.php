@@ -325,6 +325,44 @@ final class InviteRoleTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Suppression d'un membre de l'équipe (removeRole)
+    // ------------------------------------------------------------------
+
+    public function testRemoveAdminWithoutSignupsDeletesRole(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $role = $this->roleForUser($this->adminId);
+        $this->assertNull($role, 'La ligne doit être supprimée quand l\'admin n\'a pas d\'inscriptions.');
+    }
+
+    public function testRemoveAdminWithActiveSignupsDowngradesToBenevole(): void
+    {
+        $this->insertSignupForUser($this->adminId);
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($this->adminId),
+            'Un admin avec des inscriptions actives doit être rétrogradé en bénévole, pas supprimé.');
+    }
+
+    public function testRemoveGestionnaireWithActiveSignupsDowngradesToBenevole(): void
+    {
+        $this->insertSignupForUser($this->gestionId);
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->gestionId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($this->gestionId),
+            'Un gestionnaire avec des inscriptions actives doit être rétrogradé en bénévole.');
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -359,6 +397,41 @@ final class InviteRoleTest extends CIUnitTestCase
         $mockEmail = $this->createMock(\CodeIgniter\Email\Email::class);
         $mockEmail->method('send')->willReturn($sent);
         \Config\Services::injectMock('email', $mockEmail);
+    }
+
+    private function roleForUser(int $userId): ?string
+    {
+        $row = db_connect()->query(
+            'SELECT role FROM db_kermesse_user_roles WHERE kermesse_id = ? AND user_id = ?',
+            [$this->kermesseId, $userId],
+        )->getRowArray();
+
+        return $row !== null ? (string) $row['role'] : null;
+    }
+
+    private function insertSignupForUser(int $userId): void
+    {
+        $db = db_connect();
+        $db->table('stands')->insert([
+            'kermesse_id'   => $this->kermesseId,
+            'name'          => 'Stand test',
+            'display_order' => 1,
+        ]);
+        $standId = (int) $db->insertID();
+
+        $db->table('slots')->insert([
+            'stand_id'  => $standId,
+            'starts_at' => '2099-01-01 09:00:00',
+            'ends_at'   => '2099-01-01 12:00:00',
+            'capacity'  => 5,
+        ]);
+        $slotId = (int) $db->insertID();
+
+        $db->table('signups')->insert([
+            'slot_id' => $slotId,
+            'user_id' => $userId,
+            'status'  => 'active',
+        ]);
     }
 
     private function userCountForEmail(string $email): int
