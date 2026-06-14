@@ -229,4 +229,16 @@ class RoleService
             default                          => $role,
         };
     }
+
+    /**
+     * Removes the role assignment for a given user on a given kermesse.
+     * Cannot remove the OWNER role.
+     */
+    public function removeRole(int $kermesseId, int $userId): void
+    {
+        $existing = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+        if ($existing !== null && (string) $existing['role'] !== UserRoleModel::ROLE_OWNER) {
+            $this->userRoleModel->delete((int) $existing['id']);
+        }
+    }
 }

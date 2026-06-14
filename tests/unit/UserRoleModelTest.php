@@ -40,6 +40,7 @@ class UserRoleModelTest extends CIUnitTestCase
                 first_name TEXT    NOT NULL DEFAULT "",
                 last_name  TEXT    NOT NULL DEFAULT "",
                 phone      TEXT    NOT NULL DEFAULT "",
+                last_login_at DATETIME NULL DEFAULT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

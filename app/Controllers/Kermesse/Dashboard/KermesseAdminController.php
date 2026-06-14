@@ -348,4 +348,86 @@ class KermesseAdminController extends BaseController
 
         return redirect()->to(site_url("kermesse/{$id}#participants"));
     }
+
+    public function updateTeamMember(int $kermesseId, int $userId): mixed
+    {
+        $kermesse = model(KermesseModel::class)->find($kermesseId);
+        if ($kermesse === null) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $validation = service('validation');
+        $isValid = $validation->setRules([
+            'role'       => 'required|in_list[admin,gestionnaire]',
+            'first_name' => 'permit_empty|string|max_length[100]',
+            'last_name'  => 'permit_empty|string|max_length[100]',
+            'email'      => "required|valid_email|is_unique[users.email,id,{$userId}]",
+        ])->run($this->request->getPost());
+
+        if (! $isValid) {
+            return redirect()->back()->withInput()->with('invite_error', 'Les informations soumises sont invalides.');
+        }
+
+        $role = (string) $this->request->getPost('role');
+        $userRoleModel = model(UserRoleModel::class);
+        $roleRow = $userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+
+        if ($roleRow && (string) $roleRow['role'] !== UserRoleModel::ROLE_OWNER) {
+            $userRoleModel->update((int) $roleRow['id'], ['role' => $role]);
+        }
+
+        $userModel = model(UserModel::class);
+        $user = $userModel->find($userId);
+
+        if ($roleRow && $user && $user['last_login_at'] === null) {
+            $email = strtolower(trim((string) $this->request->getPost('email')));
+            $userModel->update($userId, [
+                'first_name' => trim((string) $this->request->getPost('first_name')),
+                'last_name'  => trim((string) $this->request->getPost('last_name')),
+                'email'      => $email,
+                'email_hash' => $userModel->hashEmail($email),
+            ]);
+        }
+
+        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+                         ->with('invite_success', 'Membre mis à jour avec succès.');
+    }
+
+    public function resendInvite(int $kermesseId, int $userId): mixed
+    {
+        $kermesse = model(KermesseModel::class)->find($kermesseId);
+        if ($kermesse === null) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $user = model(UserModel::class)->find($userId);
+        $roleRow = model(UserRoleModel::class)->findByKermesseAndUser($kermesseId, $userId);
+
+        if ($user && $roleRow && $user['last_login_at'] === null) {
+            $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+            $result = $roleService->invite($kermesseId, (string) $user['email'], (string) $roleRow['role'], (int) session()->get('user_id'), (string) $user['first_name'], (string) $user['last_name']);
+
+            if ($result->success) {
+                return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+                                 ->with('invite_success', 'Invitation relancée avec succès à ' . $user['email'] . '.');
+            }
+        }
+
+        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+                         ->with('invite_error', 'Impossible de relancer l\'invitation.');
+    }
+
+    public function removeTeamMember(int $kermesseId, int $userId): mixed
+    {
+        $kermesse = model(KermesseModel::class)->find($kermesseId);
+        if ($kermesse === null) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+        $roleService->removeRole($kermesseId, $userId);
+
+        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+                         ->with('invite_success', 'L\'accès membre a été supprimé.');
+    }
 }

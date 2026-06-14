@@ -400,12 +400,106 @@
                                 <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
                             </div>
                         </div>
-                        <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <?php if ($member['last_login_at'] === null): ?>
+                                <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
+                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
+                                    <?= csrf_field() ?>
+                                    <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation">✉️ Relancer</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="kermesse-status-badge" style="background:#d4edda; color:#155724; font-size:12px;">Invitation acceptée</span>
+                            <?php endif; ?>
                             <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
+
+                            <!-- Actions -->
+                            <?php if ($member['role'] !== 'owner'): ?>
+                                <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
+                                
+                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
+                                    <?= csrf_field() ?>
+                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
+                                </form>
+                            <?php endif; ?>
                         </div>
                     </li>
                     <?php endforeach; ?>
                 </ul>
+
+                <!-- Edit Member Modal -->
+                <dialog id="edit-member-modal" class="k-modal">
+                    <form method="post" id="edit-member-form" class="k-modal__content">
+                        <?= csrf_field() ?>
+                        <h3 class="k-modal__title">Éditer le membre</h3>
+                        <p class="form-warning" id="edit-member-warning" style="display:none; margin-bottom:16px;">
+                            L'invitation ayant été acceptée, ce membre gère désormais son propre compte. Vous ne pouvez modifier que son rôle.
+                        </p>
+                        
+                        <div class="form-group">
+                            <label for="edit-member-role" class="form-label">Rôle attribué</label>
+                            <select id="edit-member-role" name="role" class="form-control" required>
+                                <option value="admin">Administrateur</option>
+                                <option value="gestionnaire">Gestionnaire</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="edit-member-first-name" class="form-label">Prénom</label>
+                            <input type="text" id="edit-member-first-name" name="first_name" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="edit-member-last-name" class="form-label">Nom</label>
+                            <input type="text" id="edit-member-last-name" name="last_name" class="form-control">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="edit-member-email" class="form-label">Adresse email</label>
+                            <input type="email" id="edit-member-email" name="email" class="form-control" required>
+                        </div>
+                        
+                        <div class="k-modal__actions">
+                            <button type="button" class="btn btn--secondary" onclick="document.getElementById('edit-member-modal').close()">Annuler</button>
+                            <button type="submit" class="btn btn--primary">Enregistrer</button>
+                        </div>
+                    </form>
+                </dialog>
+
+                <script>
+                function openEditMemberModal(member) {
+                    const modal = document.getElementById('edit-member-modal');
+                    const form = document.getElementById('edit-member-form');
+                    const kermesseId = <?= json_encode($kermesse['id']) ?>;
+                    
+                    form.action = '<?= site_url() ?>kermesse/' + kermesseId + '/team/' + member.user_id + '/edit';
+                    
+                    document.getElementById('edit-member-role').value = member.role;
+                    document.getElementById('edit-member-first-name').value = member.first_name || '';
+                    document.getElementById('edit-member-last-name').value = member.last_name || '';
+                    document.getElementById('edit-member-email').value = member.email || '';
+                    
+                    const isAccepted = member.last_login_at !== null;
+                    document.getElementById('edit-member-warning').style.display = isAccepted ? 'block' : 'none';
+                    
+                    document.getElementById('edit-member-first-name').readOnly = isAccepted;
+                    document.getElementById('edit-member-last-name').readOnly = isAccepted;
+                    document.getElementById('edit-member-email').readOnly = isAccepted;
+                    
+                    // Add visual cue for readonly fields
+                    ['edit-member-first-name', 'edit-member-last-name', 'edit-member-email'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (isAccepted) {
+                            el.style.backgroundColor = '#e9ecef';
+                            el.title = "Non modifiable par l'Owner car l'invitation a été acceptée.";
+                        } else {
+                            el.style.backgroundColor = '';
+                            el.title = '';
+                        }
+                    });
+                    
+                    modal.showModal();
+                }
+                </script>
             <?php endif; ?>
         </div>
 
