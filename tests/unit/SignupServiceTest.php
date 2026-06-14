@@ -1,5 +1,6 @@
 <?php
 
+use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -95,9 +96,14 @@ final class SignupServiceTest extends CIUnitTestCase
      */
     private function buildMockConnection(): BaseConnection
     {
+        $builder = $this->createMock(BaseBuilder::class);
+        $builder->method('ignore')->willReturnSelf();
+        $builder->method('insert')->willReturn(true);
+
         $mock = $this->createMock(BaseConnection::class);
         $mock->method('transBegin')->willReturn(true);
         $mock->method('transCommit')->willReturn(true);
+        $mock->method('table')->willReturn($builder);
         return $mock;
     }
 

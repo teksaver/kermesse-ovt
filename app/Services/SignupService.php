@@ -8,6 +8,7 @@ use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
+use App\Models\UserRoleModel;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
@@ -215,6 +216,15 @@ class SignupService
         if ($signupId === false) {
             return SignupResult::failure('signup_insert_failed');
         }
+
+        // Assign benevole role so the volunteer can access the dashboard (Story 4.1).
+        // INSERT IGNORE: preserves any higher role (owner/admin/gestionnaire) if the
+        // user was already a member of this kermesse before signing up as volunteer.
+        $db->table('kermesse_user_roles')->ignore(true)->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => UserRoleModel::ROLE_BENEVOLE,
+        ]);
 
         // Record divergence if the submitted profile differs from the stored one.
         // Failure must not abort the signup (catch-all in recordProfileDivergence).
