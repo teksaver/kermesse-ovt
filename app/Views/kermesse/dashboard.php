@@ -48,10 +48,10 @@
                     <?= csrf_field() ?>
                     <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
                 </form>
-                <?php elseif ($kermesse['status'] === 'preparation'): ?>
+                <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
                     <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--primary">Ouvrir les inscriptions</button>
+                    <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
                 </form>
                 <?php endif; ?>
             <?php endif; ?>
