@@ -175,10 +175,13 @@ class RoleService
      */
     private function assignRole(int $kermesseId, int $userId, string $role, int $invitedBy, ?array $existing): void
     {
+        $now = date('Y-m-d H:i:s');
+
         if ($existing !== null) {
             $this->userRoleModel->update((int) $existing['id'], [
-                'role'       => $role,
-                'invited_by' => $invitedBy,
+                'role'        => $role,
+                'invited_by'  => $invitedBy,
+                'invited_at'  => $now,
             ]);
 
             return;
@@ -190,6 +193,7 @@ class RoleService
                 'user_id'     => $userId,
                 'role'        => $role,
                 'invited_by'  => $invitedBy,
+                'invited_at'  => $now,
             ]);
         } catch (DatabaseException $e) {
             if (! $this->isDuplicateKey($e)) {
@@ -201,8 +205,9 @@ class RoleService
             $row = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
             if ($row !== null) {
                 $this->userRoleModel->update((int) $row['id'], [
-                    'role'       => $role,
-                    'invited_by' => $invitedBy,
+                    'role'        => $role,
+                    'invited_by'  => $invitedBy,
+                    'invited_at'  => $now,
                 ]);
             }
         }

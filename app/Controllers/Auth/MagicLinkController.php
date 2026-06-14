@@ -84,9 +84,20 @@ class MagicLinkController extends BaseController
 
         $db->transComplete();
 
-        // Story 4.x: update last_login_at to mark the global account (and any invitations) as accepted
         $userModel = new \App\Models\UserModel();
         $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+
+        // Mark invitation accepted per-kermesse so the dashboard can distinguish
+        // "accepted this kermesse" from "has a global account" (NFR5 privacy).
+        $kermesseId = (int) ($tokenRow['kermesse_id'] ?? 0);
+        if ($kermesseId > 0) {
+            db_connect()
+                ->table('kermesse_user_roles')
+                ->where('kermesse_id', $kermesseId)
+                ->where('user_id', $userId)
+                ->where('accepted_at IS NULL', null, false)
+                ->update(['accepted_at' => date('Y-m-d H:i:s')]);
+        }
 
         session()->regenerate();
         session()->set([
