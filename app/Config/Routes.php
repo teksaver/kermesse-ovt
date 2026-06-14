@@ -25,6 +25,12 @@ $routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutio
 $routes->get('dashboard', '\App\Controllers\Kermesse\Dashboard\UserDashboardController::index', ['filter' => ['auth', 'pending-resolution']]);
 
 // ---------------------------------------------------------------------------
+// Profile management
+// ---------------------------------------------------------------------------
+$routes->get('profile', '\App\Controllers\ProfileController::edit', ['filter' => ['auth', 'pending-resolution']]);
+$routes->post('profile', '\App\Controllers\ProfileController::update', ['filter' => ['auth', 'pending-resolution']]);
+
+// ---------------------------------------------------------------------------
 // Kermesse creation — open to all (Story 2.1)
 // ---------------------------------------------------------------------------
 $routes->get('kermesse/create', '\App\Controllers\Kermesse\KermesseController::create');

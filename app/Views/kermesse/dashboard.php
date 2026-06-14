@@ -424,8 +424,20 @@
 
             <?php $oldEmail = old('email'); $oldEmail = is_array($oldEmail) ? '' : (string) $oldEmail; ?>
             <?php $oldRole = old('role'); $oldRole = is_array($oldRole) ? '' : (string) $oldRole; ?>
+            <?php $oldFirstName = old('first_name'); $oldFirstName = is_array($oldFirstName) ? '' : (string) $oldFirstName; ?>
+            <?php $oldLastName = old('last_name'); $oldLastName = is_array($oldLastName) ? '' : (string) $oldLastName; ?>
             <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/invitations") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                 <?= csrf_field() ?>
+                <div class="form-group" style="display: flex; gap: 16px;">
+                    <div style="flex: 1;">
+                        <label for="invite-firstname" class="form-label">Prénom (optionnel)</label>
+                        <input type="text" id="invite-firstname" name="first_name" class="form-control" value="<?= esc($oldFirstName) ?>" placeholder="Ex. : Jean">
+                    </div>
+                    <div style="flex: 1;">
+                        <label for="invite-lastname" class="form-label">Nom (optionnel)</label>
+                        <input type="text" id="invite-lastname" name="last_name" class="form-control" value="<?= esc($oldLastName) ?>" placeholder="Ex. : Dupont">
+                    </div>
+                </div>
                 <div class="form-group">
                     <label for="invite-email" class="form-label">Email de la personne à inviter</label>
                     <input type="email" id="invite-email" name="email" class="form-control" value="<?= esc($oldEmail) ?>" placeholder="Ex. : prenom.nom@exemple.fr" required>

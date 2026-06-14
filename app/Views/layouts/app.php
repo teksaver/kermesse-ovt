@@ -14,19 +14,20 @@
                 <?php $currentUser = model(\App\Models\UserModel::class)->find(session('user_id')); ?>
                 <div style="display:flex; align-items:center; gap:16px;">
                     <?php if ($currentUser): ?>
-                        <span style="font-size:14px; color:var(--color-text-muted);">
+                        <span style="font-size:14px; color:var(--color-text-muted); display:flex; align-items:center; gap:8px;">
                             <?= esc(trim(($currentUser['first_name'] ?? '') . ' ' . ($currentUser['last_name'] ?? '')) ?: $currentUser['email']) ?>
+                            <a href="<?= site_url('profile') ?>" title="Modifier mon profil" aria-label="Modifier mon profil" style="text-decoration:none; font-size:16px;">✏️</a>
                         </span>
                     <?php endif; ?>
                     <form method="post" action="<?= site_url('auth/logout') ?>" class="app-nav__logout" style="margin:0;">
                         <?= csrf_field() ?>
-                        <button type="submit" class="btn btn-secondary">Se déconnecter</button>
+                        <button type="submit" class="btn btn-secondary" title="Se déconnecter" aria-label="Se déconnecter" style="font-size: 1.2rem; padding: 4px 8px; border: none; background: transparent;">🚪</button>
                     </form>
                 </div>
             <?php else: ?>
                 <form method="post" action="<?= site_url('auth/logout') ?>" class="app-nav__logout">
                     <?= csrf_field() ?>
-                    <button type="submit" class="btn btn-secondary">Se déconnecter</button>
+                    <button type="submit" class="btn btn-secondary" title="Se déconnecter" aria-label="Se déconnecter" style="font-size: 1.2rem; padding: 4px 8px; border: none; background: transparent;">🚪</button>
                 </form>
             <?php endif; ?>
         </div>

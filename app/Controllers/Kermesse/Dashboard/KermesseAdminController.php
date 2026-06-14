@@ -296,12 +296,23 @@ class KermesseAdminController extends BaseController
         $email      = trim(is_array($emailInput) ? '' : (string) $emailInput);
         $roleInput  = $this->request->getPost('role');
         $role       = is_string($roleInput) ? $roleInput : '';
+        $firstNameInput = $this->request->getPost('first_name');
+        $firstName      = trim(is_array($firstNameInput) ? '' : (string) $firstNameInput);
+        $lastNameInput  = $this->request->getPost('last_name');
+        $lastName       = trim(is_array($lastNameInput) ? '' : (string) $lastNameInput);
 
         $validation = service('validation');
         $isValid    = $validation->setRules([
-            'email' => 'required|valid_email',
-            'role'  => 'required|in_list[admin,gestionnaire]',
-        ])->run(['email' => $email, 'role' => $role]);
+            'email'      => 'required|valid_email',
+            'role'       => 'required|in_list[admin,gestionnaire]',
+            'first_name' => 'permit_empty|string|max_length[100]',
+            'last_name'  => 'permit_empty|string|max_length[100]',
+        ])->run([
+            'email'      => $email,
+            'role'       => $role,
+            'first_name' => $firstName,
+            'last_name'  => $lastName,
+        ]);
 
         if (! $isValid) {
             return redirect()->back()
@@ -310,7 +321,7 @@ class KermesseAdminController extends BaseController
         }
 
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
-        $result      = $roleService->invite($id, $email, $role, (int) session()->get('user_id'));
+        $result      = $roleService->invite($id, $email, $role, (int) session()->get('user_id'), $firstName, $lastName);
 
         if (! $result->success) {
             $message = match ($result->errorCode) {
