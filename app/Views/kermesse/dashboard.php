@@ -403,7 +403,7 @@
                             </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <?php if ($member['last_login_at'] === null): ?>
+                            <?php if ($member['accepted_at'] === null): ?>
                                 <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
@@ -480,7 +480,7 @@
                     document.getElementById('edit-member-last-name').value = member.last_name || '';
                     document.getElementById('edit-member-email').value = member.email || '';
                     
-                    const isAccepted = member.last_login_at !== null;
+                    const isAccepted = member.accepted_at !== null;
                     document.getElementById('edit-member-warning').style.display = isAccepted ? 'block' : 'none';
                     
                     document.getElementById('edit-member-first-name').readOnly = isAccepted;

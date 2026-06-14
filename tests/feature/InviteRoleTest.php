@@ -535,6 +535,8 @@ final class InviteRoleTest extends CIUnitTestCase
                 user_id      INTEGER NOT NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
+                invited_at   DATETIME NULL DEFAULT NULL,
+                accepted_at  DATETIME NULL DEFAULT NULL,
                 created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

@@ -377,10 +377,8 @@ class KermesseAdminController extends BaseController
             $userRoleModel->update((int) $roleRow['id'], ['role' => $role]);
         }
 
-        $userModel = model(UserModel::class);
-        $user = $userModel->find($userId);
-
-        if ($roleRow && $user && $user['last_login_at'] === null) {
+        if ($roleRow && ($roleRow['accepted_at'] ?? null) === null) {
+            $userModel = model(UserModel::class);
             $email = strtolower(trim((string) $this->request->getPost('email')));
             $userModel->update($userId, [
                 'first_name' => trim((string) $this->request->getPost('first_name')),
@@ -404,7 +402,7 @@ class KermesseAdminController extends BaseController
         $user = model(UserModel::class)->find($userId);
         $roleRow = model(UserRoleModel::class)->findByKermesseAndUser($kermesseId, $userId);
 
-        if ($user && $roleRow && $user['last_login_at'] === null) {
+        if ($user && $roleRow && ($roleRow['accepted_at'] ?? null) === null) {
             $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
             $result = $roleService->invite($kermesseId, (string) $user['email'], (string) $roleRow['role'], (int) session()->get('user_id'), (string) $user['first_name'], (string) $user['last_name']);
 

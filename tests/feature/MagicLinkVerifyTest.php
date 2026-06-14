@@ -77,6 +77,8 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
                 user_id      INTEGER NOT NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
+                invited_at   DATETIME NULL DEFAULT NULL,
+                accepted_at  DATETIME NULL DEFAULT NULL,
                 created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -338,5 +340,106 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
         $this->assertStringNotContainsString('known@example.com', $bodyUnknown);
         $this->assertStringContainsString('Lien invalide', $bodyKnown);
         $this->assertStringContainsString('Lien invalide', $bodyUnknown);
+    }
+
+    // ------------------------------------------------------------------
+    // AC — accepted_at per-kermesse (NFR5 privacy)
+    // ------------------------------------------------------------------
+
+    public function testAcceptedAtSetOnMagicLinkVerify(): void
+    {
+        $db    = db_connect();
+        $email = 'invite-accept@example.com';
+
+        $db->table('users')->insert([
+            'email'      => $email,
+            'email_hash' => hash('sha256', $email),
+            'first_name' => 'Invite',
+            'last_name'  => 'Accept',
+            'phone'      => '',
+        ]);
+        $userId = (int) $db->insertID();
+
+        $db->table('kermesses')->insert([
+            'created_by'        => $userId,
+            'public_slug'       => 'accept-kermesse',
+            'name'              => 'Kermesse Accept',
+            'event_date'        => '2026-09-20',
+            'location'          => 'Salle',
+            'short_description' => '',
+            'status'            => 'preparation',
+        ]);
+        $kermesseId = (int) $db->insertID();
+
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => 'admin',
+            'invited_by'  => $userId,
+            'invited_at'  => date('Y-m-d H:i:s', time() - 3600),
+            'accepted_at' => null,
+        ]);
+
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
+        $before   = date('Y-m-d H:i:s');
+        $this->get('auth/magic-link/' . $rawToken);
+        $after = date('Y-m-d H:i:s');
+
+        $row = $db->query(
+            "SELECT accepted_at FROM db_kermesse_user_roles WHERE kermesse_id = {$kermesseId} AND user_id = {$userId}"
+        )->getRowArray();
+
+        $this->assertNotNull($row['accepted_at'],
+            'accepted_at must be set on the role row after the invitation magic link is verified');
+        $this->assertGreaterThanOrEqual($before, $row['accepted_at'],
+            'accepted_at must be at or after the verify call timestamp');
+        $this->assertLessThanOrEqual($after, $row['accepted_at'],
+            'accepted_at must be at or before the verify call completed');
+    }
+
+    public function testAcceptedAtNotSetWhenTokenHasNoKermesseId(): void
+    {
+        $db    = db_connect();
+        $email = 'no-kermesse@example.com';
+
+        $db->table('users')->insert([
+            'email'      => $email,
+            'email_hash' => hash('sha256', $email),
+            'first_name' => 'No',
+            'last_name'  => 'Kermesse',
+            'phone'      => '',
+        ]);
+        $userId = (int) $db->insertID();
+
+        $db->table('kermesses')->insert([
+            'created_by'        => $userId,
+            'public_slug'       => 'nokerm-kermesse',
+            'name'              => 'Kermesse NoKerm',
+            'event_date'        => '2026-09-21',
+            'location'          => 'Salle',
+            'short_description' => '',
+            'status'            => 'preparation',
+        ]);
+        $kermesseId = (int) $db->insertID();
+
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => 'admin',
+            'invited_by'  => $userId,
+            'invited_at'  => date('Y-m-d H:i:s', time() - 3600),
+            'accepted_at' => null,
+        ]);
+
+        // Token without kermesse_id — plain login link
+        $rawToken = $this->insertMagicLinkToken($email);
+        $this->get('auth/magic-link/' . $rawToken);
+
+        $row = $db->query(
+            "SELECT accepted_at FROM db_kermesse_user_roles WHERE kermesse_id = {$kermesseId} AND user_id = {$userId}"
+        )->getRowArray();
+
+        $this->assertNull($row['accepted_at'],
+            'accepted_at must remain NULL when the magic link carries no kermesse_id');
     }
 }
