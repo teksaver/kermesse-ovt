@@ -43,6 +43,7 @@ class PublicVolunteerPageService
 
         $status     = $kermesse['status'] ?? KermesseModel::STATUS_PREPARATION;
         $statusInfo = self::STATUS_MAP[$status] ?? self::STATUS_MAP[KermesseModel::STATUS_PREPARATION];
+        $kermesseId = (int) $kermesse['id'];
 
         // Whitelist public-safe kermesse fields only. Never spread the raw row,
         // which carries owner_id and other non-public columns.
@@ -55,18 +56,23 @@ class PublicVolunteerPageService
 
         $stands = [];
         if ($status === KermesseModel::STATUS_OPEN) {
-            $stands = $this->buildStands((int) $kermesse['id'], $publicSlug, $userId);
+            $stands = $this->buildStands($kermesseId, $publicSlug, $userId);
         }
 
+        $hasActiveSignups = $userId !== null
+            && ! empty(model(SignupModel::class)->findActiveForUserAndKermesse($userId, $kermesseId));
+
         return [
-            'kermesse'    => $publicKermesse,
-            'status'      => $status,
-            'statusLabel' => $statusInfo['label'],
-            'statusClass' => $statusInfo['class'],
-            'signupsOpen' => $status === KermesseModel::STATUS_OPEN,
-            'stands'      => $stands,
-            'hasStands'   => count($stands) > 0,
-            'hasSlots'    => $this->hasSlots($stands),
+            'kermesse'        => $publicKermesse,
+            'kermesseId'      => $kermesseId,
+            'status'          => $status,
+            'statusLabel'     => $statusInfo['label'],
+            'statusClass'     => $statusInfo['class'],
+            'signupsOpen'     => $status === KermesseModel::STATUS_OPEN,
+            'stands'          => $stands,
+            'hasStands'       => count($stands) > 0,
+            'hasSlots'        => $this->hasSlots($stands),
+            'hasActiveSignups' => $hasActiveSignups,
         ];
     }
 
