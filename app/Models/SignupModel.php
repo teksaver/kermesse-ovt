@@ -218,7 +218,7 @@ class SignupModel extends Model
 
     /**
      * Return every ACTIVE signup for a kermesse, joined to each volunteer's identity and
-     * contact details, for the dashboard "Gestion des participants" section (Story 4.4).
+     * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3).
      *
      * PRIVACY (NFR5): this is the ONLY read that exposes volunteer PII (first_name,
      * last_name, phone, email). Its result must never reach a public view — it is gated
@@ -233,15 +233,19 @@ class SignupModel extends Model
      * rows are ordered by volunteer name for a stable nominative list. Empty slots simply
      * have no row — the controller overlays them onto the full slot list for the recap.
      *
-     * @return list<array{slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string}>
+     * Story 5.3: modifier_first_name (nullable) and last_modified_at (nullable) expose
+     * who made the last admin correction, via a LEFT JOIN on users aliased as mod_u.
+     *
+     * @return list<array{slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string, modifier_first_name: string|null, last_modified_at: string|null}>
      */
     public function findActiveParticipantsForKermesse(int $kermesseId): array
     {
         return $this->db->table($this->table . ' si')
-            ->select('si.slot_id, sl.stand_id, u.first_name, u.last_name, u.phone, u.email')
+            ->select('si.slot_id, sl.stand_id, u.first_name, u.last_name, u.phone, u.email, si.last_modified_at, mod_u.first_name AS modifier_first_name')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->join('users u', 'u.id = si.user_id')
+            ->join('users mod_u', 'mod_u.id = si.last_modified_by_user_id', 'left')
             ->where('st.kermesse_id', $kermesseId)
             ->whereNotIn('si.status', self::INACTIVE_STATUSES)
             ->where('si.deleted_at', null)

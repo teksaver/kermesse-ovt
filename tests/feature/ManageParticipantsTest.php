@@ -67,7 +67,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee(self::STAND_NAME);
 
         // Identité et contact des bénévoles actifs (UX-DR24).
@@ -85,7 +85,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->gestionId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee(self::STAND_NAME);
         $result->assertSee('Durand');
         $result->assertSee('0611223344');
@@ -132,8 +132,37 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->adminId))->get("kermesse/{$emptyKermesseId}");
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee("Aucun stand n'a encore été créé");
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.3 — Badge de modification dans « Gestion des inscrits »
+    // ------------------------------------------------------------------
+
+    public function testAdminSeesModificationBadgeWhenSignupWasModified(): void
+    {
+        $db = db_connect();
+        $db->table('signups')
+            ->where('slot_id', $this->buvetteSlot)
+            ->where('user_id', $this->camilleId)
+            ->update([
+                'last_modified_by_user_id' => $this->adminId,
+                'last_modified_at'         => '2026-10-10 15:00:00',
+            ]);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Modifié par Admin');
+    }
+
+    public function testNoBadgeWhenSignupWasNotModified(): void
+    {
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertDontSee('Modifié par');
     }
 
     // ------------------------------------------------------------------
@@ -145,7 +174,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->benevoleId);
 
         $result->assertStatus(200);
-        $result->assertDontSee('Gestion des inscriptions');
+        $result->assertDontSee('Gestion des inscrits');
 
         // Aucune donnée personnelle d'un autre bénévole ne doit fuiter.
         $result->assertDontSee('Durand');
@@ -322,13 +351,15 @@ final class ManageParticipantsTest extends CIUnitTestCase
         ');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME NULL DEFAULT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NOT NULL,
+                status                    TEXT     NOT NULL DEFAULT "active",
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

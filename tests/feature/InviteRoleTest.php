@@ -86,8 +86,8 @@ final class InviteRoleTest extends CIUnitTestCase
         $result = $this->getDashboard($this->gestionId);
 
         $result->assertStatus(200);
-        // Le Gestionnaire voit la section « Gestion des inscriptions » mais PAS le formulaire d'invitation.
-        $result->assertSee('Gestion des inscriptions');
+        // Le Gestionnaire voit la section « Gestion des inscrits » mais PAS le formulaire d'invitation.
+        $result->assertSee('Gestion des inscrits');
         $result->assertDontSee(self::INVITE_FORM_MARKER);
     }
 

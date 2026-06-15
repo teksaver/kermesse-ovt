@@ -33,7 +33,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
 
     // Marqueurs stables de chaque section dans le HTML rendu.
     private const MARKER_MODIFICATION = 'Gestion des stands et des créneaux';
-    private const MARKER_PARTICIPANTS = 'Gestion des inscriptions';
+    private const MARKER_PARTICIPANTS = 'Gestion des inscrits';
     private const MARKER_TEAM         = 'Gestion de l\'équipe d\'organisation';
     private const MARKER_MY_SIGNUPS   = 'Mes participations';
     private const MARKER_STAND_DATA   = 'Stand Test 4.1';

@@ -140,17 +140,20 @@ class KermesseAdminController extends BaseController
     }
 
     /**
-     * Assemble the "Gestion des participants" view model: each active stand with its
+     * Assemble the "Gestion des inscrits" view model: each active stand with its
      * slots, and for every slot the occupied/remaining places plus the nominative list
-     * of active volunteers (Story 4.4, UX-DR24).
+     * of active volunteers (Story 4.4/5.3, UX-DR24).
      *
      * Occupancy is derived from SignupModel::findActiveParticipantsForKermesse(), whose
      * "active" definition is identical to public availability — the recap can therefore
      * never show a fill level different from the public page (AC). Empty slots keep an
      * empty volunteer list so the operator still sees the remaining capacity.
      *
+     * Story 5.3: each volunteer entry carries modifier_label (null when unmodified) for
+     * the discrete "Modifié par [Prénom] le [date]" badge in the view.
+     *
      * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
-     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string}>}>}>
+     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string, modifier_label: string|null}>}>}>
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
@@ -162,11 +165,18 @@ class KermesseAdminController extends BaseController
 
         $participantsBySlot = [];
         foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
+            $modifierLabel = null;
+            if (! empty($p['modifier_first_name']) && ! empty($p['last_modified_at'])) {
+                $modifiedDate  = Time::parse((string) $p['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
+                $modifierLabel = 'Modifié par ' . $p['modifier_first_name'] . ' le ' . $modifiedDate;
+            }
+
             $participantsBySlot[(int) $p['slot_id']][] = [
-                'first_name' => (string) $p['first_name'],
-                'last_name'  => (string) $p['last_name'],
-                'phone'      => (string) $p['phone'],
-                'email'      => (string) $p['email'],
+                'first_name'     => (string) $p['first_name'],
+                'last_name'      => (string) $p['last_name'],
+                'phone'          => (string) $p['phone'],
+                'email'          => (string) $p['email'],
+                'modifier_label' => $modifierLabel,
             ];
         }
 

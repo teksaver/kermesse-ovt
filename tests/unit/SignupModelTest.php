@@ -258,6 +258,39 @@ final class SignupModelTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Story 5.3 — findActiveParticipantsForKermesse() expose les infos modificateur
+    // ------------------------------------------------------------------
+
+    public function testFindActiveParticipantsIncludesModifierNameWhenSet(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        db_connect()->table('signups')->where('id', $signupId)->update([
+            'last_modified_by_user_id' => $this->otherUserId,
+            'last_modified_at'         => '2026-10-11 10:00:00',
+        ]);
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Autre', $rows[0]['modifier_first_name']);
+        $this->assertSame('2026-10-11 10:00:00', $rows[0]['last_modified_at']);
+    }
+
+    public function testFindActiveParticipantsHasNullModifierWhenNotModified(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertNull($rows[0]['modifier_first_name']);
+        $this->assertNull($rows[0]['last_modified_at']);
+    }
+
+    // ------------------------------------------------------------------
     // Story 5.1 — Colonnes de traçage des modifications admin
     // ------------------------------------------------------------------
 

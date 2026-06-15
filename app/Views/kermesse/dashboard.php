@@ -405,10 +405,10 @@
     </section>
     <?php endif; ?>
 
-    <!-- ================================================================== -->
-    <!-- Onglet : Gestion des inscrits (Owner/Admin/Gestionnaire — 4.4/5.2) -->
-    <!-- ================================================================== -->
     <?php if (! empty($canManageParticipants)): ?>
+    <!-- ================================================================== -->
+    <!-- Onglet : Gestion des inscrits (Owner/Admin/Gestionnaire — 4.4/5.3) -->
+    <!-- ================================================================== -->
     <section
         id="tab-panel-inscrits"
         class="kermesse-dashboard__section tab-panel"
@@ -416,7 +416,7 @@
         role="tabpanel"
         aria-labelledby="tab-btn-inscrits"
     >
-        <h2 class="section-title">Gestion des inscriptions</h2>
+        <h2 class="section-title">Gestion des inscrits</h2>
 
         <?php $participantStands = $participantStands ?? []; ?>
         <?php if (empty($participantStands)): ?>
@@ -446,6 +446,9 @@
                     <?php foreach ($pSlot['volunteers'] as $vol): ?>
                     <li class="participants-list__item">
                         <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <?php if (! empty($vol['modifier_label'])): ?>
+                        <span class="badge badge--modified" style="font-size:11px; color:#6c757d; background:#f8f9fa; border:1px solid #dee2e6; border-radius:4px; padding:1px 6px; margin-left:6px;"><?= esc($vol['modifier_label']) ?></span>
+                        <?php endif; ?>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>
                             <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
