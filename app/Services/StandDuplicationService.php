@@ -62,16 +62,19 @@ class StandDuplicationService
             ->where('status', SlotModel::STATUS_ACTIVE)
             ->findAll();
 
-        // Copy slot configuration only (times + capacity). Each cloned slot is a new
-        // row with no signups attached: the duplicated stand starts at zero inscrits.
-        foreach ($slots as $slot) {
-            $slotModel->insert([
+        // Copy slot configuration only (times + capacity) in a single batch insert
+        // (one query instead of N). Each cloned slot is a new row with no signups
+        // attached: the duplicated stand starts at zero inscrits.
+        if ($slots !== []) {
+            $rows = array_map(static fn (array $slot): array => [
                 'stand_id'  => $newStandId,
                 'starts_at' => $slot['starts_at'],
                 'ends_at'   => $slot['ends_at'],
                 'capacity'  => $slot['capacity'],
                 'status'    => SlotModel::STATUS_ACTIVE,
-            ]);
+            ], $slots);
+
+            $slotModel->insertBatch($rows);
         }
 
         // Fail-fast: roll back the whole duplication if any insert failed.

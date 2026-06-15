@@ -14,6 +14,9 @@ use App\Services\StandDuplicationService;
  */
 class StandController extends BaseController
 {
+    /** Max stand name length — matches the `stands.name` VARCHAR(255) column. */
+    private const NAME_MAX_LENGTH = 255;
+
     /** POST /kermesse/{kermesse_id}/stands */
     public function store(string $kermesseId): mixed
     {
@@ -29,6 +32,10 @@ class StandController extends BaseController
 
         if ($name === '') {
             return $this->redirectWithError('Le nom du stand est obligatoire.', 'add', $name);
+        }
+
+        if (mb_strlen($name) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'add', $name);
         }
 
         $standModel = model(StandModel::class);
@@ -70,6 +77,10 @@ class StandController extends BaseController
 
         if ($name === '') {
             return $this->redirectWithError('Le nom du stand est obligatoire.', 'edit', $name, $standId);
+        }
+
+        if (mb_strlen($name) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'edit', $name, $standId);
         }
 
         if ($standModel->hasActiveDuplicate($id, $name, $standId)) {
@@ -172,6 +183,10 @@ class StandController extends BaseController
         // modal with the entered value preserved (see dashboard.php).
         if ($newName === '') {
             return $this->redirectWithError('Le nom du nouveau stand est obligatoire.', 'duplicate', $newName, $standId);
+        }
+
+        if (mb_strlen($newName) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du nouveau stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'duplicate', $newName, $standId);
         }
 
         // The transactional copy (stand + slots, never signups) is a service-owned

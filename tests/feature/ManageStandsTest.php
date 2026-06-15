@@ -564,4 +564,35 @@ final class ManageStandsTest extends CIUnitTestCase
 
         $result->assertStatus(404);
     }
+
+    public function testDuplicateWithTooLongNameShowsError(): void
+    {
+        $standId = $this->insertStand('Stand Source Borne');
+
+        // 256 caractères : dépasse la colonne stands.name VARCHAR(255).
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => str_repeat('a', 256)]);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE kermesse_id = {$this->kermesseId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(1, $count);
+    }
+
+    public function testAddStandWithTooLongNameShowsError(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands", ['name' => str_repeat('a', 256)]);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE kermesse_id = {$this->kermesseId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
 }

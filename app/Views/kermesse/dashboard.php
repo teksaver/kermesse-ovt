@@ -195,7 +195,7 @@
                         <?= csrf_field() ?>
                         <div class="form-group">
                             <label class="form-label">Nouveau nom</label>
-                            <input type="text" name="name" class="form-control<?= ($standForm === 'edit' && $editingStandId === $sid && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc(($standForm === 'edit' && $editingStandId === $sid) ? $standName : $stand['name']) ?>" required>
+                            <input type="text" name="name" class="form-control<?= ($standForm === 'edit' && $editingStandId === $sid && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc(($standForm === 'edit' && $editingStandId === $sid) ? $standName : $stand['name']) ?>" maxlength="255" required>
                             <?php if ($standForm === 'edit' && $editingStandId === $sid && $standError !== null): ?>
                             <span class="form-error"><?= esc($standError) ?></span>
                             <?php endif; ?>
@@ -216,7 +216,7 @@
                         <p class="k-modal__text">Les créneaux de « <?= esc($stand['name']) ?> » (horaires et capacités) seront recopiés. Aucun inscrit n'est repris : le nouveau stand part avec zéro inscrit.</p>
                         <div class="form-group">
                             <label for="duplicate-name-<?= $sid ?>" class="form-label">Nom du nouveau stand</label>
-                            <input type="text" id="duplicate-name-<?= $sid ?>" name="name" class="form-control<?= ($isDuplicatingThis && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc($isDuplicatingThis ? $standName : '') ?>" placeholder="Ex. : <?= esc($stand['name']) ?> (copie)" autocomplete="off" required data-require-nonempty="duplicate-btn-<?= $sid ?>">
+                            <input type="text" id="duplicate-name-<?= $sid ?>" name="name" class="form-control<?= ($isDuplicatingThis && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc($isDuplicatingThis ? $standName : '') ?>" placeholder="Ex. : <?= esc($stand['name']) ?> (copie)" maxlength="255" autocomplete="off" required data-require-nonempty="duplicate-btn-<?= $sid ?>">
                             <?php if ($isDuplicatingThis && $standError !== null): ?>
                             <span class="form-error"><?= esc($standError) ?></span>
                             <?php endif; ?>
@@ -415,7 +415,7 @@
                 <?= csrf_field() ?>
                 <div class="form-group">
                     <label for="stand-name" class="form-label">Nom du stand</label>
-                    <input type="text" id="stand-name" name="name" class="form-control<?= ($standForm === 'add' && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc($standForm === 'add' ? $standName : '') ?>" placeholder="Ex. : Stand Buvette" required>
+                    <input type="text" id="stand-name" name="name" class="form-control<?= ($standForm === 'add' && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc($standForm === 'add' ? $standName : '') ?>" placeholder="Ex. : Stand Buvette" maxlength="255" required>
                     <?php if ($standForm === 'add' && $standError !== null): ?>
                     <span id="stand-add-error" class="form-error"><?= esc($standError) ?></span>
                     <?php endif; ?>
