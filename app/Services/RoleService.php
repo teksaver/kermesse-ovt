@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\KermesseModel;
+use App\Models\SignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use CodeIgniter\Database\Exceptions\DatabaseException;
@@ -354,6 +355,12 @@ class RoleService
     /**
      * Returns true if the user has at least one active slot signup on the given kermesse.
      * Used by removeRole() to decide between invitation cancellation and bénévole downgrade.
+     *
+     * "Active" MUST use the same definition as SignupModel (status NOT IN INACTIVE_STATUSES
+     * AND deleted_at IS NULL) so the revocation decision can never diverge from the
+     * "Gestion des inscrits" / public availability views (CLAUDE.md single-definition rule).
+     * Filtering on signup status alone is sufficient: removing a slot/stand cascades to the
+     * signup status, so a non-inactive signup can never point at a removed slot/stand.
      */
     private function hasActiveSlotSignups(int $kermesseId, int $userId): bool
     {
@@ -365,7 +372,7 @@ class RoleService
             ->join('stands', 'stands.id = slots.stand_id')
             ->where('stands.kermesse_id', $kermesseId)
             ->where('signups.user_id', $userId)
-            ->where('signups.status', 'active')
+            ->whereNotIn('signups.status', SignupModel::INACTIVE_STATUSES)
             ->where($db->DBPrefix . 'signups.deleted_at IS NULL', null, false)
             ->countAllResults() > 0;
     }

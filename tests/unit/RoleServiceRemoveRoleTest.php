@@ -164,6 +164,44 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // T4.8 — Invitation en attente avec une inscription INACTIVE (cancelled)
+    //         → l'inscription ne compte pas → la ligne est supprimée.
+    //         Verrouille l'alignement de hasActiveSlotSignups sur la définition
+    //         canonique (status NOT IN INACTIVE_STATUSES), pas l'égalité 'active'.
+    // ------------------------------------------------------------------
+
+    public function testRemoveRolePendingInviteWithCancelledSignupDeletesRow(): void
+    {
+        [$kermesseId, $userId] = $this->fixture(pendingInvite: true);
+        $this->insertSignup($kermesseId, $userId, 'cancelled');
+
+        $this->makeService()->removeRole($kermesseId, $userId);
+
+        $this->assertNull($this->roleForUser($kermesseId, $userId),
+            'Une inscription inactive (cancelled) ne doit pas être comptée comme active : la ligne doit être supprimée.');
+    }
+
+    // ------------------------------------------------------------------
+    // T4.9 — Verrou d'alignement : un statut actif-ish AUTRE que 'active'
+    //         (ex. un futur 'confirmed') DOIT compter comme actif.
+    //         Avec l'ancienne égalité `= 'active'` ce test échouerait (ligne
+    //         supprimée) ; avec `whereNotIn(INACTIVE_STATUSES)` il passe.
+    // ------------------------------------------------------------------
+
+    public function testRemoveRolePendingInviteWithNonInactiveStatusDowngradesToBenevole(): void
+    {
+        [$kermesseId, $userId] = $this->fixture(pendingInvite: true);
+        // 'confirmed' n'existe pas dans l'enum actuel : on simule un futur statut
+        // actif-ish pour verrouiller la définition partagée (NOT IN INACTIVE_STATUSES).
+        $this->insertSignup($kermesseId, $userId, 'confirmed');
+
+        $this->makeService()->removeRole($kermesseId, $userId);
+
+        $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
+            'Tout statut hors INACTIVE_STATUSES doit compter comme actif : rétrogradation, pas suppression.');
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -218,6 +256,11 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
 
     private function insertActiveSignup(int $kermesseId, int $userId): void
     {
+        $this->insertSignup($kermesseId, $userId, 'active');
+    }
+
+    private function insertSignup(int $kermesseId, int $userId, string $status): void
+    {
         $db = db_connect();
         $db->table('stands')->insert([
             'kermesse_id'   => $kermesseId,
@@ -237,7 +280,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
         $db->table('signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
-            'status'  => 'active',
+            'status'  => $status,
         ]);
     }
 
