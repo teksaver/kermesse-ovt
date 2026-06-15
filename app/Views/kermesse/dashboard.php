@@ -180,10 +180,7 @@
                             <button type="button" class="btn btn--sm" style="width:100%;" onclick="document.getElementById('modal-stand-rename-<?= $sid ?>').showModal()">Renommer</button>
 
                             <!-- Dupliquer -->
-                            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/duplicate") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
-                                <?= csrf_field() ?>
-                                <button type="submit" class="btn btn--sm" style="width:100%;">Dupliquer</button>
-                            </form>
+                            <button type="button" class="btn btn--sm" style="width:100%;" onclick="document.getElementById('modal-stand-duplicate-<?= $sid ?>').showModal()">Dupliquer</button>
 
                             <!-- Supprimer -->
                             <button type="button" class="btn btn--danger btn--sm" style="width:100%;" onclick="document.getElementById('modal-stand-delete-<?= $sid ?>').showModal()">Supprimer</button>
@@ -206,6 +203,27 @@
                         <div class="k-modal__actions">
                             <button type="button" class="btn btn--secondary" onclick="this.closest('dialog').close()">Annuler</button>
                             <button type="submit" class="btn btn--primary">Enregistrer</button>
+                        </div>
+                    </form>
+                </dialog>
+
+                <!-- Modale Dupliquer Stand (Story 5.6) -->
+                <?php $isDuplicatingThis = ($standForm === 'duplicate' && $editingStandId === $sid); ?>
+                <dialog id="modal-stand-duplicate-<?= $sid ?>" class="k-modal" <?= $isDuplicatingThis ? 'data-auto-open' : '' ?>>
+                    <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/duplicate") ?>" class="k-modal__form" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                        <h3 class="k-modal__title">Dupliquer le stand</h3>
+                        <?= csrf_field() ?>
+                        <p class="k-modal__text">Les créneaux de « <?= esc($stand['name']) ?> » (horaires et capacités) seront recopiés. Aucun inscrit n'est repris : le nouveau stand part avec zéro inscrit.</p>
+                        <div class="form-group">
+                            <label for="duplicate-name-<?= $sid ?>" class="form-label">Nom du nouveau stand</label>
+                            <input type="text" id="duplicate-name-<?= $sid ?>" name="name" class="form-control<?= ($isDuplicatingThis && $standError !== null) ? ' is-invalid' : '' ?>" value="<?= esc($isDuplicatingThis ? $standName : '') ?>" placeholder="Ex. : <?= esc($stand['name']) ?> (copie)" autocomplete="off" required data-require-nonempty="duplicate-btn-<?= $sid ?>">
+                            <?php if ($isDuplicatingThis && $standError !== null): ?>
+                            <span class="form-error"><?= esc($standError) ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="k-modal__actions">
+                            <button type="button" class="btn btn--secondary" onclick="this.closest('dialog').close()">Annuler</button>
+                            <button type="submit" id="duplicate-btn-<?= $sid ?>" class="btn btn--primary" <?= ($isDuplicatingThis && $standName !== '') ? '' : 'disabled' ?>>Dupliquer</button>
                         </div>
                     </form>
                 </dialog>
@@ -855,6 +873,16 @@ document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
     input.addEventListener('input', function () {
         btn.disabled = this.value.trim().toUpperCase() !== 'SUPPRIMER';
     });
+});
+
+/* ---- Bouton actif uniquement quand le champ est non vide (duplication) - */
+document.querySelectorAll('[data-require-nonempty]').forEach(function (input) {
+    var btnId = input.getAttribute('data-require-nonempty');
+    var btn   = document.getElementById(btnId);
+    if (!btn) { return; }
+    var sync = function () { btn.disabled = input.value.trim() === ''; };
+    sync();
+    input.addEventListener('input', sync);
 });
 
 /* ---- Copie du lien public --------------------------------------------- */

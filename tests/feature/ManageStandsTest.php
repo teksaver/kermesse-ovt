@@ -40,6 +40,8 @@ final class ManageStandsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_kermesses');
@@ -109,6 +111,29 @@ final class ManageStandsTest extends CIUnitTestCase
             )
         ');
         $db->query('CREATE UNIQUE INDEX IF NOT EXISTS uq_stands_active_name ON db_stands (kermesse_id, name) WHERE status = "active"');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_slots (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                stand_id   INTEGER NOT NULL,
+                starts_at  DATETIME NOT NULL,
+                ends_at    DATETIME NOT NULL,
+                capacity   INTEGER  NOT NULL DEFAULT 1,
+                status     TEXT     NOT NULL DEFAULT "active",
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_signups (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id    INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                status     TEXT    NOT NULL DEFAULT "active",
+                deleted_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     private function insertFixtures(): void
@@ -173,6 +198,32 @@ final class ManageStandsTest extends CIUnitTestCase
             'name'          => $name,
             'display_order' => $order,
             'status'        => 'active',
+        ]);
+
+        return (int) $db->insertID();
+    }
+
+    private function insertSlot(int $standId, string $startsAt, string $endsAt, int $capacity): int
+    {
+        $db = db_connect();
+        $db->table('slots')->insert([
+            'stand_id'  => $standId,
+            'starts_at' => $startsAt,
+            'ends_at'   => $endsAt,
+            'capacity'  => $capacity,
+            'status'    => 'active',
+        ]);
+
+        return (int) $db->insertID();
+    }
+
+    private function insertSignup(int $slotId, int $userId): int
+    {
+        $db = db_connect();
+        $db->table('signups')->insert([
+            'slot_id' => $slotId,
+            'user_id' => $userId,
+            'status'  => 'active',
         ]);
 
         return (int) $db->insertID();
@@ -378,18 +429,139 @@ final class ManageStandsTest extends CIUnitTestCase
         $result->assertStatus(404);
     }
 
-    public function testOwnerCanDuplicateStand(): void
+    // ------------------------------------------------------------------
+    // Story 5.6 — Duplication d'un stand avec nom choisi
+    // ------------------------------------------------------------------
+
+    public function testOwnerCanDuplicateStandWithProvidedName(): void
     {
         $standId = $this->insertStand('Stand Original');
 
         $result = $this->withSession($this->session($this->ownerId))
-            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", []);
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => 'Stand Bis']);
 
         $result->assertRedirect();
 
-        $count = (int) db_connect()
-            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE name = 'Stand Original (copie)'")
+        $db = db_connect();
+
+        // Le nom fourni est utilisé tel quel...
+        $count = (int) $db
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE kermesse_id = {$this->kermesseId} AND name = 'Stand Bis'")
             ->getRowArray()['cnt'];
         $this->assertSame(1, $count);
+
+        // ...et l'ancien nom auto-généré « (copie) » n'est plus créé.
+        $autoCount = (int) $db
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE name = 'Stand Original (copie)'")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $autoCount);
+    }
+
+    public function testDuplicateCopiesAllActiveSlots(): void
+    {
+        $standId = $this->insertStand('Stand Source');
+        $this->insertSlot($standId, '2026-07-01 09:00:00', '2026-07-01 10:00:00', 3);
+        $this->insertSlot($standId, '2026-07-01 10:00:00', '2026-07-01 11:00:00', 5);
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => 'Stand Cloné']);
+
+        $result->assertRedirect();
+
+        $db          = db_connect();
+        $newStandId  = (int) $db->query("SELECT id FROM db_stands WHERE name = 'Stand Cloné'")->getRowArray()['id'];
+        $copiedSlots = $db->query("SELECT starts_at, ends_at, capacity, status FROM db_slots WHERE stand_id = {$newStandId} ORDER BY starts_at ASC")->getResultArray();
+
+        $this->assertCount(2, $copiedSlots);
+        $this->assertSame('2026-07-01 09:00:00', $copiedSlots[0]['starts_at']);
+        $this->assertSame('2026-07-01 10:00:00', $copiedSlots[0]['ends_at']);
+        $this->assertSame(3, (int) $copiedSlots[0]['capacity']);
+        $this->assertSame('active', $copiedSlots[0]['status']);
+        $this->assertSame(5, (int) $copiedSlots[1]['capacity']);
+    }
+
+    public function testDuplicateDoesNotCopySignups(): void
+    {
+        $standId = $this->insertStand('Stand Inscrit');
+        $slotId  = $this->insertSlot($standId, '2026-07-01 09:00:00', '2026-07-01 10:00:00', 3);
+        $this->insertSignup($slotId, $this->benovoleId);
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => 'Stand Vierge']);
+
+        $result->assertRedirect();
+
+        $db         = db_connect();
+        $newStandId = (int) $db->query("SELECT id FROM db_stands WHERE name = 'Stand Vierge'")->getRowArray()['id'];
+
+        // Le nouveau stand part avec zéro inscrit : aucun signup ne pointe vers ses créneaux.
+        $signupCount = (int) $db
+            ->query("SELECT COUNT(*) AS cnt FROM db_signups s JOIN db_slots sl ON sl.id = s.slot_id WHERE sl.stand_id = {$newStandId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $signupCount);
+
+        // L'inscription d'origine reste intacte.
+        $totalSignups = (int) $db->query('SELECT COUNT(*) AS cnt FROM db_signups')->getRowArray()['cnt'];
+        $this->assertSame(1, $totalSignups);
+    }
+
+    public function testDuplicateStandWithoutSlotsCreatesEmptyStand(): void
+    {
+        $standId = $this->insertStand('Stand Vide');
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => 'Stand Vide Copie']);
+
+        $result->assertRedirect();
+
+        $db         = db_connect();
+        $newStandId = (int) $db->query("SELECT id FROM db_stands WHERE name = 'Stand Vide Copie'")->getRowArray()['id'];
+        $this->assertGreaterThan(0, $newStandId);
+
+        $slotCount = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$newStandId}")->getRowArray()['cnt'];
+        $this->assertSame(0, $slotCount);
+    }
+
+    public function testDuplicateWithEmptyNameShowsError(): void
+    {
+        $standId = $this->insertStand('Stand Sans Nom Cible');
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => '   ']);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
+
+        // Aucun stand supplémentaire n'a été créé.
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE kermesse_id = {$this->kermesseId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(1, $count);
+    }
+
+    public function testDuplicateWithExistingActiveNameShowsError(): void
+    {
+        $standId = $this->insertStand('Stand A', 1);
+        $this->insertStand('Stand B', 2);
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$standId}/duplicate", ['name' => 'Stand B']);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('stand_error');
+
+        // Toujours seulement les 2 stands d'origine.
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_stands WHERE kermesse_id = {$this->kermesseId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(2, $count);
+    }
+
+    public function testDuplicateNonExistentStandReturns404(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/99999/duplicate", ['name' => 'Fantôme']);
+
+        $result->assertStatus(404);
     }
 }

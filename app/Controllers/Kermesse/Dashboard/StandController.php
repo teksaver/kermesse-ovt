@@ -145,7 +145,9 @@ class StandController extends BaseController
     /**
      * POST /kermesse/{kermesse_id}/stands/{stand_id}/duplicate
      *
-     * Duplicates a stand and all its active slots.
+     * Duplicates a stand and all its active slots under a name chosen by the user.
+     * The new stand starts with zero signups: only slot configuration (times +
+     * capacity) is copied — never any signup row.
      */
     public function duplicate(string $kermesseId, string $standId): mixed
     {
@@ -161,13 +163,17 @@ class StandController extends BaseController
             return $this->response->setStatusCode(404);
         }
 
-        $baseName = $stand['name'];
-        $newName = $baseName . ' (copie)';
-        $counter = 2;
+        $p       = $this->request->getPost('name');
+        $newName = is_string($p) ? trim($p) : '';
 
-        while ($standModel->hasActiveDuplicate($id, $newName)) {
-            $newName = $baseName . ' (copie ' . $counter . ')';
-            $counter++;
+        // The error form context 'duplicate' reopens the source stand's duplication
+        // modal with the entered value preserved (see dashboard.php).
+        if ($newName === '') {
+            return $this->redirectWithError('Le nom du nouveau stand est obligatoire.', 'duplicate', $newName, $standId);
+        }
+
+        if ($standModel->hasActiveDuplicate($id, $newName)) {
+            return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'duplicate', $newName, $standId);
         }
 
         $db = db_connect();
@@ -182,7 +188,8 @@ class StandController extends BaseController
 
         if (! $newStandId) {
             $db->transRollback();
-            return redirect()->back()->with('error', 'Erreur système lors de la duplication du stand.');
+
+            return $this->redirectWithError('Erreur système lors de la duplication du stand.', 'duplicate', $newName, $standId);
         }
 
         $slotModel = model(\App\Models\SlotModel::class);
@@ -190,6 +197,8 @@ class StandController extends BaseController
             ->where('status', \App\Models\SlotModel::STATUS_ACTIVE)
             ->findAll();
 
+        // Copy slot configuration only (starts_at, ends_at, capacity). No signups
+        // are copied: the duplicated slots are brand-new rows with no participants.
         foreach ($slots as $slot) {
             $slotModel->insert([
                 'stand_id'  => $newStandId,
@@ -200,16 +209,17 @@ class StandController extends BaseController
             ]);
         }
 
-        $db->transCommit();
-
+        // Fail-fast: roll back the whole duplication (stand + already-copied slots)
+        // if any insert failed, so we never leave a half-copied stand behind.
         if (! $db->transStatus()) {
-            return redirect()->back()->with('error', 'Erreur système lors de la duplication des créneaux.');
+            $db->transRollback();
+
+            return $this->redirectWithError('Erreur système lors de la duplication des créneaux.', 'duplicate', $newName, $standId);
         }
 
-        session()->setFlashdata('success', 'Stand dupliqué avec succès. Veuillez lui donner un nom définitif.');
-        session()->setFlashdata('stand_form', 'edit');
-        session()->setFlashdata('editing_stand_id', $newStandId);
-        session()->setFlashdata('stand_name', $newName);
+        $db->transCommit();
+
+        session()->setFlashdata('success', 'Stand « ' . esc($newName) . ' » dupliqué avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
