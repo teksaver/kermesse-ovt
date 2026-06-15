@@ -155,6 +155,39 @@ class ProfileService
         return true;
     }
 
+    /**
+     * Update the authenticated user's own profile (name, phone, optionally email).
+     *
+     * Email change also refreshes email_hash so the lookup index stays consistent.
+     * Validation (required fields, email uniqueness) is enforced upstream by the controller.
+     */
+    public function updateOwnProfile(
+        int $userId,
+        string $email,
+        string $firstName,
+        string $lastName,
+        string $phone,
+    ): bool {
+        $current = $this->userModel->find($userId);
+        if ($current === null) {
+            return false;
+        }
+
+        $data = [
+            'first_name' => $firstName,
+            'last_name'  => $lastName,
+            'phone'      => $phone,
+        ];
+
+        $email = strtolower($email);
+        if ($email !== strtolower((string) $current['email'])) {
+            $data['email']      = $email;
+            $data['email_hash'] = $this->userModel->hashEmail($email);
+        }
+
+        return $this->userModel->update($userId, $data) !== false;
+    }
+
     private function roleService(): RoleService
     {
         return new RoleService($this->userRoleModel ?? new UserRoleModel(), $this->userModel);
