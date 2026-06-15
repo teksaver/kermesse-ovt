@@ -86,16 +86,6 @@
     <!-- Le premier onglet est actif par défaut (côté serveur + JS).         -->
     <!-- ------------------------------------------------------------------ -->
 
-    <?php
-        // Construction de la liste ordonnée des onglets autorisés pour ce rôle.
-        // L'ordre est canonique : Modification → Gestion des inscrits → Équipe → Mes participations.
-        $tabs = [];
-        if (! empty($canModify))             { $tabs[] = ['id' => 'modification',   'label' => 'Modification']; }
-        if (! empty($canManageParticipants)) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
-        if (! empty($canInvite))             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe']; }
-        $tabs[] =                                        ['id' => 'participations', 'label' => 'Mes participations'];
-    ?>
-
     <nav class="tab-nav" role="tablist" aria-label="Sections du tableau de bord">
         <?php foreach ($tabs as $i => $tab): ?>
         <button
@@ -106,6 +96,7 @@
             aria-selected="<?= $i === 0 ? 'true' : 'false' ?>"
             aria-controls="tab-panel-<?= esc($tab['id']) ?>"
             id="tab-btn-<?= esc($tab['id']) ?>"
+            tabindex="<?= $i === 0 ? '0' : '-1' ?>"
         ><?= esc($tab['label']) ?></button>
         <?php endforeach; ?>
     </nav>
@@ -704,247 +695,6 @@
 </div>
 
 
-<style>
-/* ---- Navigation onglets (Story 5.2) ----------------------------------- */
-.tab-nav {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
-    margin: 24px 0 0;
-    border-bottom: 2px solid var(--color-border, #e9ecef);
-}
-.tab-nav::-webkit-scrollbar { height: 4px; }
-.tab-nav::-webkit-scrollbar-thumb { background: var(--color-border, #ccc); border-radius: 2px; }
-
-/* Mobile : pilules scrollables (320px → ~639px) */
-.tab-nav__btn {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 8px 18px;
-    border-radius: 20px;
-    border: 1px solid var(--color-border, #e9ecef);
-    background: transparent;
-    color: var(--color-text, #111827);
-    font-size: 14px;
-    font-weight: 500;
-    min-height: 44px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-    line-height: 1.2;
-    position: relative;
-    bottom: -2px; /* aligne visuellement sur la bordure inférieure */
-}
-.tab-nav__btn:hover {
-    background: var(--color-muted-surface, #eef2f7);
-}
-.tab-nav__btn.is-active {
-    background: var(--color-primary, #166534);
-    color: #fff;
-    border-color: var(--color-primary, #166534);
-}
-
-/* Desktop : barre horizontale plate (≥640px) */
-@media (min-width: 640px) {
-    .tab-nav__btn {
-        border-radius: 6px 6px 0 0;
-        border-bottom: none;
-        padding: 10px 20px;
-    }
-    .tab-nav__btn.is-active {
-        border-color: var(--color-border, #e9ecef);
-        border-bottom: 2px solid var(--color-surface, #fff);
-        background: var(--color-surface, #fff);
-        color: var(--color-primary, #166534);
-    }
-}
-
-/* Panneau de contenu onglet */
-.tab-panel {
-    display: block;
-    padding-top: 24px;
-}
-
-/* Barre d'outils section */
-.section-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 16px;
-}
-.section-toolbar .section-title {
-    margin: 0;
-}
-
-/* ---- Modales ---------------------------------------------------------- */
-.k-modal {
-    border: none;
-    border-radius: 8px;
-    padding: 0;
-    width: 90%;
-    max-width: 400px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-.k-modal::backdrop {
-    background-color: rgba(0,0,0,0.5);
-}
-.k-modal__form,
-.k-modal__content {
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-.k-modal__title {
-    margin: 0;
-    font-size: 1.25rem;
-}
-.k-modal__text {
-    margin: 0;
-    font-size: 0.95rem;
-    color: var(--text-color);
-}
-.k-modal__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 8px;
-}
-
-/* ---- Feedback / alertes ----------------------------------------------- */
-.form-success {
-    background-color: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-    padding: 16px;
-    border-radius: 8px;
-    margin-bottom: 24px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.form-success::before { content: "✅"; }
-.form-warning {
-    background-color: #fff3cd;
-    color: #856404;
-    border: 1px solid #ffeeba;
-    padding: 16px;
-    border-radius: 8px;
-    margin-bottom: 24px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.form-warning::before { content: "⚠️"; }
-
-/* ---- En-tête caractéristiques ----------------------------------------- */
-.kermesse-characteristics {
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    padding: 24px;
-    border-radius: 12px;
-    margin-bottom: 0;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-}
-.kermesse-dashboard__lifecycle {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-/* ---- Éléments partagés entre onglets ---------------------------------- */
-.section-placeholder {
-    color: #555;
-    font-size: 14px;
-    margin: 8px 0 0;
-}
-.subsection-title {
-    font-size: 1.05rem;
-    margin: 8px 0 16px;
-}
-.my-signups-list {
-    list-style: none;
-    margin: 8px 0 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.my-signups-list__item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 12px;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    background: #fff;
-}
-.my-signups-list__when {
-    color: #555;
-    font-size: 14px;
-}
-.my-signups-list__cancel { margin: 8px 0 0; }
-.my-signups-list__cancel .btn { width: 100%; }
-
-/* ---- Section participants --------------------------------------------- */
-.invite-form {
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    background: #fff;
-    padding: 16px;
-    margin: 8px 0 24px;
-}
-.invite-form .form-group { margin-bottom: 12px; }
-.participants-stand { margin: 8px 0 24px; }
-.participants-slot {
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    background: #fff;
-    padding: 12px;
-    margin-bottom: 12px;
-}
-.participants-slot__header {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 4px 16px;
-    margin-bottom: 8px;
-}
-.participants-slot__when { color: #333; font-size: 14px; }
-.participants-slot__fill { color: #555; font-size: 14px; font-weight: bold; white-space: nowrap; }
-.participants-slot__empty { color: #555; font-size: 14px; margin: 0; }
-.participants-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.participants-list__item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px 12px;
-    border-top: 1px solid #f0f0f0;
-}
-.participants-list__contact {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    font-size: 14px;
-}
-.participants-list__contact a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px; /* cible tactile — UX */
-}
-</style>
 
 <?= $this->endSection() ?>
 
@@ -965,21 +715,35 @@
         : null;
     if (activePanel) { activePanel.hidden = false; }
 
+    /* Activation d'un onglet (clic ou focus via flèches). */
+    function activateTab(btn) {
+        var targetId = btn.getAttribute('data-tab');
+        buttons.forEach(function (b) {
+            b.classList.remove('is-active');
+            b.setAttribute('aria-selected', 'false');
+            b.setAttribute('tabindex', '-1');
+        });
+        panels.forEach(function (p) { p.hidden = true; });
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-selected', 'true');
+        btn.setAttribute('tabindex', '0');
+        var panel = document.querySelector('[data-tab-content="' + targetId + '"]');
+        if (panel) { panel.hidden = false; }
+    }
+
     /* Gestion des clics sur les onglets. */
     buttons.forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var targetId = btn.getAttribute('data-tab');
+        btn.addEventListener('click', function () { activateTab(btn); });
+    });
 
-            buttons.forEach(function (b) {
-                b.classList.remove('is-active');
-                b.setAttribute('aria-selected', 'false');
-            });
-            panels.forEach(function (p) { p.hidden = true; });
-
-            btn.classList.add('is-active');
-            btn.setAttribute('aria-selected', 'true');
-            var panel = document.querySelector('[data-tab-content="' + targetId + '"]');
-            if (panel) { panel.hidden = false; }
+    /* Navigation clavier WAI-ARIA tablist : ← / → entre onglets (roving tabindex). */
+    var btnsArr = Array.prototype.slice.call(buttons);
+    btnsArr.forEach(function (btn, idx) {
+        btn.addEventListener('keydown', function (e) {
+            var next = null;
+            if (e.key === 'ArrowRight') { next = btnsArr[idx + 1] || btnsArr[0]; }
+            if (e.key === 'ArrowLeft')  { next = btnsArr[idx - 1] || btnsArr[btnsArr.length - 1]; }
+            if (next) { activateTab(next); next.focus(); }
         });
     });
 }());

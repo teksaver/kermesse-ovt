@@ -113,6 +113,14 @@ class KermesseAdminController extends BaseController
             ? model(UserRoleModel::class)->findTeamMembers($id)
             : [];
 
+        // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
+        // Onglets non autorisés absents du tableau → absents du DOM.
+        $tabs = [];
+        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Modification']; }
+        if ($canManageParticipants) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
+        if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe']; }
+        $tabs[] =                               ['id' => 'participations', 'label' => 'Mes participations'];
+
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
             'kermesse'              => $kermesse,
@@ -124,6 +132,7 @@ class KermesseAdminController extends BaseController
             'participantStands'     => $participantStands,
             'myParticipations'      => $myParticipations,
             'teamMembers'           => $teamMembers,
+            'tabs'                  => $tabs,
             // Décision métier préparée pour la vue : l'annulation d'une participation
             // n'est proposée que lorsque les inscriptions sont ouvertes (Story 4.3, AC2).
             'signupsOpen'           => $kermesse['status'] === KermesseModel::STATUS_OPEN,

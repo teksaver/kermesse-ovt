@@ -6,6 +6,7 @@ use App\Models\KermesseModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use CodeIgniter\Database\Exceptions\DatabaseException;
+use CodeIgniter\I18n\Time;
 
 /**
  * Per-kermesse role authorization and assignment.
@@ -53,7 +54,7 @@ class RoleService
             return;
         }
 
-        $now  = date('Y-m-d H:i:s');
+        $now  = Time::now()->toDateTimeString();
         $data = ['last_access_at' => $now];
 
         if ($row['first_access_at'] === null) {
