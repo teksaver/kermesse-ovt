@@ -258,6 +258,59 @@ final class SignupModelTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // Story 5.1 — Colonnes de traçage des modifications admin
+    // ------------------------------------------------------------------
+
+    public function testStampAdminModificationSetsFieldsAndReturnsTrue(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $result = model(SignupModel::class)->stampAdminModification($signupId, $this->otherUserId);
+
+        $this->assertTrue($result);
+
+        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+        $this->assertSame($this->otherUserId, (int) $row['last_modified_by_user_id']);
+        $this->assertNotNull($row['last_modified_at']);
+    }
+
+    public function testStampAdminModificationReturnsFalseForUnknownId(): void
+    {
+        $result = model(SignupModel::class)->stampAdminModification(99999, $this->userId);
+
+        $this->assertFalse($result);
+    }
+
+    public function testModificationTrackingFieldsAreNullByDefault(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
+
+        $this->assertNull($row['last_modified_by_user_id']);
+        $this->assertNull($row['last_modified_at']);
+    }
+
+    public function testAllowsWritingModificationTrackingFields(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+
+        model(SignupModel::class)->skipValidation(true)->insert([
+            'slot_id'                  => $slotId,
+            'user_id'                  => $this->userId,
+            'status'                   => SignupModel::STATUS_ACTIVE,
+            'last_modified_by_user_id' => $this->userId,
+            'last_modified_at'         => '2026-10-11 10:00:00',
+        ]);
+
+        $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
+        $this->assertSame($this->userId, (int) $row['last_modified_by_user_id']);
+        $this->assertSame('2026-10-11 10:00:00', $row['last_modified_at']);
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -412,13 +465,15 @@ final class SignupModelTest extends CIUnitTestCase
         ');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME NULL DEFAULT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NOT NULL,
+                status                    TEXT     NOT NULL DEFAULT "active",
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

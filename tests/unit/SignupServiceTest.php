@@ -880,4 +880,37 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertFalse($result->success);
         $this->assertSame('cancel_failed', $result->errorCode);
     }
+
+    // ------------------------------------------------------------------
+    // Story 5.1 — stampAdminModification() délègue au modèle
+    // ------------------------------------------------------------------
+
+    public function testStampAdminModificationDelegatesToModelAndReturnsTrue(): void
+    {
+        $signupMock = $this->getMockBuilder(SignupModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['stampAdminModification'])
+            ->getMock();
+        $signupMock->expects($this->once())
+            ->method('stampAdminModification')
+            ->with(7, 42)
+            ->willReturn(true);
+
+        $result = $this->buildService(signupModel: $signupMock)->stampAdminModification(7, 42);
+
+        $this->assertTrue($result);
+    }
+
+    public function testStampAdminModificationReturnsFalseOnModelMiss(): void
+    {
+        $signupMock = $this->getMockBuilder(SignupModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['stampAdminModification'])
+            ->getMock();
+        $signupMock->method('stampAdminModification')->willReturn(false);
+
+        $result = $this->buildService(signupModel: $signupMock)->stampAdminModification(99999, 42);
+
+        $this->assertFalse($result);
+    }
 }

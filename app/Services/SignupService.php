@@ -147,6 +147,25 @@ class SignupService
     }
 
     /**
+     * Stamp the modification-tracking columns on a signup row — Story 5.1.
+     *
+     * Called by admin actions (Stories 5.3, 5.10, 5.11, 5.12) after any correction
+     * to a signup. $modifiedByUserId must be the admin/gestionnaire performing the
+     * action — never the volunteer owner. The caller is responsible for running this
+     * inside the surrounding transaction when one is active.
+     *
+     * Both columns default to NULL in the DB (migration 20260615093000) so signups
+     * that have never been admin-edited are unambiguously distinguishable from edited
+     * ones (AC3 of Story 5.1).
+     *
+     * Returns true when exactly one row was stamped.
+     */
+    public function stampAdminModification(int $signupId, int $modifiedByUserId): bool
+    {
+        return $this->signupModel->stampAdminModification($signupId, $modifiedByUserId);
+    }
+
+    /**
      * Run the invariant checks and inserts. Never commits or rolls back: the caller
      * owns the transaction boundary (single rollback point, exception-safe).
      */

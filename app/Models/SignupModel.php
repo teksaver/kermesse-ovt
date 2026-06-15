@@ -32,6 +32,8 @@ class SignupModel extends Model
         'user_id',
         'status',
         'deleted_at',
+        'last_modified_by_user_id',
+        'last_modified_at',
     ];
 
     /**
@@ -276,6 +278,32 @@ class SignupModel extends Model
             ->getRowArray();
 
         return $row ?: null;
+    }
+
+    /**
+     * Stamp the modification-tracking columns — Story 5.1.
+     *
+     * Called by SignupService::stampAdminModification() for every admin correction
+     * (Stories 5.3, 5.10, 5.11, 5.12). Returns true only when exactly one row was
+     * updated. The signup must exist and not be soft-deleted; a miss (wrong id,
+     * already deleted) returns false so the caller can detect the no-op.
+     *
+     * $modifiedByUserId references users.id (FK RESTRICT): revoking an admin role
+     * only touches kermesse_user_roles — the users row persists, so traceability
+     * is preserved without any special handling.
+     */
+    public function stampAdminModification(int $signupId, int $modifiedByUserId): bool
+    {
+        $this->builder()
+            ->where('id', $signupId)
+            ->where('deleted_at', null)
+            ->update([
+                'last_modified_by_user_id' => $modifiedByUserId,
+                'last_modified_at'         => date('Y-m-d H:i:s'),
+                'updated_at'               => date('Y-m-d H:i:s'),
+            ]);
+
+        return $this->db->affectedRows() === 1;
     }
 
     /**
