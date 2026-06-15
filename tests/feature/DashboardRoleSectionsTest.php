@@ -113,10 +113,12 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
                 user_id      INTEGER NOT NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -139,6 +141,19 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
                 status     TEXT     NOT NULL DEFAULT "active",
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_signups (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id    INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                status     TEXT    NOT NULL DEFAULT "active",
+                deleted_at DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id INTEGER NULL DEFAULT NULL,
+                last_modified_at         DATETIME NULL DEFAULT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

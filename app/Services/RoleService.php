@@ -43,6 +43,27 @@ class RoleService
     }
 
     /**
+     * Record dashboard access for (kermesse, user): sets first_access_at when NULL,
+     * always updates last_access_at. Called on every KermesseAdminController::show load.
+     */
+    public function recordAccess(int $kermesseId, int $userId): void
+    {
+        $row = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+        if ($row === null) {
+            return;
+        }
+
+        $now  = date('Y-m-d H:i:s');
+        $data = ['last_access_at' => $now];
+
+        if ($row['first_access_at'] === null) {
+            $data['first_access_at'] = $now;
+        }
+
+        $this->userRoleModel->update((int) $row['id'], $data);
+    }
+
+    /**
      * Return the role string for the given user on the given kermesse, or null.
      */
     public function getRoleForUser(int $kermesseId, int $userId): ?string

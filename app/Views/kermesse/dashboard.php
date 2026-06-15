@@ -5,14 +5,12 @@
 <div class="kermesse-dashboard">
     <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
 
-    <div class="kermesse-dashboard__info kermesse-characteristics" style="position:relative;">
+    <!-- En-tête kermesse : status, infos, lien public — toujours visible (tous rôles). -->
+    <div class="kermesse-dashboard__info kermesse-characteristics">
         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
                 <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
             </div>
-            <?php if (! empty($canModify)): ?>
-            <button type="button" class="btn btn--sm" title="Modifier la kermesse" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier</button>
-            <?php endif; ?>
         </div>
 
         <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
@@ -27,7 +25,7 @@
             <?php if (! empty($kermesse['short_description'])): ?>
             <p class="kermesse-dashboard__description" style="margin:0;">📝 <strong>Description :</strong> <?= esc($kermesse['short_description']) ?></p>
             <?php endif; ?>
-            
+
             <?php if (empty($isBenevole)): ?>
             <p class="kermesse-dashboard__public-link" style="margin:0; margin-top:8px;">🔗 <strong>Lien à partager pour les inscriptions :</strong>
                 <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
@@ -37,41 +35,18 @@
             <?php endif; ?>
         </div>
 
-        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
-        <?php if ($lifecycleError !== null): ?>
-        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
-        <?php endif; ?>
-
-        <!-- Actions lifecycle (UX-DR17) -->
-        <div class="kermesse-dashboard__lifecycle">
-            <?php if (! empty($canModify)): ?>
-                <?php if ($kermesse['status'] === 'open'): ?>
-                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
-                </form>
-                <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
-                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
-                </form>
-                <?php endif; ?>
-            <?php endif; ?>
-
+        <div style="margin-top:12px;">
             <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
                target="_blank"
                rel="noopener noreferrer"
                class="btn btn--secondary"><?= empty($isBenevole) ? 'Accéder à la page publique' : 'Nouvelle inscription' ?></a>
-
         </div>
     </div>
 
-    <!-- ------------------------------------------------------------------ -->
-    
-    <!-- Modale Édition Kermesse -->
+    <!-- Modales kermesse — rendues ici pour accessibilité DOM (hors flux onglets). -->
     <?php if (! empty($canModify)): ?>
     <?php
-        $kermesseForm = session()->getFlashdata('kermesse_form');
+        $kermesseForm  = session()->getFlashdata('kermesse_form');
         $kermesseError = session()->getFlashdata('kermesse_edit_error');
     ?>
     <dialog id="modal-kermesse-edit" class="k-modal" <?= ($kermesseForm === 'edit') ? 'data-auto-open' : '' ?>>
@@ -105,28 +80,88 @@
     </dialog>
     <?php endif; ?>
 
-    <?php if (! empty($canModify)): ?>
-    <!-- Section « Modification » (stands & créneaux) — Owner/Admin uniquement (Story 4.1). -->
-    <section class="kermesse-dashboard__section" id="modification">
-        <h2 class="section-title">Gestion des stands et des créneaux</h2>
-        <h3 class="subsection-title">Stands</h3>
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Navigation par onglets (Story 5.2, AC1 — UX-DR16 / NFR4)          -->
+    <!-- Seuls les onglets autorisés pour le rôle courant sont rendus.       -->
+    <!-- Le premier onglet est actif par défaut (côté serveur + JS).         -->
+    <!-- ------------------------------------------------------------------ -->
 
+    <?php
+        // Construction de la liste ordonnée des onglets autorisés pour ce rôle.
+        // L'ordre est canonique : Modification → Gestion des inscrits → Équipe → Mes participations.
+        $tabs = [];
+        if (! empty($canModify))             { $tabs[] = ['id' => 'modification',   'label' => 'Modification']; }
+        if (! empty($canManageParticipants)) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
+        if (! empty($canInvite))             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe']; }
+        $tabs[] =                                        ['id' => 'participations', 'label' => 'Mes participations'];
+    ?>
+
+    <nav class="tab-nav" role="tablist" aria-label="Sections du tableau de bord">
+        <?php foreach ($tabs as $i => $tab): ?>
+        <button
+            type="button"
+            class="tab-nav__btn<?= $i === 0 ? ' is-active' : '' ?>"
+            data-tab="<?= esc($tab['id']) ?>"
+            role="tab"
+            aria-selected="<?= $i === 0 ? 'true' : 'false' ?>"
+            aria-controls="tab-panel-<?= esc($tab['id']) ?>"
+            id="tab-btn-<?= esc($tab['id']) ?>"
+        ><?= esc($tab['label']) ?></button>
+        <?php endforeach; ?>
+    </nav>
+
+    <!-- ================================================================== -->
+    <!-- Onglet : Modification (Owner/Admin uniquement — Story 4.1 / 5.2).  -->
+    <!-- ================================================================== -->
+    <?php if (! empty($canModify)): ?>
+    <section
+        id="tab-panel-modification"
+        class="kermesse-dashboard__section tab-panel"
+        data-tab-content="modification"
+        role="tabpanel"
+        aria-labelledby="tab-btn-modification"
+    >
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
         <?php endif; ?>
 
-        <?php
-            $standError     = session()->getFlashdata('stand_error')    ?? ($stand_error ?? null);
-            $standForm      = session()->getFlashdata('stand_form')     ?? ($stand_form ?? null);
-            $standName      = session()->getFlashdata('stand_name')     ?? ($stand_name ?? '');
-            
-            $editingStandIdRaw = session()->getFlashdata('editing_stand_id') ?? ($editing_stand_id ?? null);
-            $editingStandId = $editingStandIdRaw !== null ? (int) $editingStandIdRaw : null;
-            
-            $stands         = $stands ?? [];
+        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
+        <?php if ($lifecycleError !== null): ?>
+        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
+        <?php endif; ?>
 
-            $slotErrors     = session()->getFlashdata('slot_errors')        ?? [];
-            $slotForm       = session()->getFlashdata('slot_form')          ?? null;
+        <div class="section-toolbar">
+            <h2 class="section-title">Modification de la kermesse</h2>
+            <button type="button" class="btn btn--sm" title="Modifier les caractéristiques" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier la kermesse</button>
+        </div>
+
+        <!-- Actions lifecycle (UX-DR17) -->
+        <div class="kermesse-dashboard__lifecycle" style="margin-bottom:24px;">
+            <?php if ($kermesse['status'] === 'open'): ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
+            </form>
+            <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
+            </form>
+            <?php endif; ?>
+        </div>
+
+        <h2 class="section-title">Gestion des stands et des créneaux</h2>
+        <h3 class="subsection-title">Stands</h3>
+
+        <?php
+            $standError      = session()->getFlashdata('stand_error')    ?? ($stand_error ?? null);
+            $standForm       = session()->getFlashdata('stand_form')     ?? ($stand_form ?? null);
+            $standName       = session()->getFlashdata('stand_name')     ?? ($stand_name ?? '');
+            $editingStandIdRaw = session()->getFlashdata('editing_stand_id') ?? ($editing_stand_id ?? null);
+            $editingStandId  = $editingStandIdRaw !== null ? (int) $editingStandIdRaw : null;
+            $stands          = $stands ?? [];
+            $slotErrors      = session()->getFlashdata('slot_errors')        ?? [];
+            $slotForm        = session()->getFlashdata('slot_form')          ?? null;
             $slotFormStandId = (int) (session()->getFlashdata('slot_form_stand_id') ?? 0);
             $slotFormSlotId  = (int) (session()->getFlashdata('slot_form_slot_id')  ?? 0);
         ?>
@@ -139,20 +174,20 @@
             <li class="stands-list__item" id="slots-stand-<?= $sid ?>">
                 <div class="stands-list__header" style="display: flex; justify-content: space-between; align-items: center;">
                     <span class="stands-list__name"><strong><?= esc($stand['name']) ?></strong></span>
-                    
+
                     <!-- Menu contextuel Stand -->
                     <details class="dropdown" style="position:relative;">
                         <summary class="btn btn--sm btn--secondary">Options</summary>
                         <div class="dropdown__menu" style="position:absolute; right:0; display:flex; flex-direction:column; gap:8px; margin-top:8px; border:1px solid var(--border-color, #ddd); padding:12px; border-radius:8px; background:#fff; z-index:10; min-width:200px; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
                             <!-- Renommer -->
                             <button type="button" class="btn btn--sm" style="width:100%;" onclick="document.getElementById('modal-stand-rename-<?= $sid ?>').showModal()">Renommer</button>
-                            
+
                             <!-- Dupliquer -->
                             <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/duplicate") ?>" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                                 <?= csrf_field() ?>
                                 <button type="submit" class="btn btn--sm" style="width:100%;">Dupliquer</button>
                             </form>
-                            
+
                             <!-- Supprimer -->
                             <button type="button" class="btn btn--danger btn--sm" style="width:100%;" onclick="document.getElementById('modal-stand-delete-<?= $sid ?>').showModal()">Supprimer</button>
                         </div>
@@ -267,7 +302,7 @@
 
                         <!-- Modale Supprimer Créneau -->
                         <?php
-                            $deleteSlotError = session()->getFlashdata('delete_slot_error_' . $slotId);
+                            $deleteSlotError    = session()->getFlashdata('delete_slot_error_' . $slotId);
                             $hasDeleteSlotError = $deleteSlotError !== null;
                         ?>
                         <dialog id="modal-slot-delete-<?= $slotId ?>" class="k-modal" <?= $hasDeleteSlotError ? 'data-auto-open' : '' ?>>
@@ -302,23 +337,21 @@
                 <!-- Bouton Ajouter un créneau -->
                 <button type="button" class="btn btn--sm btn--secondary" style="margin-top:16px;" onclick="document.getElementById('modal-slot-add-<?= $sid ?>').showModal()">Ajouter un créneau</button>
 
-                
                 <!-- Modale Ajouter Créneau -->
-                <?php 
-                    $isAddingHere = ($slotForm === 'add' && $slotFormStandId === $sid);
+                <?php
+                    $isAddingHere    = ($slotForm === 'add' && $slotFormStandId === $sid);
                     $defaultStartsAt = '';
-                    $defaultEndsAt = '';
+                    $defaultEndsAt   = '';
                     $defaultCapacity = '';
-                    if (!empty($stand['slots'])) {
-                        $lastSlot = end($stand['slots']);
+                    if (! empty($stand['slots'])) {
+                        $lastSlot        = end($stand['slots']);
                         $defaultStartsAt = date('H:i', strtotime($lastSlot['ends_at']));
-                        $dur = strtotime($lastSlot['ends_at']) - strtotime($lastSlot['starts_at']);
-                        $defaultEndsAt = date('H:i', strtotime($defaultStartsAt) + $dur);
+                        $dur             = strtotime($lastSlot['ends_at']) - strtotime($lastSlot['starts_at']);
+                        $defaultEndsAt   = date('H:i', strtotime($defaultStartsAt) + $dur);
                         $defaultCapacity = $lastSlot['capacity'];
                     }
                 ?>
                 <dialog id="modal-slot-add-<?= $sid ?>" class="k-modal" <?= $isAddingHere ? 'data-auto-open' : '' ?>>
->
                     <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands/{$sid}/slots") ?>" class="k-modal__form" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                         <h3 class="k-modal__title">Ajouter un créneau</h3>
                         <?= csrf_field() ?>
@@ -359,7 +392,7 @@
             <button type="button" class="btn btn--primary" onclick="document.getElementById('modal-stand-add').showModal()">Ajouter un stand</button>
         </div>
         <?php endif; ?>
-        
+
         <!-- Modale Ajouter Stand -->
         <dialog id="modal-stand-add" class="k-modal" <?= ($standForm === 'add') ? 'data-auto-open' : '' ?>>
             <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/stands") ?>" class="k-modal__form" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
@@ -378,12 +411,82 @@
                 </div>
             </form>
         </dialog>
-
     </section>
     <?php endif; ?>
 
+    <!-- ================================================================== -->
+    <!-- Onglet : Gestion des inscrits (Owner/Admin/Gestionnaire — 4.4/5.2) -->
+    <!-- ================================================================== -->
+    <?php if (! empty($canManageParticipants)): ?>
+    <section
+        id="tab-panel-inscrits"
+        class="kermesse-dashboard__section tab-panel"
+        data-tab-content="inscrits"
+        role="tabpanel"
+        aria-labelledby="tab-btn-inscrits"
+    >
+        <h2 class="section-title">Gestion des inscriptions</h2>
+
+        <?php $participantStands = $participantStands ?? []; ?>
+        <?php if (empty($participantStands)): ?>
+        <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
+        <?php else: ?>
+        <?php foreach ($participantStands as $pStand): ?>
+        <div class="participants-stand">
+            <h3 class="subsection-title"><?= esc($pStand['name']) ?></h3>
+
+            <?php if (empty($pStand['slots'])): ?>
+            <p class="section-placeholder">Aucun créneau pour ce stand.</p>
+            <?php else: ?>
+            <?php foreach ($pStand['slots'] as $pSlot): ?>
+            <div class="participants-slot">
+                <div class="participants-slot__header">
+                    <span class="participants-slot__when">
+                        <span aria-hidden="true">📅</span> <?= esc($pSlot['date']) ?>
+                        · <span aria-hidden="true">🕐</span> <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
+                    </span>
+                    <span class="participants-slot__fill">Occupé : <?= (int) $pSlot['occupied'] ?> / <?= (int) $pSlot['capacity'] ?> · Restant : <?= (int) $pSlot['remaining'] ?></span>
+                </div>
+
+                <?php if (empty($pSlot['volunteers'])): ?>
+                <p class="participants-slot__empty">Aucun bénévole inscrit sur ce créneau.</p>
+                <?php else: ?>
+                <ul class="participants-list">
+                    <?php foreach ($pSlot['volunteers'] as $vol): ?>
+                    <li class="participants-list__item">
+                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <span class="participants-list__contact">
+                            <?php if ($vol['phone'] !== ''): ?>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <?php endif; ?>
+                            <?php if ($vol['email'] !== ''): ?>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <?php endif; ?>
+                        </span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+
+    <!-- ================================================================== -->
+    <!-- Onglet : Équipe (Owner/Admin — Story 4.5 / 5.2)                    -->
+    <!-- ================================================================== -->
     <?php if (! empty($canInvite)): ?>
-    <section class="kermesse-dashboard__section" id="organization-team">
+    <section
+        id="tab-panel-equipe"
+        class="kermesse-dashboard__section tab-panel"
+        data-tab-content="equipe"
+        role="tabpanel"
+        aria-labelledby="tab-btn-equipe"
+    >
         <h2 class="section-title">Gestion de l'équipe d'organisation</h2>
 
         <div class="team-members">
@@ -415,7 +518,7 @@
                             <!-- Actions -->
                             <?php if ($member['role'] !== 'owner'): ?>
                                 <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
-                                
+
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
@@ -434,7 +537,7 @@
                         <p class="form-warning" id="edit-member-warning" style="display:none; margin-bottom:16px;">
                             L'invitation ayant été acceptée, ce membre gère désormais son propre compte. Vous ne pouvez modifier que son rôle.
                         </p>
-                        
+
                         <div class="form-group">
                             <label for="edit-member-role" class="form-label">Rôle attribué</label>
                             <select id="edit-member-role" name="role" class="form-control" required>
@@ -442,22 +545,22 @@
                                 <option value="gestionnaire">Gestionnaire</option>
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="edit-member-first-name" class="form-label">Prénom</label>
                             <input type="text" id="edit-member-first-name" name="first_name" class="form-control">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="edit-member-last-name" class="form-label">Nom</label>
                             <input type="text" id="edit-member-last-name" name="last_name" class="form-control">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="edit-member-email" class="form-label">Adresse email</label>
                             <input type="email" id="edit-member-email" name="email" class="form-control" required>
                         </div>
-                        
+
                         <div class="k-modal__actions">
                             <button type="button" class="btn btn--secondary" onclick="document.getElementById('edit-member-modal').close()">Annuler</button>
                             <button type="submit" class="btn btn--primary">Enregistrer</button>
@@ -467,27 +570,26 @@
 
                 <script>
                 function openEditMemberModal(member) {
-                    const modal = document.getElementById('edit-member-modal');
-                    const form = document.getElementById('edit-member-form');
-                    const kermesseId = <?= json_encode($kermesse['id']) ?>;
-                    
+                    var modal = document.getElementById('edit-member-modal');
+                    var form  = document.getElementById('edit-member-form');
+                    var kermesseId = <?= json_encode($kermesse['id']) ?>;
+
                     form.action = '<?= site_url() ?>kermesse/' + kermesseId + '/team/' + member.user_id + '/edit';
-                    
-                    document.getElementById('edit-member-role').value = member.role;
+
+                    document.getElementById('edit-member-role').value       = member.role;
                     document.getElementById('edit-member-first-name').value = member.first_name || '';
-                    document.getElementById('edit-member-last-name').value = member.last_name || '';
-                    document.getElementById('edit-member-email').value = member.email || '';
-                    
-                    const isAccepted = member.accepted_at !== null;
+                    document.getElementById('edit-member-last-name').value  = member.last_name  || '';
+                    document.getElementById('edit-member-email').value      = member.email      || '';
+
+                    var isAccepted = member.accepted_at !== null;
                     document.getElementById('edit-member-warning').style.display = isAccepted ? 'block' : 'none';
-                    
+
                     document.getElementById('edit-member-first-name').readOnly = isAccepted;
-                    document.getElementById('edit-member-last-name').readOnly = isAccepted;
-                    document.getElementById('edit-member-email').readOnly = isAccepted;
-                    
-                    // Add visual cue for readonly fields
-                    ['edit-member-first-name', 'edit-member-last-name', 'edit-member-email'].forEach(id => {
-                        const el = document.getElementById(id);
+                    document.getElementById('edit-member-last-name').readOnly  = isAccepted;
+                    document.getElementById('edit-member-email').readOnly      = isAccepted;
+
+                    ['edit-member-first-name', 'edit-member-last-name', 'edit-member-email'].forEach(function(id) {
+                        var el = document.getElementById(id);
                         if (isAccepted) {
                             el.style.backgroundColor = '#e9ecef';
                             el.title = "Non modifiable par l'Owner car l'invitation a été acceptée.";
@@ -496,7 +598,7 @@
                             el.title = '';
                         }
                     });
-                    
+
                     modal.showModal();
                 }
                 </script>
@@ -549,66 +651,16 @@
     </section>
     <?php endif; ?>
 
-    <?php if (! empty($canManageParticipants)): ?>
-    <!-- Section participants — Owner/Admin/Gestionnaire (garde Story 4.1 ; contenu
-         Story 4.4). SEULE surface autorisée pour la PII des bénévoles (NFR5) :
-         nom, prénom, téléphone, email. Le ViewModel est préparé par le contrôleur ;
-         la vue ne fait aucun calcul ni requête (UX-DR24). -->
-    <section class="kermesse-dashboard__section" id="participants">
-        <h2 class="section-title">Gestion des inscriptions</h2>
-
-        <?php $participantStands = $participantStands ?? []; ?>
-        <?php if (empty($participantStands)): ?>
-        <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
-        <?php else: ?>
-        <?php foreach ($participantStands as $pStand): ?>
-        <div class="participants-stand">
-            <h3 class="subsection-title"><?= esc($pStand['name']) ?></h3>
-
-            <?php if (empty($pStand['slots'])): ?>
-            <p class="section-placeholder">Aucun créneau pour ce stand.</p>
-            <?php else: ?>
-            <?php foreach ($pStand['slots'] as $pSlot): ?>
-            <div class="participants-slot">
-                <div class="participants-slot__header">
-                    <span class="participants-slot__when">
-                        <span aria-hidden="true">📅</span> <?= esc($pSlot['date']) ?>
-                        · <span aria-hidden="true">🕐</span> <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
-                    </span>
-                    <span class="participants-slot__fill">Occupé : <?= (int) $pSlot['occupied'] ?> / <?= (int) $pSlot['capacity'] ?> · Restant : <?= (int) $pSlot['remaining'] ?></span>
-                </div>
-
-                <?php if (empty($pSlot['volunteers'])): ?>
-                <p class="participants-slot__empty">Aucun bénévole inscrit sur ce créneau.</p>
-                <?php else: ?>
-                <ul class="participants-list">
-                    <?php foreach ($pSlot['volunteers'] as $vol): ?>
-                    <li class="participants-list__item">
-                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                        <span class="participants-list__contact">
-                            <?php if ($vol['phone'] !== ''): ?>
-                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
-                            <?php endif; ?>
-                            <?php if ($vol['email'] !== ''): ?>
-                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
-                            <?php endif; ?>
-                        </span>
-                    </li>
-                    <?php endforeach; ?>
-                </ul>
-                <?php endif; ?>
-            </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-        <?php endforeach; ?>
-        <?php endif; ?>
-    </section>
-    <?php endif; ?>
-
-    <!-- Section « Mes participations » — tout rôle (garde Story 4.1 ; contenu Story 4.2 ;
-         annulation Story 4.3). N'affiche que les inscriptions actives de l'utilisateur (UX-DR23). -->
-    <section class="kermesse-dashboard__section" id="my-signups">
+    <!-- ================================================================== -->
+    <!-- Onglet : Mes participations — tout rôle (Stories 4.2, 4.3, 5.2).   -->
+    <!-- ================================================================== -->
+    <section
+        id="tab-panel-participations"
+        class="kermesse-dashboard__section tab-panel"
+        data-tab-content="participations"
+        role="tabpanel"
+        aria-labelledby="tab-btn-participations"
+    >
         <h2 class="section-title">Mes participations</h2>
 
         <?php if (! empty($participationNotice = session()->getFlashdata('participation_notice'))): ?>
@@ -619,7 +671,6 @@
         <?php endif; ?>
 
         <?php $myParticipations = $myParticipations ?? []; ?>
-        <?php // Décision « inscriptions ouvertes » préparée par le contrôleur (AC2) ; défaut sûr = fermé. ?>
         <?php $signupsOpen = $signupsOpen ?? false; ?>
         <?php if (empty($myParticipations)): ?>
         <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
@@ -654,6 +705,81 @@
 
 
 <style>
+/* ---- Navigation onglets (Story 5.2) ----------------------------------- */
+.tab-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    margin: 24px 0 0;
+    border-bottom: 2px solid var(--color-border, #e9ecef);
+}
+.tab-nav::-webkit-scrollbar { height: 4px; }
+.tab-nav::-webkit-scrollbar-thumb { background: var(--color-border, #ccc); border-radius: 2px; }
+
+/* Mobile : pilules scrollables (320px → ~639px) */
+.tab-nav__btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 8px 18px;
+    border-radius: 20px;
+    border: 1px solid var(--color-border, #e9ecef);
+    background: transparent;
+    color: var(--color-text, #111827);
+    font-size: 14px;
+    font-weight: 500;
+    min-height: 44px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    line-height: 1.2;
+    position: relative;
+    bottom: -2px; /* aligne visuellement sur la bordure inférieure */
+}
+.tab-nav__btn:hover {
+    background: var(--color-muted-surface, #eef2f7);
+}
+.tab-nav__btn.is-active {
+    background: var(--color-primary, #166534);
+    color: #fff;
+    border-color: var(--color-primary, #166534);
+}
+
+/* Desktop : barre horizontale plate (≥640px) */
+@media (min-width: 640px) {
+    .tab-nav__btn {
+        border-radius: 6px 6px 0 0;
+        border-bottom: none;
+        padding: 10px 20px;
+    }
+    .tab-nav__btn.is-active {
+        border-color: var(--color-border, #e9ecef);
+        border-bottom: 2px solid var(--color-surface, #fff);
+        background: var(--color-surface, #fff);
+        color: var(--color-primary, #166534);
+    }
+}
+
+/* Panneau de contenu onglet */
+.tab-panel {
+    display: block;
+    padding-top: 24px;
+}
+
+/* Barre d'outils section */
+.section-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.section-toolbar .section-title {
+    margin: 0;
+}
+
+/* ---- Modales ---------------------------------------------------------- */
 .k-modal {
     border: none;
     border-radius: 8px;
@@ -665,7 +791,8 @@
 .k-modal::backdrop {
     background-color: rgba(0,0,0,0.5);
 }
-.k-modal__form {
+.k-modal__form,
+.k-modal__content {
     padding: 24px;
     display: flex;
     flex-direction: column;
@@ -687,6 +814,7 @@
     margin-top: 8px;
 }
 
+/* ---- Feedback / alertes ----------------------------------------------- */
 .form-success {
     background-color: #d4edda;
     color: #155724;
@@ -699,9 +827,7 @@
     align-items: center;
     gap: 8px;
 }
-.form-success::before {
-    content: "✅";
-}
+.form-success::before { content: "✅"; }
 .form-warning {
     background-color: #fff3cd;
     color: #856404;
@@ -714,17 +840,24 @@
     align-items: center;
     gap: 8px;
 }
-.form-warning::before {
-    content: "⚠️";
-}
+.form-warning::before { content: "⚠️"; }
+
+/* ---- En-tête caractéristiques ----------------------------------------- */
 .kermesse-characteristics {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
     padding: 24px;
     border-radius: 12px;
-    margin-bottom: 32px;
+    margin-bottom: 0;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
+.kermesse-dashboard__lifecycle {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* ---- Éléments partagés entre onglets ---------------------------------- */
 .section-placeholder {
     color: #555;
     font-size: 14px;
@@ -755,14 +888,10 @@
     color: #555;
     font-size: 14px;
 }
-.my-signups-list__cancel {
-    margin: 8px 0 0;
-}
-.my-signups-list__cancel .btn {
-    width: 100%;
-}
+.my-signups-list__cancel { margin: 8px 0 0; }
+.my-signups-list__cancel .btn { width: 100%; }
 
-/* Section participants — récapitulatif nominatif (Story 4.4) */
+/* ---- Section participants --------------------------------------------- */
 .invite-form {
     border: 1px solid #e9ecef;
     border-radius: 8px;
@@ -770,12 +899,8 @@
     padding: 16px;
     margin: 8px 0 24px;
 }
-.invite-form .form-group {
-    margin-bottom: 12px;
-}
-.participants-stand {
-    margin: 8px 0 24px;
-}
+.invite-form .form-group { margin-bottom: 12px; }
+.participants-stand { margin: 8px 0 24px; }
 .participants-slot {
     border: 1px solid #e9ecef;
     border-radius: 8px;
@@ -790,21 +915,9 @@
     gap: 4px 16px;
     margin-bottom: 8px;
 }
-.participants-slot__when {
-    color: #333;
-    font-size: 14px;
-}
-.participants-slot__fill {
-    color: #555;
-    font-size: 14px;
-    font-weight: bold;
-    white-space: nowrap;
-}
-.participants-slot__empty {
-    color: #555;
-    font-size: 14px;
-    margin: 0;
-}
+.participants-slot__when { color: #333; font-size: 14px; }
+.participants-slot__fill { color: #555; font-size: 14px; font-weight: bold; white-space: nowrap; }
+.participants-slot__empty { color: #555; font-size: 14px; margin: 0; }
 .participants-list {
     list-style: none;
     margin: 0;
@@ -827,82 +940,95 @@
     font-size: 14px;
 }
 .participants-list__contact a {
-    /* Cible tactile confortable sur mobile (UX : 44px). */
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    min-height: 44px; /* cible tactile — UX */
 }
 </style>
+
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
 <script>
+/* ---- Navigation onglets (Story 5.2) ----------------------------------- */
+(function () {
+    var buttons = document.querySelectorAll('[data-tab]');
+    var panels  = document.querySelectorAll('[data-tab-content]');
+
+    if (!buttons.length) { return; }
+
+    /* Masque tous les panneaux sauf le premier actif. */
+    panels.forEach(function (p) { p.hidden = true; });
+    var activeBtn   = document.querySelector('[data-tab].is-active');
+    var activePanel = activeBtn
+        ? document.querySelector('[data-tab-content="' + activeBtn.getAttribute('data-tab') + '"]')
+        : null;
+    if (activePanel) { activePanel.hidden = false; }
+
+    /* Gestion des clics sur les onglets. */
+    buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var targetId = btn.getAttribute('data-tab');
+
+            buttons.forEach(function (b) {
+                b.classList.remove('is-active');
+                b.setAttribute('aria-selected', 'false');
+            });
+            panels.forEach(function (p) { p.hidden = true; });
+
+            btn.classList.add('is-active');
+            btn.setAttribute('aria-selected', 'true');
+            var panel = document.querySelector('[data-tab-content="' + targetId + '"]');
+            if (panel) { panel.hidden = false; }
+        });
+    });
+}());
+
+/* ---- Confirmation suppression (SUPPRIMER) ----------------------------- */
 document.querySelectorAll('[data-delete-confirm]').forEach(function (input) {
     var btnId = input.getAttribute('data-delete-confirm');
     var btn   = document.getElementById(btnId);
-    if (!btn) return;
+    if (!btn) { return; }
     btn.disabled = input.value.trim().toUpperCase() !== 'SUPPRIMER';
     input.addEventListener('input', function () {
         btn.disabled = this.value.trim().toUpperCase() !== 'SUPPRIMER';
     });
 });
 
+/* ---- Copie du lien public --------------------------------------------- */
 (function () {
     var btn      = document.getElementById('copy-link-btn');
     var feedback = document.getElementById('copy-link-feedback');
-    if (!btn || !feedback) return;
-    
+    if (!btn || !feedback) { return; }
+
     function showSuccess() {
         feedback.style.display = 'inline-block';
-        if (btn.timer) clearTimeout(btn.timer);
+        if (btn.timer) { clearTimeout(btn.timer); }
         btn.timer = setTimeout(function () { feedback.style.display = 'none'; }, 5000);
     }
-    
-    function fallbackCopyTextToClipboard(text) {
-        var textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.top = "0";
-        textArea.style.left = "0";
-        textArea.style.position = "fixed";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-            var successful = document.execCommand('copy');
-            if (successful) {
-                showSuccess();
-            } else {
-                alert('Erreur lors de la copie manuelle. Veuillez copier le lien manuellement.');
-            }
-        } catch (err) {
-            console.error('Erreur lors de la copie fallback', err);
-            alert('Erreur lors de la copie. Copie manuelle requise.');
-        }
-        document.body.removeChild(textArea);
+
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try { if (document.execCommand('copy')) { showSuccess(); } }
+        catch (err) { alert('Erreur lors de la copie. Veuillez copier le lien manuellement.'); }
+        document.body.removeChild(ta);
     }
 
     btn.addEventListener('click', function () {
         var text = btn.getAttribute('data-copy-url');
-        if (!navigator.clipboard) {
-            fallbackCopyTextToClipboard(text);
-            return;
-        }
-        navigator.clipboard.writeText(text).then(function () {
-            showSuccess();
-        }).catch(function(err) {
-            console.warn('Erreur navigator.clipboard, essai du fallback:', err);
-            fallbackCopyTextToClipboard(text);
-        });
+        if (!navigator.clipboard) { fallbackCopy(text); return; }
+        navigator.clipboard.writeText(text).then(showSuccess).catch(function () { fallbackCopy(text); });
     });
 }());
-</script>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    var autoOpenModals = document.querySelectorAll('dialog[data-auto-open]');
-    autoOpenModals.forEach(function(dialog) {
-        dialog.showModal();
-    });
+/* ---- Ouverture automatique des modales post-redirect (data-auto-open) - */
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('dialog[data-auto-open]').forEach(function (d) { d.showModal(); });
 });
 </script>
 <?= $this->endSection() ?>

@@ -34,6 +34,10 @@ class KermesseAdminController extends BaseController
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
         $userRole    = $roleService->getRoleForUser($id, $userId);
 
+        // Story 5.2 — suivi d'accès par kermesse: first_access_at (1er chargement)
+        // et last_access_at (chaque chargement). Hooks Story 5.4 et 5.10 à venir.
+        $roleService->recordAccess($id, $userId);
+
         // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
         // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
         // "Gestion des participants": Owner/Admin/Gestionnaire.

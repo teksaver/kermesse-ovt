@@ -27,6 +27,8 @@ class UserRoleModel extends Model
         'invited_by',
         'invited_at',
         'accepted_at',
+        'first_access_at',
+        'last_access_at',
     ];
 
     /**
