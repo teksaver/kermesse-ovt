@@ -291,6 +291,11 @@ class SignupModel extends Model
      * $modifiedByUserId references users.id (FK RESTRICT): revoking an admin role
      * only touches kermesse_user_roles — the users row persists, so traceability
      * is preserved without any special handling.
+     *
+     * NOTE: affectedRows() === 1 relies on at least one column value actually changing.
+     * last_modified_at is always set to the current second, so the only theoretical
+     * false-negative is calling this twice within the same second with the same admin
+     * on the same signup. This edge case is not reachable through normal UI actions.
      */
     public function stampAdminModification(int $signupId, int $modifiedByUserId): bool
     {
