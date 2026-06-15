@@ -197,6 +197,45 @@ class RoleService
     }
 
     /**
+     * Re-send an invitation email for a pending (not yet accepted) role (Story 5.5 — relance).
+     *
+     * Unlike invite(), this method does NOT touch the role row; it only issues a new Magic Link
+     * and resends the email. Calling invite() for a resend would fail with already_has_role
+     * because the role already exists.
+     *
+     * @return bool True when the email was dispatched (or traced in email_events), false when
+     *              the role does not exist or the invitation is already accepted.
+     */
+    public function resendInvitation(int $kermesseId, int $userId): bool
+    {
+        $roleRow = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+        if ($roleRow === null || ($roleRow['accepted_at'] ?? null) !== null) {
+            return false;
+        }
+
+        $user = $this->userModel->find($userId);
+        if ($user === null) {
+            return false;
+        }
+
+        $kermesse = $this->kermesseModel->find($kermesseId);
+        if ($kermesse === null) {
+            return false;
+        }
+
+        $email    = (string) $user['email'];
+        $issued   = $this->tokenService->issueMagicLink($email, $kermesseId);
+        $this->emailService->sendRoleInvitationEmail(
+            $email,
+            (string) $kermesse['name'],
+            $this->roleLabel((string) $roleRow['role']),
+            site_url('auth/magic-link/' . $issued->rawToken),
+        );
+
+        return true;
+    }
+
+    /**
      * Insert or update the role row for (kermesse, user), keeping the operation idempotent.
      *
      * If a concurrent invitation wins the insert race on uq_role_per_kermesse, the duplicate-key

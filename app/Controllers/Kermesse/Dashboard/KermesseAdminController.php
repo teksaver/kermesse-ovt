@@ -409,17 +409,6 @@ class KermesseAdminController extends BaseController
             $userRoleModel->update((int) $roleRow['id'], ['role' => $role]);
         }
 
-        if ($roleRow && ($roleRow['accepted_at'] ?? null) === null) {
-            $userModel = model(UserModel::class);
-            $email = strtolower(trim((string) $this->request->getPost('email')));
-            $userModel->update($userId, [
-                'first_name' => trim((string) $this->request->getPost('first_name')),
-                'last_name'  => trim((string) $this->request->getPost('last_name')),
-                'email'      => $email,
-                'email_hash' => $userModel->hashEmail($email),
-            ]);
-        }
-
         return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
                          ->with('invite_success', 'Membre mis à jour avec succès.');
     }
@@ -431,17 +420,11 @@ class KermesseAdminController extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
-        $user = model(UserModel::class)->find($userId);
-        $roleRow = model(UserRoleModel::class)->findByKermesseAndUser($kermesseId, $userId);
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
 
-        if ($user && $roleRow && ($roleRow['accepted_at'] ?? null) === null) {
-            $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
-            $result = $roleService->invite($kermesseId, (string) $user['email'], (string) $roleRow['role'], (int) session()->get('user_id'), (string) $user['first_name'], (string) $user['last_name']);
-
-            if ($result->success) {
-                return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
-                                 ->with('invite_success', 'Invitation relancée avec succès à ' . $user['email'] . '.');
-            }
+        if ($roleService->resendInvitation($kermesseId, $userId)) {
+            return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+                             ->with('invite_success', 'Invitation relancée avec succès.');
         }
 
         return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))

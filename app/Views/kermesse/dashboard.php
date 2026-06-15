@@ -33,7 +33,7 @@
                     <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
                 </p>
                 <?php endif; ?>
-                
+
                 <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
                    target="_blank"
                    rel="noopener noreferrer"

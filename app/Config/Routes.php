@@ -41,7 +41,7 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 // ---------------------------------------------------------------------------
 // Tableau de bord interne accessible à tout rôle (Story 4.1) ; les sections
 // internes sont gardées par rôle côté serveur dans le contrôleur/la vue.
-$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => ['pending-resolution', 'role:owner,admin,gestionnaire,benevole']]);
 $routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::update/$1', ['filter' => 'role:owner,admin']);
 
 // Invitation d'un Admin/Gestionnaire (Story 4.5) — réservé Owner/Admin (RBAC route + service).
