@@ -75,7 +75,7 @@ final class ProfileUpdateTest extends CIUnitTestCase
         $db = db_connect();
         $db->table('users')->insert([
             'email'         => $email,
-            'email_hash'    => hash('sha256', $email),
+            'email_hash'    => model(\App\Models\UserModel::class)->hashEmail($email),
             'first_name'    => $firstName,
             'last_name'     => $lastName,
             'phone'         => $phone,
@@ -127,6 +127,7 @@ final class ProfileUpdateTest extends CIUnitTestCase
         ]);
 
         $result->assertRedirectTo(site_url('profile'));
+        $result->assertSessionHas('success', 'Votre profil a été mis à jour avec succès.');
 
         $db   = db_connect();
         $user = $db->table('users')->where('id', $this->userId)->get()->getRowArray();
@@ -224,10 +225,11 @@ final class ProfileUpdateTest extends CIUnitTestCase
         ]);
 
         $result->assertRedirectTo(site_url('profile'));
+        $result->assertSessionHas('success', 'Votre profil a été mis à jour avec succès.');
 
         $db   = db_connect();
         $user = $db->table('users')->where('id', $this->userId)->get()->getRowArray();
         $this->assertSame($newEmail, $user['email']);
-        $this->assertSame(hash('sha256', $newEmail), $user['email_hash']);
+        $this->assertSame(model(\App\Models\UserModel::class)->hashEmail($newEmail), $user['email_hash']);
     }
 }

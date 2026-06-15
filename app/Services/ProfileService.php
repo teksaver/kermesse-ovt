@@ -179,13 +179,18 @@ class ProfileService
             'phone'      => $phone,
         ];
 
-        $email = strtolower($email);
-        if ($email !== strtolower((string) $current['email'])) {
+        $email = mb_strtolower($email);
+        if ($email !== mb_strtolower((string) $current['email'])) {
             $data['email']      = $email;
             $data['email_hash'] = $this->userModel->hashEmail($email);
         }
 
-        return $this->userModel->update($userId, $data) !== false;
+        try {
+            return $this->userModel->update($userId, $data) !== false;
+        } catch (\Throwable $e) {
+            log_message('error', '[ProfileService] Erreur lors de la mise à jour du profil : ' . $e->getMessage());
+            return false;
+        }
     }
 
     private function roleService(): RoleService

@@ -50,7 +50,7 @@ class ProfileController extends BaseController
         $validation = service('validation');
         $isValid    = $validation->setRules(
             [
-                'email'      => "required|valid_email|is_unique[users.email,id,{$userId}]",
+                'email'      => "required|valid_email|max_length[255]|is_unique[users.email,id,{$userId}]",
                 'first_name' => 'required|string|max_length[100]',
                 'last_name'  => 'required|string|max_length[100]',
                 'phone'      => 'permit_empty|string|max_length[20]',
