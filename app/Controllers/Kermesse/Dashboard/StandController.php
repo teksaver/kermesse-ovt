@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\StandModel;
 use App\Services\StandDeletionService;
+use App\Services\StandDuplicationService;
 
 /**
  * Gestion des stands d'une kermesse — Owner et Admin uniquement.
@@ -45,7 +46,8 @@ class StandController extends BaseController
             return $this->redirectWithError('Erreur système lors de l\'ajout.', 'add', $name);
         }
 
-        session()->setFlashdata('success', 'Stand « ' . esc($name) . ' » ajouté avec succès.');
+        // The view escapes the flashdata (esc($success)); escaping here too would double-encode the name.
+        session()->setFlashdata('success', 'Stand « ' . $name . ' » ajouté avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -78,7 +80,7 @@ class StandController extends BaseController
             return $this->redirectWithError('Erreur système lors de la modification.', 'edit', $name, $standId);
         }
 
-        session()->setFlashdata('success', 'Stand renommé en « ' . esc($name) . ' ».');
+        session()->setFlashdata('success', 'Stand renommé en « ' . $name . ' ».');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -137,7 +139,7 @@ class StandController extends BaseController
                 ->with('delete_error_' . $standId, 'Ce stand a déjà été modifié ou une erreur système est survenue.');
         }
 
-        session()->setFlashdata('success', 'Stand « ' . esc($stand['name']) . ' » supprimé avec succès.');
+        session()->setFlashdata('success', 'Stand « ' . $stand['name'] . ' » supprimé avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -172,54 +174,19 @@ class StandController extends BaseController
             return $this->redirectWithError('Le nom du nouveau stand est obligatoire.', 'duplicate', $newName, $standId);
         }
 
-        if ($standModel->hasActiveDuplicate($id, $newName)) {
+        // The transactional copy (stand + slots, never signups) is a service-owned
+        // invariant — controllers must not write to the DB directly.
+        $result = (new StandDuplicationService())->duplicate($id, $standId, $newName);
+
+        if ($result === StandDuplicationService::RESULT_DUPLICATE_NAME) {
             return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'duplicate', $newName, $standId);
         }
 
-        $db = db_connect();
-        $db->transBegin();
-
-        $newStandId = $standModel->insert([
-            'kermesse_id'   => $id,
-            'name'          => $newName,
-            'display_order' => $standModel->nextDisplayOrder($id),
-            'status'        => StandModel::STATUS_ACTIVE,
-        ]);
-
-        if (! $newStandId) {
-            $db->transRollback();
-
+        if ($result !== StandDuplicationService::RESULT_SUCCESS) {
             return $this->redirectWithError('Erreur système lors de la duplication du stand.', 'duplicate', $newName, $standId);
         }
 
-        $slotModel = model(\App\Models\SlotModel::class);
-        $slots = $slotModel->where('stand_id', $standId)
-            ->where('status', \App\Models\SlotModel::STATUS_ACTIVE)
-            ->findAll();
-
-        // Copy slot configuration only (starts_at, ends_at, capacity). No signups
-        // are copied: the duplicated slots are brand-new rows with no participants.
-        foreach ($slots as $slot) {
-            $slotModel->insert([
-                'stand_id'  => $newStandId,
-                'starts_at' => $slot['starts_at'],
-                'ends_at'   => $slot['ends_at'],
-                'capacity'  => $slot['capacity'],
-                'status'    => \App\Models\SlotModel::STATUS_ACTIVE,
-            ]);
-        }
-
-        // Fail-fast: roll back the whole duplication (stand + already-copied slots)
-        // if any insert failed, so we never leave a half-copied stand behind.
-        if (! $db->transStatus()) {
-            $db->transRollback();
-
-            return $this->redirectWithError('Erreur système lors de la duplication des créneaux.', 'duplicate', $newName, $standId);
-        }
-
-        $db->transCommit();
-
-        session()->setFlashdata('success', 'Stand « ' . esc($newName) . ' » dupliqué avec succès.');
+        session()->setFlashdata('success', 'Stand « ' . $newName . ' » dupliqué avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
