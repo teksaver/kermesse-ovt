@@ -276,20 +276,20 @@ p {
 
 .kermesse-status-badge {
     display: inline-block;
-    margin-top: 12px;
-    padding: 6px 12px;
-    font-size: 14px;
+    padding: 4px 10px;
+    font-size: 0.85em;
     font-weight: 700;
-    border-radius: var(--radius-default);
+    border-radius: 20px;
     border: 1px solid var(--color-border);
     background: var(--color-muted-surface);
     color: var(--color-muted-text);
+    vertical-align: middle;
 }
 
 .kermesse-status-badge--preparation {
-	    background: var(--color-success-surface);
-	    border-color: var(--color-success-border);
-	    color: var(--color-primary);
+    background: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
 }
 
 /* ----- Secondary button ----- */
@@ -306,16 +306,17 @@ p {
 
 /* ----- Status badge variants ----- */
 
+.kermesse-status-badge--active,
 .kermesse-status-badge--open {
-    background: var(--color-success-surface);
-    border-color: var(--color-success-border);
-    color: var(--color-primary);
+    background: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
 }
 
 .kermesse-status-badge--closed {
-    background: var(--color-muted-surface);
-    border-color: var(--color-border);
-    color: var(--color-muted-text);
+    background: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
 }
 
 /* ----- Admin header ----- */
@@ -945,7 +946,7 @@ p {
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    max-width: 600px;
+    max-width: 1000px;
     margin: 0 auto;
     box-sizing: border-box;
 }
@@ -963,6 +964,16 @@ p {
 
 .app-nav__logout {
     margin: 0;
+}
+
+/* Texte des actions d'en-tête (Story 5.3) */
+.nav-text {
+    display: none;
+}
+@media (min-width: 769px) {
+    .nav-text {
+        display: inline;
+    }
 }
 
 /* ----- Connected home ----- */
@@ -1044,7 +1055,7 @@ body {
 
 .container {
     width: 100%;
-    max-width: 600px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: var(--space-4);
     box-sizing: border-box;
@@ -1068,18 +1079,6 @@ body {
     background-color: var(--color-primary-dark);
 }
 
-.kermesse-status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    background-color: var(--color-border);
-}
-.kermesse-status-badge--active, .kermesse-status-badge--open {
-    background-color: #DCFCE7;
-    color: #166534;
-}
 
 /* Button variants */
 .btn--secondary {
@@ -1262,66 +1261,138 @@ body {
    Tableau de bord kermesse (Stories 4.x / 5.2)
    ============================================================ */
 
-/* ---- Navigation onglets ----------------------------------------- */
-.tab-nav {
+/* ---- Navigation Dashboard (Sidebar / Accordéon) ----------------------- */
+.dashboard-layout {
     display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
-    margin: 24px 0 0;
-    border-bottom: 2px solid var(--color-border, #e9ecef);
+    flex-direction: column;
+    margin-top: 24px;
 }
-.tab-nav::-webkit-scrollbar { height: 4px; }
-.tab-nav::-webkit-scrollbar-thumb { background: var(--color-border, #ccc); border-radius: 2px; }
+.dashboard-single {
+    width: 100%;
+    margin-top: 24px;
+}
+@media (min-width: 769px) {
+    .dashboard-layout {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 32px;
+    }
+}
 
-/* Mobile : pilules scrollables */
-.tab-nav__btn {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 8px 18px;
-    border-radius: 20px;
-    border: 1px solid var(--color-border, #e9ecef);
+/* ---- Sidebar Navigation (Desktop) ---- */
+.sidebar-nav {
+    display: none; /* Masqué sur mobile, remplacé par l'accordéon */
+}
+@media (min-width: 769px) {
+    .sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        width: 250px;
+        flex-shrink: 0;
+        background: var(--color-surface, #fff);
+        border: 1px solid var(--color-border, #e9ecef);
+        border-radius: 8px;
+        padding: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+}
+
+.sidebar-nav__btn {
+    text-align: left;
+    padding: 12px 16px;
+    border: none;
     background: transparent;
-    color: var(--color-text, #111827);
-    font-size: 14px;
-    font-weight: 500;
-    min-height: 44px;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-    line-height: 1.2;
-    position: relative;
-    bottom: -2px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    color: var(--color-text-muted, #6c757d);
+    font-size: 15px;
+    font-weight: 500;
+    transition: background 0.2s, color 0.2s;
 }
-.tab-nav__btn:hover { background: var(--color-muted-surface, #eef2f7); }
-.tab-nav__btn.is-active {
-    background: var(--color-primary, #166534);
-    color: #fff;
-    border-color: var(--color-primary, #166534);
+.sidebar-nav__btn:hover {
+    background: var(--color-muted-surface, #f8f9fa);
 }
-.tab-nav__btn:focus-visible {
+.sidebar-nav__btn.is-active {
+    background: var(--color-primary-light, #e8f5e9);
+    color: var(--color-primary, #166534);
+    font-weight: bold;
+}
+.sidebar-nav__btn:focus-visible {
     outline: 2px solid var(--color-primary, #166534);
     outline-offset: 2px;
 }
 
-/* Desktop : barre horizontale plate (≥640px) */
-@media (min-width: 640px) {
-    .tab-nav__btn {
-        border-radius: 6px 6px 0 0;
-        border-bottom: none;
-        padding: 10px 20px;
-    }
-    .tab-nav__btn.is-active {
-        border-color: var(--color-border, #e9ecef);
-        border-bottom: 2px solid var(--color-surface, #fff);
-        background: var(--color-surface, #fff);
-        color: var(--color-primary, #166534);
+/* ---- Accordion Header (Mobile) ---- */
+.accordion-header {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 16px;
+    background: #f8f9fa;
+    border: 1px solid var(--color-border, #e9ecef);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: var(--color-text, #111827);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.2s;
+}
+.accordion-header:hover {
+    background: #eef2f7;
+}
+.accordion-icon {
+    margin-right: 12px;
+    font-size: 0.9rem;
+    color: var(--color-text-muted, #6c757d);
+}
+@media (min-width: 769px) {
+    .accordion-header {
+        display: none; /* Masqué sur Desktop car on a la Sidebar */
     }
 }
 
-/* Panneau de contenu onglet */
-.tab-panel { display: block; padding-top: 24px; }
-.tab-panel[hidden] { display: none !important; }
+/* ---- Panneau de contenu onglet ---- */
+.tab-panel { display: block; padding-top: 16px; }
+.tab-panel:first-of-type { padding-top: 0; }
+
+/* Desktop : On masque la section entière si elle n'est pas ouverte */
+@media (min-width: 769px) {
+    body.js-active .tab-panel:not(.is-open) { display: none !important; }
+}
+
+/* Mobile : On laisse la section visible (pour voir le bouton accordéon), mais on masque son contenu */
+@media (max-width: 768px) {
+    body.js-active .tab-panel:not(.is-open) > *:not(.accordion-header) {
+        display: none !important;
+    }
+}
+
+/* ---- Jumbotron Kermesse ---- */
+.kermesse-jumbotron {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--color-border, #e9ecef);
+    margin-top: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+/* ---- Desktop Grid ---- */
+.desktop-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+@media (min-width: 769px) {
+    .desktop-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        align-items: start;
+    }
+}
 
 /* Barre d'outils section */
 .section-toolbar {
