@@ -328,14 +328,17 @@ final class InviteRoleTest extends CIUnitTestCase
     // Suppression d'un membre de l'équipe (removeRole)
     // ------------------------------------------------------------------
 
-    public function testRemoveAdminWithoutSignupsDeletesRole(): void
+    public function testRemoveActiveMemberWithoutSignupsDowngradesToBenevole(): void
     {
+        // Story 5.8: un membre actif (invited_at IS NULL) est toujours rétrogradé en bénévole,
+        // même sans inscriptions, afin qu'il garde la kermesse visible dans "Mes participations"
+        // et puisse se retirer lui-même via Story 5.9.
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
 
         $result->assertRedirect();
-        $role = $this->roleForUser($this->adminId);
-        $this->assertNull($role, 'La ligne doit être supprimée quand l\'admin n\'a pas d\'inscriptions.');
+        $this->assertSame('benevole', $this->roleForUser($this->adminId),
+            'Un membre actif sans inscriptions doit être rétrogradé en bénévole (pas supprimé).');
     }
 
     public function testRemoveAdminWithActiveSignupsDowngradesToBenevole(): void
@@ -360,6 +363,56 @@ final class InviteRoleTest extends CIUnitTestCase
         $result->assertRedirect();
         $this->assertSame('benevole', $this->roleForUser($this->gestionId),
             'Un gestionnaire avec des inscriptions actives doit être rétrogradé en bénévole.');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.8 — Révocation par un Admin + flash message
+    // ------------------------------------------------------------------
+
+    public function testAdminCanRevokeGestionnaire(): void
+    {
+        // AC4 Story 5.8 (branche Gestionnaire) : un Admin peut révoquer un Gestionnaire.
+        $result = $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->gestionId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($this->gestionId),
+            'Un Admin doit pouvoir révoquer un Gestionnaire.');
+    }
+
+    public function testAdminCanRevokeAnotherAdmin(): void
+    {
+        // AC4 Story 5.8 (branche Admin→Admin) : un Admin peut révoquer un autre Admin.
+        $db = db_connect();
+        $db->table('users')->insert([
+            'email'      => 'admin2@invite.test',
+            'email_hash' => hash('sha256', 'admin2@invite.test'),
+            'first_name' => 'Admin2', 'last_name' => 'Test', 'phone' => '',
+        ]);
+        $admin2Id = (int) $db->insertID();
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $this->kermesseId, 'user_id' => $admin2Id, 'role' => 'admin',
+        ]);
+
+        $result = $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/team/{$admin2Id}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($admin2Id),
+            'Un Admin doit pouvoir révoquer un autre Admin (symétrie avec l\'invitation Story 5.5).');
+    }
+
+    public function testRevocationFlashMessageIsCorrect(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertStringContainsString(
+            'révoqué',
+            (string) session()->getFlashdata('invite_success'),
+            'Le message de confirmation doit mentionner la révocation.',
+        );
     }
 
     // ------------------------------------------------------------------

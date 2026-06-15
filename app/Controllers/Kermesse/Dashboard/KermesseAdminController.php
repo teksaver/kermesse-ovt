@@ -465,9 +465,12 @@ class KermesseAdminController extends BaseController
         }
 
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
-        $roleService->removeRole($kermesseId, $userId);
+        $revoked     = $roleService->removeRole($kermesseId, $userId);
 
-        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
-                         ->with('invite_success', 'L\'accès membre a été supprimé.');
+        if ($revoked) {
+            session()->setFlashdata('invite_success', 'Membre révoqué avec succès.');
+        }
+
+        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"));
     }
 }

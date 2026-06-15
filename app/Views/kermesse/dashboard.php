@@ -559,9 +559,9 @@
                                         <!-- Actions -->
                                         <?php if ($member['role'] !== 'owner'): ?>
                                             <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
-                                            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
+                                            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment révoquer le rôle de ce membre ?');">
                                                 <?= csrf_field() ?>
-                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès" aria-label="Supprimer l'accès">🗑️</button>
+                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Révoquer" aria-label="Révoquer le rôle">🗑️</button>
                                             </form>
                                         <?php endif; ?>
                                     </div>
@@ -602,9 +602,9 @@
                                     <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation" aria-label="Relancer l'invitation" style="font-size:1rem; padding:4px 8px;">🔄</button>
                                 </form>
                                 <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
-                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
+                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment révoquer ce membre ?');">
                                     <?= csrf_field() ?>
-                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès" aria-label="Supprimer l'accès">🗑️</button>
+                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Révoquer" aria-label="Révoquer le membre">🗑️</button>
                                 </form>
                                 <?php endif; ?>
                             </div>

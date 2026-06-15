@@ -317,31 +317,45 @@ class RoleService
     }
 
     /**
-     * Removes the role assignment for a given user on a given kermesse.
-     * Cannot remove the OWNER role.
+     * Revokes the elevated role (Admin/Gestionnaire) for a given user on a given kermesse.
+     * Returns false when no operation was performed (Owner target, or row not found).
      *
-     * If the user has active signups on this kermesse, the row is downgraded to
-     * benevole instead of deleted so they keep access to "Mes participations".
+     * Logic (Story 5.8):
+     *   - Pending invite (invited_at IS NOT NULL AND accepted_at IS NULL AND first_access_at IS NULL):
+     *       - no active slot signups → row is deleted (invitation cancelled)
+     *       - active slot signups → downgraded to bénévole (participations preserved)
+     *   - Active member (not pending, or mid-confirmation with accepted_at IS NOT NULL):
+     *       - always downgraded to bénévole, regardless of slot signups, so they keep
+     *         the kermesse visible in "Mes participations" and can leave via Story 5.9.
      */
-    public function removeRole(int $kermesseId, int $userId): void
+    public function removeRole(int $kermesseId, int $userId): bool
     {
         $existing = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
         if ($existing === null || (string) $existing['role'] === UserRoleModel::ROLE_OWNER) {
-            return;
+            return false;
         }
 
-        if ($this->hasActiveSignups($kermesseId, $userId)) {
-            $this->userRoleModel->update((int) $existing['id'], ['role' => UserRoleModel::ROLE_BENEVOLE]);
-        } else {
+        // accepted_at is set when the invitee clicks the magic link, before first_access_at is
+        // recorded on dashboard load. A mid-confirmation user (accepted_at IS NOT NULL,
+        // first_access_at IS NULL) must NOT have their row deleted — they are mid-flow.
+        $isPendingInvite = $existing['invited_at'] !== null
+            && ($existing['accepted_at'] ?? null) === null
+            && $existing['first_access_at'] === null;
+
+        if ($isPendingInvite && ! $this->hasActiveSlotSignups($kermesseId, $userId)) {
             $this->userRoleModel->delete((int) $existing['id']);
+        } else {
+            $this->userRoleModel->update((int) $existing['id'], ['role' => UserRoleModel::ROLE_BENEVOLE]);
         }
+
+        return true;
     }
 
     /**
-     * Returns true if the user has at least one active signup on the given kermesse.
-     * Used by removeRole() to decide between downgrade and full removal.
+     * Returns true if the user has at least one active slot signup on the given kermesse.
+     * Used by removeRole() to decide between invitation cancellation and bénévole downgrade.
      */
-    private function hasActiveSignups(int $kermesseId, int $userId): bool
+    private function hasActiveSlotSignups(int $kermesseId, int $userId): bool
     {
         $db = db_connect();
 
