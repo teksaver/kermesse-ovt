@@ -30,6 +30,8 @@ final class ProfileResolutionTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_kermesse_user_roles');
+        $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_profile_divergences');
         $db->query('DELETE FROM db_access_tokens');
         $db->query('DELETE FROM db_users');
@@ -90,6 +92,38 @@ final class ProfileResolutionTest extends CIUnitTestCase
                 updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesses (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_by        INTEGER NOT NULL,
+                public_slug       TEXT    NOT NULL UNIQUE,
+                name              TEXT    NOT NULL,
+                event_date        TEXT,
+                location          TEXT    NOT NULL DEFAULT "",
+                short_description TEXT    NOT NULL DEFAULT "",
+                timezone          TEXT    NOT NULL DEFAULT "Europe/Paris",
+                status            TEXT    NOT NULL DEFAULT "preparation",
+                created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id  INTEGER NOT NULL,
+                user_id      INTEGER NOT NULL,
+                role         TEXT    NOT NULL,
+                invited_by   INTEGER,
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     // ------------------------------------------------------------------
@@ -143,11 +177,12 @@ final class ProfileResolutionTest extends CIUnitTestCase
         string $submittedFirst = 'Alice',
         string $submittedLast  = 'MARTIN',
         string $submittedPhone = '0699999999',
+        int    $kermesseId     = 1,
     ): int {
         $db = db_connect();
         $db->table('profile_divergences')->insert([
             'user_id'              => $userId,
-            'kermesse_id'          => 1,
+            'kermesse_id'          => $kermesseId,
             'signup_id'            => null,
             'submitted_first_name' => $submittedFirst,
             'submitted_last_name'  => $submittedLast,
@@ -158,25 +193,56 @@ final class ProfileResolutionTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
+    private function insertKermesseRole(int $userId, string $role = 'benevole'): int
+    {
+        $db = db_connect();
+        $db->table('kermesses')->insert([
+            'created_by'        => $userId,
+            'public_slug'       => 'kermesse-' . bin2hex(random_bytes(4)),
+            'name'              => 'Kermesse Test',
+            'event_date'        => '2026-09-15',
+            'location'          => 'Salle',
+            'short_description' => '',
+            'status'            => 'preparation',
+        ]);
+        $kermesseId = (int) $db->insertID();
+
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => $role,
+        ]);
+
+        return $kermesseId;
+    }
+
     /** @return array<string, mixed> */
-    private function connectedSession(int $userId, bool $pendingResolution = false): array
+    private function connectedSession(int $userId, bool $pendingResolution = false, ?int $kermesseId = null): array
     {
         $session = ['user_id' => $userId, 'is_logged_in' => true];
         if ($pendingResolution) {
             $session['pending_profile_resolution'] = true;
+        }
+        if ($kermesseId !== null) {
+            $session['pending_resolution_kermesse_id'] = $kermesseId;
         }
 
         return $session;
     }
 
     /** @return array<string, mixed> */
-    private function firstLoginSession(int $userId): array
+    private function firstLoginSession(int $userId, ?int $kermesseId = null): array
     {
-        return [
+        $session = [
             'user_id'                        => $userId,
             'is_logged_in'                   => true,
             'pending_first_login_confirmation' => true,
         ];
+        if ($kermesseId !== null) {
+            $session['pending_resolution_kermesse_id'] = $kermesseId;
+        }
+
+        return $session;
     }
 
     private function csrfPost(string $url, array $data = []): mixed
@@ -321,6 +387,45 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertRedirectTo(site_url('/'));
     }
 
+    public function testFirstLoginConfirmationRejectsProtocolRelativeRedirectUrl(): void
+    {
+        $email  = 'redirectprotocol@example.com';
+        $userId = $this->insertUser($email);
+
+        $session = $this->firstLoginSession($userId);
+        $session['redirect_url'] = '//evil.example/path';
+
+        $result = $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $session,
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $result->assertRedirectTo(site_url('/'));
+    }
+
+    public function testFirstLoginConfirmationRecordsFirstAccessForKermesse(): void
+    {
+        $email      = 'firstaccess@example.com';
+        $userId     = $this->insertUser($email);
+        $kermesseId = $this->insertKermesseRole($userId);
+
+        $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId, $kermesseId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $row = db_connect()->table('kermesse_user_roles')
+            ->where('kermesse_id', $kermesseId)
+            ->where('user_id', $userId)
+            ->get()
+            ->getRowArray();
+
+        $this->assertNotNull($row['first_access_at'], 'first_access_at must be set after first-login confirmation');
+        $this->assertNotNull($row['last_access_at'], 'last_access_at must be set after first-login confirmation');
+    }
+
     public function testFirstLoginConfirmationResolvesPreExistingDivergences(): void
     {
         $email  = 'resolvepre@example.com';
@@ -335,6 +440,28 @@ final class ProfileResolutionTest extends CIUnitTestCase
 
         $divergence = db_connect()->table('profile_divergences')->where('id', $divId)->get()->getRowArray();
         $this->assertNotNull($divergence['resolved_at'], 'Pre-existing divergences must be resolved after first-login confirmation');
+    }
+
+    public function testFirstLoginConfirmationResolvesOnlyCurrentKermesseDivergences(): void
+    {
+        $email      = 'resolvecurrent@example.com';
+        $userId     = $this->insertUser($email);
+        $kermesseId = $this->insertKermesseRole($userId);
+        $currentId  = $this->insertDivergence($userId, kermesseId: $kermesseId);
+        $otherId    = $this->insertDivergence($userId, kermesseId: $kermesseId + 1);
+
+        $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId, $kermesseId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $db      = db_connect();
+        $current = $db->table('profile_divergences')->where('id', $currentId)->get()->getRowArray();
+        $other   = $db->table('profile_divergences')->where('id', $otherId)->get()->getRowArray();
+
+        $this->assertNotNull($current['resolved_at']);
+        $this->assertNull($other['resolved_at']);
     }
 
     public function testFirstLoginConfirmationValidationErrorRedisplaysForm(): void
@@ -362,24 +489,42 @@ final class ProfileResolutionTest extends CIUnitTestCase
     {
         $email  = 'returning@example.com';
         $userId = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
-        $this->insertDivergence($userId);
+        $kermesseId = $this->insertKermesseRole($userId);
+        $this->insertDivergence($userId, kermesseId: $kermesseId);
 
-        $rawToken = $this->insertMagicLinkToken($email);
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
         $result->assertSessionHas('pending_profile_resolution', true);
+        $result->assertSessionHas('pending_resolution_kermesse_id', $kermesseId);
     }
 
     public function testReturningUserWithDivergenceRedirectsToResolution(): void
     {
         $email  = 'returning2@example.com';
         $userId = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
-        $this->insertDivergence($userId);
+        $kermesseId = $this->insertKermesseRole($userId);
+        $this->insertDivergence($userId, kermesseId: $kermesseId);
 
-        $rawToken = $this->insertMagicLinkToken($email);
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
         $result->assertRedirectTo(site_url('auth/profile-resolution'));
+    }
+
+    public function testReturningUserDivergenceFromAnotherKermesseDoesNotBlockCurrentKermesse(): void
+    {
+        $email      = 'returning-other-kermesse@example.com';
+        $userId     = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+        $kermesseId = $this->insertKermesseRole($userId);
+        $otherId    = $this->insertKermesseRole($userId);
+        $this->insertDivergence($userId, kermesseId: $otherId);
+
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertSessionMissing('pending_profile_resolution');
+        $result->assertRedirectTo(site_url('kermesse/' . $kermesseId));
     }
 
     // ==================================================================
@@ -395,6 +540,25 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
         $result->assertRedirectTo(site_url('/'));
+    }
+
+    public function testReturningUserWithNoDivergenceRecordsFirstAccessForKermesse(): void
+    {
+        $email      = 'returning-access@example.com';
+        $userId     = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+        $kermesseId = $this->insertKermesseRole($userId);
+
+        $rawToken = $this->insertMagicLinkToken($email, ['kermesse_id' => $kermesseId]);
+        $this->get('auth/magic-link/' . $rawToken);
+
+        $row = db_connect()->table('kermesse_user_roles')
+            ->where('kermesse_id', $kermesseId)
+            ->where('user_id', $userId)
+            ->get()
+            ->getRowArray();
+
+        $this->assertNotNull($row['first_access_at'], 'first_access_at must be set when no resolution screen is needed');
+        $this->assertNotNull($row['last_access_at'], 'last_access_at must be set when no resolution screen is needed');
     }
 
     public function testReturningUserWithNoDivergenceDoesNotSetAnyFlag(): void
@@ -438,6 +602,25 @@ final class ProfileResolutionTest extends CIUnitTestCase
 
         $divergence = db_connect()->table('profile_divergences')->where('id', $divId)->get()->getRowArray();
         $this->assertNotNull($divergence['resolved_at'], 'Divergence must be marked resolved after submission');
+    }
+
+    public function testResolvingWithSubmittedOnlyMarksCurrentKermesseDivergencesResolved(): void
+    {
+        $email      = 'resolve-sub-current@example.com';
+        $userId     = $this->insertUser($email);
+        $kermesseId = $this->insertKermesseRole($userId);
+        $currentId  = $this->insertDivergence($userId, kermesseId: $kermesseId);
+        $otherId    = $this->insertDivergence($userId, kermesseId: $kermesseId + 1);
+
+        $session = $this->connectedSession($userId, true, $kermesseId);
+        $this->csrfPostWithSession('auth/profile-resolution', $session, ['choice' => 'submitted']);
+
+        $db      = db_connect();
+        $current = $db->table('profile_divergences')->where('id', $currentId)->get()->getRowArray();
+        $other   = $db->table('profile_divergences')->where('id', $otherId)->get()->getRowArray();
+
+        $this->assertNotNull($current['resolved_at']);
+        $this->assertNull($other['resolved_at']);
     }
 
     public function testResolvingWithSubmittedRedirectsToHome(): void
@@ -507,6 +690,37 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSessionMissing('pending_profile_resolution');
     }
 
+    public function testResolvingClearsPendingKermesseScope(): void
+    {
+        $email      = 'scope-clear@example.com';
+        $userId     = $this->insertUser($email);
+        $kermesseId = $this->insertKermesseRole($userId);
+        $this->insertDivergence($userId, kermesseId: $kermesseId);
+
+        $session = $this->connectedSession($userId, true, $kermesseId);
+        $result  = $this->csrfPostWithSession('auth/profile-resolution', $session, ['choice' => 'keep']);
+
+        $result->assertSessionMissing('pending_resolution_kermesse_id');
+    }
+
+    public function testPostWithoutPendingFlagDoesNotResolveDivergence(): void
+    {
+        $email  = 'no-flag-post@example.com';
+        $userId = $this->insertUser($email);
+        $divId  = $this->insertDivergence($userId);
+
+        $result = $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->connectedSession($userId, false),
+            ['choice' => 'submitted'],
+        );
+
+        $divergence = db_connect()->table('profile_divergences')->where('id', $divId)->get()->getRowArray();
+
+        $result->assertRedirectTo(site_url('/'));
+        $this->assertNull($divergence['resolved_at']);
+    }
+
     // ==================================================================
     // Bypass prevention — filter intercepts both pending flags
     // ==================================================================
@@ -527,6 +741,18 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $userId = $this->insertUser($email);
 
         $result = $this->withSession($this->connectedSession($userId, true))->get('/');
+
+        $result->assertRedirectTo(site_url('auth/profile-resolution'));
+    }
+
+    public function testAccessingKermesseWithPendingFirstLoginFlagRedirectsToResolution(): void
+    {
+        $email      = 'bypass-kermesse-first@example.com';
+        $userId     = $this->insertUser($email);
+        $kermesseId = $this->insertKermesseRole($userId);
+
+        $result = $this->withSession($this->firstLoginSession($userId, $kermesseId))
+            ->get('kermesse/' . $kermesseId);
 
         $result->assertRedirectTo(site_url('auth/profile-resolution'));
     }
@@ -601,6 +827,13 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSee('MARTIN');
         $result->assertSee('Garder mon profil actuel');
         $result->assertSee('Utiliser les informations soumises');
+    }
+
+    public function testShowPageWithDeletedUserDestroysSessionAndRedirectsToLogin(): void
+    {
+        $result = $this->withSession($this->connectedSession(999, true))->get('auth/profile-resolution');
+
+        $result->assertRedirectTo(site_url('auth/login'));
     }
 
     // ==================================================================

@@ -1,11 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
 use App\Models\ProfileDivergenceModel;
+use App\Models\UserRoleModel;
 use App\Models\UserModel;
 use App\Services\EmailService;
+use App\Services\ProfileService;
+use App\Services\RoleService;
 use App\Services\TokenService;
 
 /**
@@ -84,12 +89,16 @@ class MagicLinkController extends BaseController
 
         $db->transComplete();
 
-        $userModel  = new \App\Models\UserModel();
+        $userModel  = new UserModel();
         $userRecord = $userModel->find($userId);
+        if ($userRecord === null) {
+            log_message('error', 'MagicLink: user disappeared after successful token claim for user ' . $userId);
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
+        }
 
         // Story 5.4: capture first-login status BEFORE updating last_login_at.
         // The confirmation controller sets last_login_at after the user confirms.
-        $isFirstLogin = ($userRecord !== null && $userRecord['last_login_at'] === null);
+        $isFirstLogin = $userRecord['last_login_at'] === null;
 
         // Mark invitation accepted per-kermesse so the dashboard can distinguish
         // "accepted this kermesse" from "has a global account" (NFR5 privacy).
@@ -113,28 +122,40 @@ class MagicLinkController extends BaseController
         // of divergences. last_login_at is deferred until after confirmation.
         if ($isFirstLogin) {
             session()->set('pending_first_login_confirmation', true);
+            if ($kermesseId > 0) {
+                session()->set('pending_resolution_kermesse_id', $kermesseId);
+            }
             return redirect()->to(site_url('auth/profile-resolution'));
         }
 
-        // Set last_login_at for returning users only.
-        $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+        $profileService = new ProfileService($userModel, new ProfileDivergenceModel());
+        if (! $profileService->recordReturningLogin($userId)) {
+            log_message('error', 'MagicLink: returning login timestamp update failed for user ' . $userId);
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
+        }
 
         // Story 3.6: intercept to profile resolution when pending divergences exist.
-        $unresolvedDivergences = (new ProfileDivergenceModel())->findUnresolvedByUser($userId);
+        $divergenceModel       = new ProfileDivergenceModel();
+        $unresolvedDivergences = $kermesseId > 0
+            ? $divergenceModel->findUnresolvedByUserAndKermesse($userId, $kermesseId)
+            : $divergenceModel->findUnresolvedByUser($userId);
         if (! empty($unresolvedDivergences)) {
             session()->set('pending_profile_resolution', true);
+            if ($kermesseId > 0) {
+                session()->set('pending_resolution_kermesse_id', $kermesseId);
+            }
             return redirect()->to(site_url('auth/profile-resolution'));
+        }
+
+        if ($kermesseId > 0) {
+            (new RoleService(new UserRoleModel(), $userModel))->recordAccess($kermesseId, $userId);
         }
 
         $url = session('redirect_url');
         session()->remove('redirect_url');
 
-        $redirectUrl = site_url('/');
-        if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
-            $redirectUrl = $url;
-        } elseif (! empty($tokenRow['kermesse_id'])) {
-            $redirectUrl = site_url('kermesse/' . (int) $tokenRow['kermesse_id']);
-        }
+        $fallback = $kermesseId > 0 ? site_url('kermesse/' . $kermesseId) : site_url('/');
+        $redirectUrl = $this->localRedirectTarget($url, $fallback);
 
         return redirect()->to($redirectUrl);
     }

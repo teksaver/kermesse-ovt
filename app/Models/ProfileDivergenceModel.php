@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use CodeIgniter\Model;
@@ -34,6 +36,20 @@ class ProfileDivergenceModel extends Model
     public function findUnresolvedByUser(int $userId): array
     {
         return $this->where('user_id', $userId)
+            ->where('resolved_at IS NULL', null, false)
+            ->orderBy('created_at', 'DESC')
+            ->findAll();
+    }
+
+    /**
+     * Returns unresolved divergences for one user within one kermesse.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findUnresolvedByUserAndKermesse(int $userId, int $kermesseId): array
+    {
+        return $this->where('user_id', $userId)
+            ->where('kermesse_id', $kermesseId)
             ->where('resolved_at IS NULL', null, false)
             ->orderBy('created_at', 'DESC')
             ->findAll();

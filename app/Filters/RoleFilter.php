@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filters;
 
 use App\Models\UserRoleModel;
@@ -23,6 +25,13 @@ class RoleFilter implements FilterInterface
         $userId = (int) session()->get('user_id');
         if (! $userId) {
             return redirect()->to(site_url('auth/login'));
+        }
+
+        if (
+            session()->get('pending_first_login_confirmation') === true
+            || session()->get('pending_profile_resolution') === true
+        ) {
+            return redirect()->to(site_url('auth/profile-resolution'));
         }
 
         $segments   = $request->getUri()->getSegments();

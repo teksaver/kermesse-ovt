@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers;
 
 use CodeIgniter\Controller;
@@ -41,5 +43,34 @@ abstract class BaseController extends Controller
 
         // Preload any models, libraries, etc, here.
         // $this->session = service('session');
+    }
+
+    protected function localRedirectTarget(mixed $candidate, ?string $fallback = null): string
+    {
+        $fallback ??= site_url('/');
+
+        if (! is_string($candidate) || trim($candidate) === '') {
+            return $fallback;
+        }
+
+        $candidate = trim($candidate);
+        if (str_starts_with($candidate, '/') && ! str_starts_with($candidate, '//')) {
+            return site_url(ltrim($candidate, '/'));
+        }
+
+        $baseParts      = parse_url(site_url('/'));
+        $candidateParts = parse_url($candidate);
+
+        if (
+            is_array($baseParts)
+            && is_array($candidateParts)
+            && ($candidateParts['scheme'] ?? null) === ($baseParts['scheme'] ?? null)
+            && ($candidateParts['host'] ?? null) === ($baseParts['host'] ?? null)
+            && ($candidateParts['port'] ?? null) === ($baseParts['port'] ?? null)
+        ) {
+            return $candidate;
+        }
+
+        return $fallback;
     }
 }

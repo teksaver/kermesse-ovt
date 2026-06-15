@@ -25,6 +25,7 @@ class ProfileResolutionController extends BaseController
         $storedUser = $userModel->find($userId);
 
         if ($storedUser === null) {
+            session()->remove(['is_logged_in', 'user_id']);
             session()->destroy();
             return redirect()->to(site_url('auth/login'));
         }
@@ -46,10 +47,15 @@ class ProfileResolutionController extends BaseController
         }
 
         // Story 3.6 — AC2: divergence resolution for returning users.
-        $divergences = (new ProfileDivergenceModel())->findUnresolvedByUser($userId);
+        $kermesseId      = $this->pendingKermesseId();
+        $divergenceModel = new ProfileDivergenceModel();
+        $divergences     = $kermesseId !== null
+            ? $divergenceModel->findUnresolvedByUserAndKermesse($userId, $kermesseId)
+            : $divergenceModel->findUnresolvedByUser($userId);
 
         if (empty($divergences)) {
             session()->remove('pending_profile_resolution');
+            session()->remove('pending_resolution_kermesse_id');
             return redirect()->to(site_url('/'));
         }
 
@@ -71,6 +77,13 @@ class ProfileResolutionController extends BaseController
     public function resolve(): mixed
     {
         $userId = (int) session()->get('user_id');
+        $userModel = new UserModel();
+
+        if ($userId <= 0 || $userModel->find($userId) === null) {
+            session()->remove(['is_logged_in', 'user_id']);
+            session()->destroy();
+            return redirect()->to(site_url('auth/login'));
+        }
 
         // Story 5.4 — AC1: first-login confirmation.
         if (session()->get('pending_first_login_confirmation') === true) {
@@ -78,7 +91,11 @@ class ProfileResolutionController extends BaseController
         }
 
         // Story 3.6 — AC2: divergence resolution.
-        return $this->handleDivergenceResolution($userId);
+        if (session()->get('pending_profile_resolution') === true) {
+            return $this->handleDivergenceResolution($userId);
+        }
+
+        return redirect()->to(site_url('/'));
     }
 
     private function handleFirstLoginConfirmation(int $userId): mixed
@@ -91,9 +108,9 @@ class ProfileResolutionController extends BaseController
         ];
 
         $post = [
-            'first_name' => trim((string) $this->request->getPost('first_name')),
-            'last_name'  => trim((string) $this->request->getPost('last_name')),
-            'phone'      => trim((string) $this->request->getPost('phone')),
+            'first_name' => $this->scalarPost('first_name'),
+            'last_name'  => $this->scalarPost('last_name'),
+            'phone'      => $this->scalarPost('phone'),
         ];
 
         if (! $validation->setRules($rules)->run($post)) {
@@ -103,7 +120,7 @@ class ProfileResolutionController extends BaseController
         }
 
         $service = new ProfileService(new UserModel(), new ProfileDivergenceModel());
-        $success = $service->confirmFirstLogin($userId, $post);
+        $success = $service->confirmFirstLogin($userId, $post, $this->pendingKermesseId());
 
         if (! $success) {
             return redirect()->to(site_url('auth/profile-resolution'))
@@ -111,14 +128,12 @@ class ProfileResolutionController extends BaseController
         }
 
         session()->remove('pending_first_login_confirmation');
+        session()->remove('pending_resolution_kermesse_id');
 
         $url = session('redirect_url');
         session()->remove('redirect_url');
 
-        $redirectTarget = site_url('/');
-        if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
-            $redirectTarget = $url;
-        }
+        $redirectTarget = $this->localRedirectTarget($url);
 
         return redirect()->to($redirectTarget);
     }
@@ -133,7 +148,7 @@ class ProfileResolutionController extends BaseController
         }
 
         $service = new ProfileService(new UserModel(), new ProfileDivergenceModel());
-        $success = $service->resolveProfileDivergences($userId, (string) $choice);
+        $success = $service->resolveProfileDivergences($userId, (string) $choice, $this->pendingKermesseId());
 
         if (! $success) {
             return redirect()->to(site_url('auth/profile-resolution'))
@@ -141,16 +156,28 @@ class ProfileResolutionController extends BaseController
         }
 
         session()->remove('pending_profile_resolution');
+        session()->remove('pending_resolution_kermesse_id');
 
         // Honour a redirect intent that was stored before the magic link login.
         $url = session('redirect_url');
         session()->remove('redirect_url');
 
-        $redirectTarget = site_url('/');
-        if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
-            $redirectTarget = $url;
-        }
+        $redirectTarget = $this->localRedirectTarget($url);
 
         return redirect()->to($redirectTarget);
+    }
+
+    private function scalarPost(string $key): string
+    {
+        $value = $this->request->getPost($key);
+
+        return trim(is_array($value) ? '' : (string) $value);
+    }
+
+    private function pendingKermesseId(): ?int
+    {
+        $kermesseId = (int) session()->get('pending_resolution_kermesse_id');
+
+        return $kermesseId > 0 ? $kermesseId : null;
     }
 }
