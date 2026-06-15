@@ -35,5 +35,6 @@
     <main class="container">
         <?= $this->renderSection('content') ?>
     </main>
+    <?= $this->renderSection('scripts') ?>
 </body>
 </html>
