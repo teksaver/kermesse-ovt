@@ -109,9 +109,11 @@ class KermesseAdminController extends BaseController
             model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
         );
 
-        $teamMembers = $canInvite
-            ? model(UserRoleModel::class)->findTeamMembers($id)
-            : [];
+        $teamMembers = [];
+        if ($canInvite) {
+            $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+            $teamMembers = $roleService->getTeamMembersGroupedByStatus($id);
+        }
 
         // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
         // Onglets non autorisés absents du tableau → absents du DOM.
@@ -353,8 +355,10 @@ class KermesseAdminController extends BaseController
         $result      = $roleService->invite($id, $email, $role, (int) session()->get('user_id'), $firstName, $lastName);
 
         if (! $result->success) {
-            $message = match ($result->errorCode) {
+            $roleLabel = $role === 'admin' ? 'administrateur' : 'gestionnaire';
+            $message   = match ($result->errorCode) {
                 'cannot_invite_owner' => 'Cette personne est déjà propriétaire de la kermesse ; son rôle ne peut pas être modifié.',
+                'already_has_role'    => "Cet utilisateur a déjà le rôle {$roleLabel} sur cette kermesse.",
                 'invalid_role'        => 'Le rôle sélectionné est invalide.',
                 'invalid_email'       => 'Veuillez saisir un email valide.',
                 default               => 'Une erreur est survenue lors de l\'envoi de l\'invitation. Veuillez réessayer.',

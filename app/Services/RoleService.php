@@ -155,6 +155,15 @@ class RoleService
                 return InvitationResult::failure('cannot_invite_owner');
             }
 
+            // AC2 (Story 5.5): Prevent duplicate role assignment. If the user already has
+            // the exact same role for this kermesse, return already_has_role error instead
+            // of silently ignoring the duplicate invitation.
+            if ($existing !== null && (string) $existing['role'] === $role) {
+                $db->transRollback();
+
+                return InvitationResult::failure('already_has_role');
+            }
+
             $this->assignRole($kermesseId, $userId, $role, $invitedBy, $existing);
 
             // Magic Link with kermesse intent: after login the invitee lands on the dashboard
@@ -292,5 +301,42 @@ class RoleService
             ->where('signups.user_id', $userId)
             ->where('signups.status', 'active')
             ->countAllResults() > 0;
+    }
+
+    /**
+     * Fetch team members (Owner/Admin/Gestionnaire) grouped by status and role.
+     * Story 5.5 — Onglet « Équipe ».
+     *
+     * Returns an array with keys:
+     *   - 'active': associative array grouped by role (owner, admin, gestionnaire)
+     *   - 'pending': flat list of pending invitations (invited_at IS NOT NULL, first_access_at IS NULL)
+     *
+     * Active members: first_access_at IS NOT NULL (have accessed the dashboard at least once).
+     * Pending invitations: invited_at IS NOT NULL AND first_access_at IS NULL (invitation sent but not yet accessed).
+     */
+    public function getTeamMembersGroupedByStatus(int $kermesseId): array
+    {
+        $allMembers = $this->userRoleModel->findTeamMembers($kermesseId);
+
+        $active  = ['owner' => [], 'admin' => [], 'gestionnaire' => []];
+        $pending = [];
+
+        foreach ($allMembers as $member) {
+            if ($member['first_access_at'] !== null) {
+                // Active member: has accessed the dashboard at least once
+                $role = (string) $member['role'];
+                if (isset($active[$role])) {
+                    $active[$role][] = $member;
+                }
+            } elseif ($member['invited_at'] !== null) {
+                // Pending invitation: invited but not yet accessed
+                $pending[] = $member;
+            }
+        }
+
+        return [
+            'active'  => $active,
+            'pending' => $pending,
+        ];
     }
 }

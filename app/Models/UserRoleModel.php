@@ -74,7 +74,7 @@ class UserRoleModel extends Model
     {
         return $this->db
             ->table('kermesse_user_roles kur')
-            ->select('kur.role, kur.invited_at, kur.accepted_at, u.id as user_id, u.email, u.first_name, u.last_name')
+            ->select('kur.role, kur.invited_at, kur.accepted_at, kur.first_access_at, u.id as user_id, u.email, u.first_name, u.last_name')
             ->join('users u', 'u.id = kur.user_id')
             ->where('kur.kermesse_id', $kermesseId)
             ->whereIn('kur.role', [self::ROLE_OWNER, self::ROLE_ADMIN, self::ROLE_GESTIONNAIRE])

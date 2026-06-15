@@ -3,43 +3,42 @@
 <?= $this->section('content') ?>
 
 <div class="kermesse-dashboard">
-    <h1 class="page-title"><?= esc($kermesse['name']) ?></h1>
+    <h1 class="page-title" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+        <?= esc($kermesse['name']) ?>
+        <span style="font-size:0.5em; font-weight:normal; margin-top:6px;"><?= view('partials/status_badge', ['status' => $kermesse['status']]) ?></span>
+    </h1>
 
-    <!-- En-tête kermesse : status, infos, lien public — toujours visible (tous rôles). -->
-    <div class="kermesse-dashboard__info kermesse-characteristics">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-            <div>
-                <?= view('partials/status_badge', ['status' => $kermesse['status']]) ?>
+    <!-- En-tête kermesse : infos, lien public — toujours visible (tous rôles). -->
+    <div class="kermesse-jumbotron">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; flex-wrap:wrap; gap:16px;">
+                <?php if (! empty($kermesse['event_date'])): ?>
+                <p class="kermesse-dashboard__date" style="margin:0;">📅 <strong>Date :</strong> <?= esc($kermesse['event_date']) ?></p>
+                <?php endif; ?>
+
+                <?php if (! empty($kermesse['location'])): ?>
+                <p class="kermesse-dashboard__location" style="margin:0;">📍 <strong>Lieu :</strong> <?= esc($kermesse['location']) ?></p>
+                <?php endif; ?>
             </div>
-        </div>
-
-        <div style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
-            <?php if (! empty($kermesse['event_date'])): ?>
-            <p class="kermesse-dashboard__date" style="margin:0;">📅 <strong>Date :</strong> <?= esc($kermesse['event_date']) ?></p>
-            <?php endif; ?>
-
-            <?php if (! empty($kermesse['location'])): ?>
-            <p class="kermesse-dashboard__location" style="margin:0;">📍 <strong>Lieu :</strong> <?= esc($kermesse['location']) ?></p>
-            <?php endif; ?>
 
             <?php if (! empty($kermesse['short_description'])): ?>
             <p class="kermesse-dashboard__description" style="margin:0;">📝 <strong>Description :</strong> <?= esc($kermesse['short_description']) ?></p>
             <?php endif; ?>
 
-            <?php if (empty($isBenevole)): ?>
-            <p class="kermesse-dashboard__public-link" style="margin:0; margin-top:8px;">🔗 <strong>Lien à partager pour les inscriptions :</strong>
-                <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
-                <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; vertical-align:middle; padding: 0 4px;">📋</button>
-                <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-left: 8px; margin-top: 4px; display: none;">Lien copié avec succès, vous pouvez le coller dans un email ou un message pour partager à vos futurs bénévoles</span>
-            </p>
-            <?php endif; ?>
-        </div>
-
-        <div style="margin-top:12px;">
-            <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="btn btn--secondary"><?= empty($isBenevole) ? 'Accéder à la page publique' : 'Nouvelle inscription' ?></a>
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-top:8px;">
+                <?php if (empty($isBenevole)): ?>
+                <p class="kermesse-dashboard__public-link" style="margin:0; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">🔗 <strong>Lien public :</strong>
+                    <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
+                    <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; padding:0 4px; display:inline-flex; align-items:center;">📋</button>
+                    <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
+                </p>
+                <?php endif; ?>
+                
+                <a href="<?= site_url("k/{$kermesse['public_slug']}") ?>"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="btn btn--secondary btn--sm"><?= empty($isBenevole) ? 'Accéder à la page' : 'Nouvelle inscription' ?></a>
+            </div>
         </div>
     </div>
 
@@ -86,20 +85,23 @@
     <!-- Le premier onglet est actif par défaut (côté serveur + JS).         -->
     <!-- ------------------------------------------------------------------ -->
 
-    <nav class="tab-nav" role="tablist" aria-label="Sections du tableau de bord">
-        <?php foreach ($tabs as $i => $tab): ?>
-        <button
-            type="button"
-            class="tab-nav__btn<?= $i === 0 ? ' is-active' : '' ?>"
-            data-tab="<?= esc($tab['id']) ?>"
-            role="tab"
-            aria-selected="<?= $i === 0 ? 'true' : 'false' ?>"
-            aria-controls="tab-panel-<?= esc($tab['id']) ?>"
-            id="tab-btn-<?= esc($tab['id']) ?>"
-            tabindex="<?= $i === 0 ? '0' : '-1' ?>"
-        ><?= esc($tab['label']) ?></button>
-        <?php endforeach; ?>
-    </nav>
+    <?php $hasSidebar = count($tabs) > 1; ?>
+    <div class="<?= $hasSidebar ? 'dashboard-layout' : 'dashboard-single' ?>">
+        <?php if ($hasSidebar): ?>
+        <nav class="sidebar-nav" aria-label="Sections du tableau de bord">
+            <?php foreach ($tabs as $i => $tab): ?>
+            <button
+                type="button"
+                class="sidebar-nav__btn<?= $i === 0 ? ' is-active' : '' ?>"
+                data-tab="<?= esc($tab['id']) ?>"
+                aria-expanded="<?= $i === 0 ? 'true' : 'false' ?>"
+                aria-controls="tab-panel-<?= esc($tab['id']) ?>"
+            ><?= esc($tab['label']) ?></button>
+            <?php endforeach; ?>
+        </nav>
+        <?php endif; ?>
+
+        <div class="dashboard-content">
 
     <!-- ================================================================== -->
     <!-- Onglet : Modification (Owner/Admin uniquement — Story 4.1 / 5.2).  -->
@@ -109,9 +111,12 @@
         id="tab-panel-modification"
         class="kermesse-dashboard__section tab-panel"
         data-tab-content="modification"
-        role="tabpanel"
-        aria-labelledby="tab-btn-modification"
     >
+        <?php if ($hasSidebar): ?>
+        <button type="button" class="accordion-header" data-tab="modification" aria-expanded="true" aria-controls="tab-panel-modification">
+            <span class="accordion-icon">▼</span> Modification de la kermesse
+        </button>
+        <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
         <?php endif; ?>
@@ -121,20 +126,21 @@
         <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
         <?php endif; ?>
 
-        <div class="section-toolbar">
+        <div class="section-toolbar" style="margin-bottom:16px;">
             <h2 class="section-title">Modification de la kermesse</h2>
-            <button type="button" class="btn btn--sm" title="Modifier les caractéristiques" onclick="document.getElementById('modal-kermesse-edit').showModal()">✏️ Modifier la kermesse</button>
         </div>
 
-        <!-- Actions lifecycle (UX-DR17) -->
-        <div class="kermesse-dashboard__lifecycle" style="margin-bottom:24px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: center;">
+            <button type="button" class="btn btn--secondary" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres de l'événement</button>
+
+            <!-- Actions lifecycle (UX-DR17) -->
             <?php if ($kermesse['status'] === 'open'): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;">
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
             </form>
             <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;">
+            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
             </form>
@@ -159,7 +165,7 @@
 
         <!-- Liste des stands actifs -->
         <?php if (! empty($stands)): ?>
-        <ul class="stands-list">
+        <ul class="stands-list desktop-grid">
             <?php foreach ($stands as $stand): ?>
             <?php $sid = (int) $stand['id']; ?>
             <li class="stands-list__item" id="slots-stand-<?= $sid ?>">
@@ -413,9 +419,12 @@
         id="tab-panel-inscrits"
         class="kermesse-dashboard__section tab-panel"
         data-tab-content="inscrits"
-        role="tabpanel"
-        aria-labelledby="tab-btn-inscrits"
     >
+        <?php if ($hasSidebar): ?>
+        <button type="button" class="accordion-header" data-tab="inscrits" aria-expanded="false" aria-controls="tab-panel-inscrits">
+            <span class="accordion-icon">▶</span> Gestion des inscrits
+        </button>
+        <?php endif; ?>
         <h2 class="section-title">Gestion des inscrits</h2>
 
         <?php $participantStands = $participantStands ?? []; ?>
@@ -479,52 +488,111 @@
         id="tab-panel-equipe"
         class="kermesse-dashboard__section tab-panel"
         data-tab-content="equipe"
-        role="tabpanel"
-        aria-labelledby="tab-btn-equipe"
     >
+        <?php if ($hasSidebar): ?>
+        <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="false" aria-controls="tab-panel-equipe">
+            <span class="accordion-icon">▶</span> Équipe
+        </button>
+        <?php endif; ?>
         <h2 class="section-title">Gestion de l'équipe d'organisation</h2>
 
         <div class="team-members">
-            <h3 class="subsection-title">Membres de l'équipe</h3>
-            <?php if (empty($teamMembers)): ?>
+            <h3 class="subsection-title">Membres actifs</h3>
+            <?php
+                $activeMembers = $teamMembers['active'] ?? [];
+                $pendingMembers = $teamMembers['pending'] ?? [];
+                $hasActiveMembers = false;
+                foreach ($activeMembers as $group) {
+                    if (!empty($group)) {
+                        $hasActiveMembers = true;
+                        break;
+                    }
+                }
+            ?>
+            <?php if (!$hasActiveMembers && empty($pendingMembers)): ?>
                 <p class="section-placeholder">Aucun membre dans l'équipe pour le moment.</p>
             <?php else: ?>
-                <ul class="participants-list" style="margin-bottom:24px; border: 1px solid #e9ecef; border-radius: 8px; background: #fff;">
-                    <?php foreach ($teamMembers as $member): ?>
-                    <li class="participants-list__item" style="flex-direction:row; justify-content:space-between; align-items:center;">
-                        <div>
-                            <span class="participants-list__name">
-                                <strong><?= esc(trim($member['first_name'] . ' ' . $member['last_name']) ?: 'Sans nom') ?></strong>
-                            </span>
-                            <div class="participants-list__contact" style="margin-top:4px;">
-                                <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
-                            </div>
+                <?php
+                    $roleLabels = [
+                        'owner'        => 'Propriétaire',
+                        'admin'        => 'Administrateurs',
+                        'gestionnaire' => 'Gestionnaires',
+                    ];
+                ?>
+                <?php foreach (['owner', 'admin', 'gestionnaire'] as $roleKey): ?>
+                    <?php if (!empty($activeMembers[$roleKey])): ?>
+                        <div style="margin-bottom:24px;">
+                            <h4 class="form-label" style="margin-bottom:12px; color:#495057; font-weight:500;">
+                                <?= esc($roleLabels[$roleKey]) ?>
+                                <span style="color:#999; font-size:0.9em; margin-left:8px;">(<?= count($activeMembers[$roleKey]) ?>)</span>
+                            </h4>
+                            <ul class="participants-list" style="border: 1px solid #e9ecef; border-radius: 8px; background: #fff;">
+                                <?php foreach ($activeMembers[$roleKey] as $member): ?>
+                                <li class="participants-list__item" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                                    <div>
+                                        <span class="participants-list__name">
+                                            <strong><?= esc(trim($member['first_name'] . ' ' . $member['last_name']) ?: 'Sans nom') ?></strong>
+                                        </span>
+                                        <div class="participants-list__contact" style="margin-top:4px;">
+                                            <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <!-- Actions -->
+                                        <?php if ($member['role'] !== 'owner'): ?>
+                                            <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
+                                            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
+                                                <?= csrf_field() ?>
+                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
                         </div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <?php if ($member['role'] !== 'owner' && $member['accepted_at'] === null): ?>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+            <!-- Pending Invitations Section -->
+            <?php if (!empty($pendingMembers)): ?>
+                <div style="margin-top:32px; margin-bottom:24px;">
+                    <h3 class="subsection-title">Invitations en attente</h3>
+                    <p class="form-label" style="color:#666; font-size:0.95em; margin-bottom:12px;">
+                        Ces personnes ont reçu une invitation mais n'ont pas encore accédé au tableau de bord.
+                    </p>
+                    <ul class="participants-list" style="border: 1px solid #fff3cd; border-radius: 8px; background: #fffbf0;">
+                        <?php foreach ($pendingMembers as $member): ?>
+                        <li class="participants-list__item" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                            <div>
+                                <span class="participants-list__name">
+                                    <strong><?= esc(trim($member['first_name'] . ' ' . $member['last_name']) ?: 'Sans nom') ?></strong>
+                                </span>
+                                <div class="participants-list__contact" style="margin-top:4px;">
+                                    <span aria-hidden="true">✉️</span> <?= esc($member['email']) ?>
+                                </div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
                                 <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
+                                <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation" aria-label="Relancer l'invitation" style="font-size:1rem; padding:4px 8px;">🔄</button>
                                 </form>
-                            <?php endif; ?>
-                            <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
-
-                            <!-- Actions -->
-                            <?php if ($member['role'] !== 'owner'): ?>
                                 <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
-
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
                                 </form>
-                            <?php endif; ?>
-                        </div>
-                    </li>
-                    <?php endforeach; ?>
-                </ul>
+                            </div>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            <?php endif; ?>
 
-                <!-- Edit Member Modal -->
+            <!-- Edit Member Modal -->
                 <dialog id="edit-member-modal" class="k-modal">
                     <form method="post" id="edit-member-form" class="k-modal__content">
                         <?= csrf_field() ?>
@@ -597,7 +665,6 @@
                     modal.showModal();
                 }
                 </script>
-            <?php endif; ?>
         </div>
 
         <div class="invite-form">
@@ -653,9 +720,12 @@
         id="tab-panel-participations"
         class="kermesse-dashboard__section tab-panel"
         data-tab-content="participations"
-        role="tabpanel"
-        aria-labelledby="tab-btn-participations"
     >
+        <?php if ($hasSidebar): ?>
+        <button type="button" class="accordion-header" data-tab="participations" aria-expanded="false" aria-controls="tab-panel-participations">
+            <span class="accordion-icon">▶</span> Mes participations
+        </button>
+        <?php endif; ?>
         <h2 class="section-title">Mes participations</h2>
 
         <?php if (! empty($participationNotice = session()->getFlashdata('participation_notice'))): ?>
@@ -693,6 +763,9 @@
         <?php endif; ?>
     </section>
 
+        </div> <!-- Fin de dashboard-content -->
+    </div> <!-- Fin de dashboard-layout ou dashboard-single -->
+
     <div class="kermesse-dashboard__actions">
         <a href="<?= site_url('/') ?>" class="btn btn--secondary">Retour à mes kermesses</a>
     </div>
@@ -704,50 +777,67 @@
 
 <?= $this->section('scripts') ?>
 <script>
-/* ---- Navigation onglets (Story 5.2) ----------------------------------- */
+/* ---- Navigation Sidebar & Accordéon (Story 5.3) ----------------------- */
 (function () {
-    var buttons = document.querySelectorAll('[data-tab]');
-    var panels  = document.querySelectorAll('[data-tab-content]');
+    var sidebarBtns = document.querySelectorAll('.sidebar-nav__btn');
+    var accHeaders  = document.querySelectorAll('.accordion-header');
+    var panels      = document.querySelectorAll('.tab-panel');
 
-    if (!buttons.length) { return; }
+    if (!panels.length) { return; }
 
-    /* Masque tous les panneaux sauf le premier actif. */
-    panels.forEach(function (p) { p.hidden = true; });
-    var activeBtn   = document.querySelector('[data-tab].is-active');
-    var activePanel = activeBtn
-        ? document.querySelector('[data-tab-content="' + activeBtn.getAttribute('data-tab') + '"]')
-        : null;
-    if (activePanel) { activePanel.hidden = false; }
+    /* Indique au CSS que le JS est actif (pour l'amélioration progressive) */
+    document.body.classList.add('js-active');
 
-    /* Activation d'un onglet (clic ou focus via flèches). */
-    function activateTab(btn) {
-        var targetId = btn.getAttribute('data-tab');
-        buttons.forEach(function (b) {
-            b.classList.remove('is-active');
-            b.setAttribute('aria-selected', 'false');
-            b.setAttribute('tabindex', '-1');
+    function activateSection(targetId) {
+        /* Met à jour la sidebar */
+        sidebarBtns.forEach(function (btn) {
+            var isActive = btn.getAttribute('data-tab') === targetId;
+            if (isActive) {
+                btn.classList.add('is-active');
+            } else {
+                btn.classList.remove('is-active');
+            }
+            btn.setAttribute('aria-expanded', isActive ? 'true' : 'false');
         });
-        panels.forEach(function (p) { p.hidden = true; });
-        btn.classList.add('is-active');
-        btn.setAttribute('aria-selected', 'true');
-        btn.setAttribute('tabindex', '0');
-        var panel = document.querySelector('[data-tab-content="' + targetId + '"]');
-        if (panel) { panel.hidden = false; }
+
+        /* Met à jour les accordéons et panneaux */
+        accHeaders.forEach(function (hdr) {
+            var isActive = hdr.getAttribute('data-tab') === targetId;
+            hdr.setAttribute('aria-expanded', isActive ? 'true' : 'false');
+            var icon = hdr.querySelector('.accordion-icon');
+            if (icon) { icon.textContent = isActive ? '▼' : '▶'; }
+        });
+
+        panels.forEach(function (p) {
+            if (p.getAttribute('data-tab-content') === targetId) {
+                p.classList.add('is-open');
+            } else {
+                p.classList.remove('is-open');
+            }
+        });
     }
 
-    /* Gestion des clics sur les onglets. */
-    buttons.forEach(function (btn) {
-        btn.addEventListener('click', function () { activateTab(btn); });
+    /* Initialisation : on active la première section (ou celle déjà active dans le HTML) */
+    var activeSidebarBtn = document.querySelector('.sidebar-nav__btn.is-active');
+    if (activeSidebarBtn) {
+        activateSection(activeSidebarBtn.getAttribute('data-tab'));
+    } else if (sidebarBtns.length > 0) {
+        activateSection(sidebarBtns[0].getAttribute('data-tab'));
+    }
+
+    /* Event listeners Sidebar */
+    sidebarBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            activateSection(btn.getAttribute('data-tab'));
+        });
     });
 
-    /* Navigation clavier WAI-ARIA tablist : ← / → entre onglets (roving tabindex). */
-    var btnsArr = Array.prototype.slice.call(buttons);
-    btnsArr.forEach(function (btn, idx) {
-        btn.addEventListener('keydown', function (e) {
-            var next = null;
-            if (e.key === 'ArrowRight') { next = btnsArr[idx + 1] || btnsArr[0]; }
-            if (e.key === 'ArrowLeft')  { next = btnsArr[idx - 1] || btnsArr[btnsArr.length - 1]; }
-            if (next) { activateTab(next); next.focus(); }
+    /* Event listeners Accordéon */
+    accHeaders.forEach(function (hdr) {
+        hdr.addEventListener('click', function () {
+            activateSection(hdr.getAttribute('data-tab'));
+            // Scroll to the header so the user sees the opened section
+            hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     });
 }());
