@@ -209,6 +209,10 @@ class RoleService
         $now = date('Y-m-d H:i:s');
 
         if ($existing !== null) {
+            // Re-invitation (Story 5.5, AC3): only role/invited_by/invited_at are refreshed.
+            // first_access_at is intentionally NOT in this payload so a former member who already
+            // accessed the kermesse keeps their original first_access_at — they reappear as an
+            // active member, never back in "En attente". Do not add first_access_at here.
             $this->userRoleModel->update((int) $existing['id'], [
                 'role'        => $role,
                 'invited_by'  => $invitedBy,
@@ -311,8 +315,11 @@ class RoleService
      *   - 'active': associative array grouped by role (owner, admin, gestionnaire)
      *   - 'pending': flat list of pending invitations (invited_at IS NOT NULL, first_access_at IS NULL)
      *
-     * Active members: first_access_at IS NOT NULL (have accessed the dashboard at least once).
-     * Pending invitations: invited_at IS NOT NULL AND first_access_at IS NULL (invitation sent but not yet accessed).
+     * Pending: invited_at IS NOT NULL AND first_access_at IS NULL (invitation sent, never accessed).
+     * Active: every other team member — first_access_at IS NOT NULL OR invited_at IS NULL. The
+     * second branch matters for the Owner, who is never "invited" (invited_at stays NULL) and must
+     * still appear even before their first dashboard load; treating active as "not pending" keeps
+     * such rows from silently vanishing from the team view.
      */
     public function getTeamMembersGroupedByStatus(int $kermesseId): array
     {
@@ -322,16 +329,21 @@ class RoleService
         $pending = [];
 
         foreach ($allMembers as $member) {
-            if ($member['first_access_at'] !== null) {
-                // Active member: has accessed the dashboard at least once
-                $role = (string) $member['role'];
-                if (isset($active[$role])) {
-                    $active[$role][] = $member;
-                }
-            } elseif ($member['invited_at'] !== null) {
-                // Pending invitation: invited but not yet accessed
+            $isPending = $member['first_access_at'] === null && $member['invited_at'] !== null;
+
+            if ($isPending) {
                 $pending[] = $member;
+
+                continue;
             }
+
+            // Active = not pending. findTeamMembers only returns owner/admin/gestionnaire, but a
+            // fallback bucket guarantees an unexpected role is still surfaced rather than dropped.
+            $role = (string) $member['role'];
+            if (! isset($active[$role])) {
+                $active[$role] = [];
+            }
+            $active[$role][] = $member;
         }
 
         return [

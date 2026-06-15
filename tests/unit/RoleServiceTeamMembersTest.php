@@ -104,6 +104,35 @@ final class RoleServiceTeamMembersTest extends CIUnitTestCase
         $this->assertNotNull($pending[0]['invited_at']);
     }
 
+    /**
+     * Review fix (Story 5.5): an Owner is never invited (invited_at IS NULL) and may not yet
+     * have a first_access_at (e.g. brand-new kermesse, or a data import). Such a row matches
+     * neither "first_access NOT NULL" nor "pending", so the original code dropped it entirely.
+     * Active must mean "not pending" so the Owner always shows up in the team view.
+     */
+    public function testOwnerWithoutFirstAccessNorInvitationStaysActive(): void
+    {
+        $db = db_connect();
+        $db->table('db_kermesse_user_roles')
+            ->where('kermesse_id', $this->kermesseId)
+            ->where('user_id', $this->ownerId)
+            ->update(['first_access_at' => null, 'invited_at' => null]);
+
+        $roleService = new \App\Services\RoleService(
+            model(UserRoleModel::class),
+            model(UserModel::class),
+        );
+
+        $result = $roleService->getTeamMembersGroupedByStatus($this->kermesseId);
+
+        // L'Owner doit rester dans les membres actifs, pas disparaître ni passer « en attente ».
+        $this->assertCount(1, $result['active']['owner']);
+        $this->assertEquals($this->ownerId, (int) $result['active']['owner'][0]['user_id']);
+
+        $pendingIds = array_column($result['pending'], 'user_id');
+        $this->assertNotContains($this->ownerId, $pendingIds);
+    }
+
     // ------------------------------------------------------------------
     // Tests: AC3 — Réinvitation d'un ancien membre préserve first_access_at
     // ------------------------------------------------------------------

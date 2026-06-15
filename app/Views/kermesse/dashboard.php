@@ -540,10 +540,10 @@
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <!-- Actions -->
                                         <?php if ($member['role'] !== 'owner'): ?>
-                                            <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
+                                            <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
                                             <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
                                                 <?= csrf_field() ?>
-                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
+                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès" aria-label="Supprimer l'accès">🗑️</button>
                                             </form>
                                         <?php endif; ?>
                                     </div>
@@ -576,15 +576,19 @@
                             <div style="display:flex; align-items:center; gap:8px;">
                                 <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
                                 <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
+                                <!-- Defense in depth: an Owner is never "pending" (no invited_at), but the
+                                     management actions stay gated on role exactly like the active section. -->
+                                <?php if ($member['role'] !== 'owner'): ?>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation" aria-label="Relancer l'invitation" style="font-size:1rem; padding:4px 8px;">🔄</button>
                                 </form>
-                                <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre">✏️</button>
+                                <button type="button" class="btn btn--secondary btn--sm" onclick="openEditMemberModal(<?= esc(json_encode($member)) ?>)" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment supprimer l\'accès de ce membre ?');">
                                     <?= csrf_field() ?>
-                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès">🗑️</button>
+                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Supprimer l'accès" aria-label="Supprimer l'accès">🗑️</button>
                                 </form>
+                                <?php endif; ?>
                             </div>
                         </li>
                         <?php endforeach; ?>
