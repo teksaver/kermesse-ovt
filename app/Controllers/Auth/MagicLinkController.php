@@ -130,8 +130,8 @@ class MagicLinkController extends BaseController
 
         $profileService = new ProfileService($userModel, new ProfileDivergenceModel());
         if (! $profileService->recordReturningLogin($userId)) {
+            // Non-critical audit write — log but continue so a transient DB hiccup does not lock the user out.
             log_message('error', 'MagicLink: returning login timestamp update failed for user ' . $userId);
-            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
         }
 
         // Story 3.6: intercept to profile resolution when pending divergences exist.

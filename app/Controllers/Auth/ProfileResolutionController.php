@@ -127,13 +127,17 @@ class ProfileResolutionController extends BaseController
                 ->with('errors', ['global' => 'Une erreur est survenue. Veuillez réessayer.']);
         }
 
+        // Capture kermesse intent BEFORE clearing session so the redirect fallback can use it.
+        $pendingKermesseId = (int) session()->get('pending_resolution_kermesse_id');
+
         session()->remove('pending_first_login_confirmation');
         session()->remove('pending_resolution_kermesse_id');
 
         $url = session('redirect_url');
         session()->remove('redirect_url');
 
-        $redirectTarget = $this->localRedirectTarget($url);
+        $fallback       = $pendingKermesseId > 0 ? site_url('kermesse/' . $pendingKermesseId) : null;
+        $redirectTarget = $this->localRedirectTarget($url, $fallback);
 
         return redirect()->to($redirectTarget);
     }

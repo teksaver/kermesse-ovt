@@ -209,12 +209,19 @@ class RoleService
     public function resendInvitation(int $kermesseId, int $userId): bool
     {
         $roleRow = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
-        if ($roleRow === null || ($roleRow['accepted_at'] ?? null) !== null) {
+        if ($roleRow === null) {
             return false;
         }
 
         $user = $this->userModel->find($userId);
         if ($user === null) {
+            return false;
+        }
+
+        // accepted_at is set on the first magic link click, before the user completes profile
+        // confirmation. Block resend only when the user has actually completed login (last_login_at
+        // is set), not when they merely clicked the link and abandoned the confirmation screen.
+        if (($roleRow['accepted_at'] ?? null) !== null && $user['last_login_at'] !== null) {
             return false;
         }
 
@@ -336,13 +343,16 @@ class RoleService
      */
     private function hasActiveSignups(int $kermesseId, int $userId): bool
     {
-        return db_connect()
+        $db = db_connect();
+
+        return $db
             ->table('signups')
             ->join('slots', 'slots.id = signups.slot_id')
             ->join('stands', 'stands.id = slots.stand_id')
             ->where('stands.kermesse_id', $kermesseId)
             ->where('signups.user_id', $userId)
             ->where('signups.status', 'active')
+            ->where($db->DBPrefix . 'signups.deleted_at IS NULL', null, false)
             ->countAllResults() > 0;
     }
 

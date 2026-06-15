@@ -393,24 +393,46 @@ class KermesseAdminController extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
+        $roleInput  = trim(is_array($r = $this->request->getPost('role'))       ? '' : (string) $r);
+        $emailInput = trim(is_array($e = $this->request->getPost('email'))      ? '' : (string) $e);
+        $firstInput = trim(is_array($f = $this->request->getPost('first_name')) ? '' : (string) $f);
+        $lastInput  = trim(is_array($l = $this->request->getPost('last_name'))  ? '' : (string) $l);
+
         $validation = service('validation');
         $isValid = $validation->setRules([
             'role'       => 'required|in_list[admin,gestionnaire]',
             'first_name' => 'permit_empty|string|max_length[100]',
             'last_name'  => 'permit_empty|string|max_length[100]',
             'email'      => "required|valid_email|is_unique[users.email,id,{$userId}]",
-        ])->run($this->request->getPost());
+        ])->run([
+            'role'       => $roleInput,
+            'first_name' => $firstInput,
+            'last_name'  => $lastInput,
+            'email'      => $emailInput,
+        ]);
 
         if (! $isValid) {
             return redirect()->back()->withInput()->with('invite_error', 'Les informations soumises sont invalides.');
         }
 
-        $role = (string) $this->request->getPost('role');
         $userRoleModel = model(UserRoleModel::class);
-        $roleRow = $userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+        $roleRow       = $userRoleModel->findByKermesseAndUser($kermesseId, $userId);
 
         if ($roleRow && (string) $roleRow['role'] !== UserRoleModel::ROLE_OWNER) {
-            $userRoleModel->update((int) $roleRow['id'], ['role' => $role]);
+            $userRoleModel->update((int) $roleRow['id'], ['role' => $roleInput]);
+
+            // For pending invitations (not yet accepted), the admin can also correct
+            // profile fields — write them to the users table including the email hash.
+            if (($roleRow['accepted_at'] ?? null) === null) {
+                $userModel     = model(UserModel::class);
+                $normalizedEmail = mb_strtolower($emailInput);
+                $userModel->update($userId, [
+                    'first_name' => $firstInput,
+                    'last_name'  => $lastInput,
+                    'email'      => $normalizedEmail,
+                    'email_hash' => $userModel->hashEmail($normalizedEmail),
+                ]);
+            }
         }
 
         return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
