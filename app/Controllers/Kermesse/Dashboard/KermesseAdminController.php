@@ -167,12 +167,16 @@ class KermesseAdminController extends BaseController
 
         $participantsBySlot = [];
         foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
-            $modifierFirstName = $p['modifier_first_name'] !== null ? (string) $p['modifier_first_name'] : null;
+            $modifierFirstName = $p['modifier_first_name'] !== null ? trim((string) $p['modifier_first_name']) : null;
+            if ($modifierFirstName === '') {
+                $modifierFirstName = 'un administrateur';
+            }
             $modifierDate      = null;
             if ($modifierFirstName !== null && $p['last_modified_at'] !== null) {
                 try {
                     $modifierDate = Time::parse((string) $p['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
                 } catch (\Throwable) {
+                    log_message('warning', 'Invalid signup modification date for kermesse dashboard.');
                     $modifierFirstName = null; // date invalide → on masque le badge
                 }
             }

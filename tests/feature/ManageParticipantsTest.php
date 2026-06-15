@@ -156,6 +156,30 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertStatus(200);
         $result->assertSee('Modifié par Admin');
         $result->assertSee('le 10/10/2026 à 15:00');
+        $body = (string) $result->response()->getBody();
+        $this->assertStringContainsString('role="note"', $body);
+        $this->assertStringContainsString('aria-label="Modifié par Admin le 10/10/2026 à 15:00"', $body);
+    }
+
+    public function testModificationBadgeFallsBackWhenModifierFirstNameIsEmpty(): void
+    {
+        $db = db_connect();
+        $db->table('users')
+            ->where('id', $this->adminId)
+            ->update(['first_name' => '']);
+        $db->table('signups')
+            ->where('slot_id', $this->buvetteSlot)
+            ->where('user_id', $this->camilleId)
+            ->update([
+                'last_modified_by_user_id' => $this->adminId,
+                'last_modified_at'         => '2026-10-10 15:00:00',
+            ]);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Modifié par un administrateur');
+        $result->assertSee('le 10/10/2026 à 15:00');
     }
 
     public function testNoBadgeWhenSignupWasNotModified(): void
