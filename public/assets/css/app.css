@@ -1321,6 +1321,7 @@ body {
 
 /* Panneau de contenu onglet */
 .tab-panel { display: block; padding-top: 24px; }
+.tab-panel[hidden] { display: none !important; }
 
 /* Barre d'outils section */
 .section-toolbar {
