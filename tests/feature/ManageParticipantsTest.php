@@ -155,6 +155,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
 
         $result->assertStatus(200);
         $result->assertSee('Modifié par Admin');
+        $result->assertSee('le 10/10/2026 à 15:00');
     }
 
     public function testNoBadgeWhenSignupWasNotModified(): void

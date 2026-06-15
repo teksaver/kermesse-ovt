@@ -153,7 +153,7 @@ class KermesseAdminController extends BaseController
      * the discrete "Modifié par [Prénom] le [date]" badge in the view.
      *
      * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
-     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string, modifier_label: string|null}>}>}>
+     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
@@ -165,18 +165,23 @@ class KermesseAdminController extends BaseController
 
         $participantsBySlot = [];
         foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
-            $modifierLabel = null;
-            if (! empty($p['modifier_first_name']) && ! empty($p['last_modified_at'])) {
-                $modifiedDate  = Time::parse((string) $p['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
-                $modifierLabel = 'Modifié par ' . $p['modifier_first_name'] . ' le ' . $modifiedDate;
+            $modifierFirstName = $p['modifier_first_name'] !== null ? (string) $p['modifier_first_name'] : null;
+            $modifierDate      = null;
+            if ($modifierFirstName !== null && $p['last_modified_at'] !== null) {
+                try {
+                    $modifierDate = Time::parse((string) $p['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
+                } catch (\Throwable) {
+                    $modifierFirstName = null; // date invalide → on masque le badge
+                }
             }
 
             $participantsBySlot[(int) $p['slot_id']][] = [
-                'first_name'     => (string) $p['first_name'],
-                'last_name'      => (string) $p['last_name'],
-                'phone'          => (string) $p['phone'],
-                'email'          => (string) $p['email'],
-                'modifier_label' => $modifierLabel,
+                'first_name'         => (string) $p['first_name'],
+                'last_name'          => (string) $p['last_name'],
+                'phone'              => (string) $p['phone'],
+                'email'              => (string) $p['email'],
+                'modifier_first_name' => $modifierFirstName,
+                'modifier_date'      => $modifierDate,
             ];
         }
 

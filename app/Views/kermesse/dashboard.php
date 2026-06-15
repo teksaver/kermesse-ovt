@@ -446,8 +446,9 @@
                     <?php foreach ($pSlot['volunteers'] as $vol): ?>
                     <li class="participants-list__item">
                         <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                        <?php if (! empty($vol['modifier_label'])): ?>
-                        <span class="badge badge--modified" style="font-size:11px; color:#6c757d; background:#f8f9fa; border:1px solid #dee2e6; border-radius:4px; padding:1px 6px; margin-left:6px;"><?= esc($vol['modifier_label']) ?></span>
+                        <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
+                        <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
+                        <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
                         <?php endif; ?>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>

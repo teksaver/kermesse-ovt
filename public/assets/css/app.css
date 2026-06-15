@@ -262,6 +262,18 @@ p {
 
 /* ----- Status badge ----- */
 
+.badge--modified {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--color-muted-text);
+    background: var(--color-muted-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
 .kermesse-status-badge {
     display: inline-block;
     margin-top: 12px;
