@@ -4,14 +4,16 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
 /**
- * Feature tests for Story 3.6 — Profile divergence resolution at login.
+ * Feature tests for profile confirmation / resolution.
+ *
+ * Story 3.6: Divergence resolution for returning users.
+ * Story 5.4: First-login confirmation (always shown when last_login_at IS NULL).
  *
  * Covers:
- * - Detection: Magic Link login with pending divergences → redirect to resolution page
- * - Clean login: no divergences → redirect to home directly
- * - Resolution with 'submitted': profile updated, divergences resolved, redirect home
- * - Resolution with 'keep': profile unchanged, divergences resolved, redirect home
- * - Bypass prevention: GET / with pending_profile_resolution flag → redirect to resolution
+ * - AC1: First-login → confirmation screen shown unconditionally
+ * - AC2: Returning user + kermesse divergence → resolution screen
+ * - AC3: Returning user + no divergence → no screen (proceed normally)
+ * - Filter bypass prevention
  *
  * @internal
  */
@@ -96,18 +98,23 @@ final class ProfileResolutionTest extends CIUnitTestCase
 
     private function insertUser(
         string $email,
-        string $firstName = 'Alice',
-        string $lastName  = 'Martin',
-        string $phone     = '0611111111',
+        string $firstName     = 'Alice',
+        string $lastName      = 'Martin',
+        string $phone         = '0611111111',
+        ?string $lastLoginAt  = null,
     ): int {
         $db = db_connect();
-        $db->table('users')->insert([
+        $row = [
             'email'      => $email,
             'email_hash' => hash('sha256', $email),
             'first_name' => $firstName,
             'last_name'  => $lastName,
             'phone'      => $phone,
-        ]);
+        ];
+        if ($lastLoginAt !== null) {
+            $row['last_login_at'] = $lastLoginAt;
+        }
+        $db->table('users')->insert($row);
 
         return (int) $db->insertID();
     }
@@ -162,6 +169,16 @@ final class ProfileResolutionTest extends CIUnitTestCase
         return $session;
     }
 
+    /** @return array<string, mixed> */
+    private function firstLoginSession(int $userId): array
+    {
+        return [
+            'user_id'                        => $userId,
+            'is_logged_in'                   => true,
+            'pending_first_login_confirmation' => true,
+        ];
+    }
+
     private function csrfPost(string $url, array $data = []): mixed
     {
         $security                        = service('security');
@@ -178,15 +195,14 @@ final class ProfileResolutionTest extends CIUnitTestCase
         return $this->withSession($sessionData)->post($url, $data);
     }
 
-    // ------------------------------------------------------------------
-    // Detection — AC1 (login with divergences → redirect to resolution)
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // Story 5.4 — AC1: First-login confirmation (always shown)
+    // ==================================================================
 
-    public function testMagicLinkLoginWithDivergencesRedirectsToResolution(): void
+    public function testFirstLoginRedirectsToProfileResolution(): void
     {
-        $email    = 'alice@example.com';
-        $userId   = $this->insertUser($email);
-        $this->insertDivergence($userId);
+        $email    = 'first@example.com';
+        $this->insertUser($email); // last_login_at is NULL
 
         $rawToken = $this->insertMagicLinkToken($email);
         $result   = $this->get('auth/magic-link/' . $rawToken);
@@ -194,36 +210,20 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertRedirectTo(site_url('auth/profile-resolution'));
     }
 
-    public function testMagicLinkLoginWithDivergencesSetsSessionFlag(): void
+    public function testFirstLoginSetsPendingFirstLoginConfirmationFlag(): void
     {
-        $email  = 'flag@example.com';
-        $userId = $this->insertUser($email);
-        $this->insertDivergence($userId);
-
-        $rawToken = $this->insertMagicLinkToken($email);
-        $result   = $this->get('auth/magic-link/' . $rawToken);
-
-        $result->assertSessionHas('pending_profile_resolution', true);
-    }
-
-    // ------------------------------------------------------------------
-    // Clean login — AC1 (no divergences → redirect to home)
-    // ------------------------------------------------------------------
-
-    public function testMagicLinkLoginWithNoDivergencesRedirectsToHome(): void
-    {
-        $email    = 'clean@example.com';
+        $email  = 'firstflag@example.com';
         $this->insertUser($email);
 
         $rawToken = $this->insertMagicLinkToken($email);
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
-        $result->assertRedirectTo(site_url('/'));
+        $result->assertSessionHas('pending_first_login_confirmation', true);
     }
 
-    public function testMagicLinkLoginWithNoDivergencesDoesNotSetFlag(): void
+    public function testFirstLoginDoesNotSetDivergenceFlag(): void
     {
-        $email    = 'noflag@example.com';
+        $email  = 'nodiv@example.com';
         $this->insertUser($email);
 
         $rawToken = $this->insertMagicLinkToken($email);
@@ -232,9 +232,186 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSessionMissing('pending_profile_resolution');
     }
 
-    // ------------------------------------------------------------------
-    // Resolution with 'submitted' — AC1 (profile updated, divergences resolved)
-    // ------------------------------------------------------------------
+    public function testFirstLoginWithPreExistingDivergencesStillUsesFirstLoginFlow(): void
+    {
+        $email  = 'firstwithdiv@example.com';
+        $userId = $this->insertUser($email);
+        $this->insertDivergence($userId);
+
+        $rawToken = $this->insertMagicLinkToken($email);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertSessionHas('pending_first_login_confirmation', true);
+        $result->assertSessionMissing('pending_profile_resolution');
+    }
+
+    public function testFirstLoginConfirmationShowsEditableForm(): void
+    {
+        $email  = 'showform@example.com';
+        $userId = $this->insertUser($email, 'Alice', 'Martin');
+
+        $result = $this->withSession($this->firstLoginSession($userId))
+                       ->get('auth/profile-resolution');
+
+        $result->assertStatus(200);
+        $result->assertSee('Confirmer et continuer');
+        $result->assertSee('Alice');
+        $result->assertSee('Martin');
+    }
+
+    public function testFirstLoginConfirmationUpdatesProfile(): void
+    {
+        $email  = 'updateprofile@example.com';
+        $userId = $this->insertUser($email, 'Alice', 'Martin', '0611111111');
+
+        $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => 'Alicia', 'last_name' => 'Dupont', 'phone' => '0622222222'],
+        );
+
+        $user = db_connect()->table('users')->where('id', $userId)->get()->getRowArray();
+        $this->assertSame('Alicia', $user['first_name'], 'first_name must be updated');
+        $this->assertSame('Dupont', $user['last_name'],  'last_name must be updated');
+        $this->assertSame('0622222222', $user['phone'],  'phone must be updated');
+    }
+
+    public function testFirstLoginConfirmationSetsLastLoginAt(): void
+    {
+        $email  = 'setloginat@example.com';
+        $userId = $this->insertUser($email);
+
+        $before = date('Y-m-d H:i:s');
+        $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $user = db_connect()->table('users')->where('id', $userId)->get()->getRowArray();
+        $this->assertNotNull($user['last_login_at'], 'last_login_at must be set after first-login confirmation');
+        $this->assertGreaterThanOrEqual($before, $user['last_login_at']);
+    }
+
+    public function testFirstLoginConfirmationClearsPendingFlag(): void
+    {
+        $email  = 'clearflag@example.com';
+        $userId = $this->insertUser($email);
+
+        $result = $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $result->assertSessionMissing('pending_first_login_confirmation');
+    }
+
+    public function testFirstLoginConfirmationRedirectsToHome(): void
+    {
+        $email  = 'redirecthome@example.com';
+        $userId = $this->insertUser($email);
+
+        $result = $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $result->assertRedirectTo(site_url('/'));
+    }
+
+    public function testFirstLoginConfirmationResolvesPreExistingDivergences(): void
+    {
+        $email  = 'resolvepre@example.com';
+        $userId = $this->insertUser($email);
+        $divId  = $this->insertDivergence($userId);
+
+        $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => 'Alice', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $divergence = db_connect()->table('profile_divergences')->where('id', $divId)->get()->getRowArray();
+        $this->assertNotNull($divergence['resolved_at'], 'Pre-existing divergences must be resolved after first-login confirmation');
+    }
+
+    public function testFirstLoginConfirmationValidationErrorRedisplaysForm(): void
+    {
+        $email  = 'valerror@example.com';
+        $userId = $this->insertUser($email);
+
+        $result = $this->csrfPostWithSession(
+            'auth/profile-resolution',
+            $this->firstLoginSession($userId),
+            ['first_name' => '', 'last_name' => 'Martin', 'phone' => ''],
+        );
+
+        $result->assertRedirectTo(site_url('auth/profile-resolution'));
+        // last_login_at must NOT be set if validation failed
+        $user = db_connect()->table('users')->where('id', $userId)->get()->getRowArray();
+        $this->assertNull($user['last_login_at'], 'last_login_at must not be set if validation fails');
+    }
+
+    // ==================================================================
+    // Story 5.4 — AC2: Returning user + divergence → resolution screen
+    // ==================================================================
+
+    public function testReturningUserWithDivergenceSetsResolutionFlag(): void
+    {
+        $email  = 'returning@example.com';
+        $userId = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+        $this->insertDivergence($userId);
+
+        $rawToken = $this->insertMagicLinkToken($email);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertSessionHas('pending_profile_resolution', true);
+    }
+
+    public function testReturningUserWithDivergenceRedirectsToResolution(): void
+    {
+        $email  = 'returning2@example.com';
+        $userId = $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+        $this->insertDivergence($userId);
+
+        $rawToken = $this->insertMagicLinkToken($email);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertRedirectTo(site_url('auth/profile-resolution'));
+    }
+
+    // ==================================================================
+    // Story 5.4 — AC3: Returning user + no divergence → no screen
+    // ==================================================================
+
+    public function testReturningUserWithNoDivergenceRedirectsToHome(): void
+    {
+        $email  = 'clean@example.com';
+        $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+
+        $rawToken = $this->insertMagicLinkToken($email);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertRedirectTo(site_url('/'));
+    }
+
+    public function testReturningUserWithNoDivergenceDoesNotSetAnyFlag(): void
+    {
+        $email  = 'noflag@example.com';
+        $this->insertUser($email, 'Alice', 'Martin', '0611111111', '2026-01-01 10:00:00');
+
+        $rawToken = $this->insertMagicLinkToken($email);
+        $result   = $this->get('auth/magic-link/' . $rawToken);
+
+        $result->assertSessionMissing('pending_profile_resolution');
+        $result->assertSessionMissing('pending_first_login_confirmation');
+    }
+
+    // ==================================================================
+    // Story 3.6 — Resolution with 'submitted' (returning user flow)
+    // ==================================================================
 
     public function testResolvingWithSubmittedUpdatesProfile(): void
     {
@@ -275,9 +452,9 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertRedirectTo(site_url('/'));
     }
 
-    // ------------------------------------------------------------------
-    // Resolution with 'keep' — AC1 (profile unchanged, divergences resolved)
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // Story 3.6 — Resolution with 'keep' (returning user flow)
+    // ==================================================================
 
     public function testResolvingWithKeepLeavesProfileUnchanged(): void
     {
@@ -330,11 +507,21 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSessionMissing('pending_profile_resolution');
     }
 
-    // ------------------------------------------------------------------
-    // Bypass prevention — AC1 (GET / with pending flag → redirect to resolution)
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // Bypass prevention — filter intercepts both pending flags
+    // ==================================================================
 
-    public function testAccessingHomeWithPendingFlagRedirectsToResolution(): void
+    public function testAccessingHomeWithFirstLoginFlagRedirectsToResolution(): void
+    {
+        $email  = 'bypassfirst@example.com';
+        $userId = $this->insertUser($email);
+
+        $result = $this->withSession($this->firstLoginSession($userId))->get('/');
+
+        $result->assertRedirectTo(site_url('auth/profile-resolution'));
+    }
+
+    public function testAccessingHomeWithDivergenceFlagRedirectsToResolution(): void
     {
         $email  = 'bypass@example.com';
         $userId = $this->insertUser($email);
@@ -387,9 +574,9 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSee('Mes kermesses');
     }
 
-    // ------------------------------------------------------------------
-    // Show page — guard: no divergences → redirect home
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // Show page guards
+    // ==================================================================
 
     public function testShowPageWithNoDivergencesRedirectsToHome(): void
     {
@@ -416,9 +603,9 @@ final class ProfileResolutionTest extends CIUnitTestCase
         $result->assertSee('Utiliser les informations soumises');
     }
 
-    // ------------------------------------------------------------------
-    // Resolution page: unauthenticated → redirect to login
-    // ------------------------------------------------------------------
+    // ==================================================================
+    // Unauthenticated guard
+    // ==================================================================
 
     public function testUnauthenticatedUserCannotAccessResolutionPage(): void
     {

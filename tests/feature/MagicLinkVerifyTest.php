@@ -148,12 +148,13 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
     // AC1 — valid token: redirect + session + user creation/reuse
     // ------------------------------------------------------------------
 
-    public function testValidTokenRedirectsToHome(): void
+    // Story 5.4: first-login always redirects to profile-resolution regardless of prior intent.
+    public function testValidTokenFirstLoginRedirectsToProfileResolution(): void
     {
         $rawToken = $this->insertMagicLinkToken('alice@example.com');
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
-        $result->assertRedirectTo(site_url('/'));
+        $result->assertRedirectTo(site_url('auth/profile-resolution'));
     }
 
     public function testValidTokenWithKermesseIntentRedirectsToDashboard(): void
@@ -162,11 +163,13 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
         $email = 'owner-intent@example.com';
 
         $db->table('users')->insert([
-            'email'      => $email,
-            'email_hash' => hash('sha256', $email),
-            'first_name' => 'Owner',
-            'last_name'  => 'Intent',
-            'phone'      => '',
+            'email'        => $email,
+            'email_hash'   => hash('sha256', $email),
+            'first_name'   => 'Owner',
+            'last_name'    => 'Intent',
+            'phone'        => '',
+            // Returning user — last_login_at set so first-login confirmation is skipped.
+            'last_login_at' => '2026-01-01 08:00:00',
         ]);
         $userId = (int) $db->insertID();
 

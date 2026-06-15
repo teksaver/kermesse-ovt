@@ -20,6 +20,48 @@ class ProfileService
     ) {}
 
     /**
+     * Confirm and save the user profile at first login.
+     *
+     * Called once — when `users.last_login_at IS NULL` — to let the user verify
+     * or correct their prénom/nom/téléphone submitted during a public signup.
+     * Sets `last_login_at` to mark the first login as completed and resolves
+     * any pre-existing divergences in the same transaction.
+     *
+     * @param array{first_name: string, last_name: string, phone: string} $profileData
+     */
+    public function confirmFirstLogin(int $userId, array $profileData): bool
+    {
+        $db = db_connect();
+        $db->transStart();
+
+        $updated = $this->userModel->skipValidation(true)->update($userId, [
+            'first_name'    => $profileData['first_name'],
+            'last_name'     => $profileData['last_name'],
+            'phone'         => $profileData['phone'],
+            'last_login_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        if ($updated === false) {
+            $db->transRollback();
+            return false;
+        }
+
+        // Silently resolve any pre-existing divergences (the user has now confirmed).
+        $divergences = $this->profileDivergenceModel->findUnresolvedByUser($userId);
+        if (! empty($divergences)) {
+            $ids = array_column($divergences, 'id');
+            $this->profileDivergenceModel
+                ->skipValidation(true)
+                ->whereIn('id', $ids)
+                ->update(null, ['resolved_at' => date('Y-m-d H:i:s')]);
+        }
+
+        $db->transComplete();
+
+        return $db->transStatus();
+    }
+
+    /**
      * Resolve all unresolved profile divergences for a user.
      *
      * $choice = 'submitted' → update user profile with the most-recent divergence values.

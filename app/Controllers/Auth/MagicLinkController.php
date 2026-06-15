@@ -84,8 +84,12 @@ class MagicLinkController extends BaseController
 
         $db->transComplete();
 
-        $userModel = new \App\Models\UserModel();
-        $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+        $userModel  = new \App\Models\UserModel();
+        $userRecord = $userModel->find($userId);
+
+        // Story 5.4: capture first-login status BEFORE updating last_login_at.
+        // The confirmation controller sets last_login_at after the user confirms.
+        $isFirstLogin = ($userRecord !== null && $userRecord['last_login_at'] === null);
 
         // Mark invitation accepted per-kermesse so the dashboard can distinguish
         // "accepted this kermesse" from "has a global account" (NFR5 privacy).
@@ -104,6 +108,16 @@ class MagicLinkController extends BaseController
             'user_id'      => $userId,
             'is_logged_in' => true,
         ]);
+
+        // Story 5.4 — AC1: first login always triggers the confirmation screen regardless
+        // of divergences. last_login_at is deferred until after confirmation.
+        if ($isFirstLogin) {
+            session()->set('pending_first_login_confirmation', true);
+            return redirect()->to(site_url('auth/profile-resolution'));
+        }
+
+        // Set last_login_at for returning users only.
+        $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
 
         // Story 3.6: intercept to profile resolution when pending divergences exist.
         $unresolvedDivergences = (new ProfileDivergenceModel())->findUnresolvedByUser($userId);
