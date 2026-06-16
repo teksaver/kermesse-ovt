@@ -3,12 +3,13 @@
 namespace App\Services;
 
 use App\Models\KermesseModel;
-use App\Models\ProfileDivergenceModel;
+
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
+use App\Services\EmailDeliveryResult;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
@@ -40,8 +41,9 @@ class SignupService
         private readonly ?ConnectionInterface $db = null,
         private readonly ?EmailService $emailService = null,
         private readonly ?StandModel $standModel = null,
-        private readonly ?ProfileDivergenceModel $profileDivergenceModel = null,
+
         private readonly ?TokenService $tokenService = null,
+        private readonly ?UserRoleModel $userRoleModel = null,
     ) {}
 
     /**
@@ -166,6 +168,166 @@ class SignupService
     }
 
     /**
+     * Cancel a signup on behalf of an admin — Story 5.10 AC1.
+     *
+     * Unlike the volunteer-facing cancelSignup(), this bypasses the kermesse lifecycle
+     * check: admins can cancel any active signup regardless of kermesse status.
+     * Failure codes: not_found | cancel_failed
+     *
+     * markCancelledByAdmin and stampAdminModification run in a single transaction so
+     * both writes succeed or neither does (atomicity of the cancel + tracking stamp).
+     *
+     * If $notify is true and the cancellation succeeds, a cancellation email is sent
+     * to the admin-corrected email address on the signup if available, falling back to
+     * the volunteer's global profile address. Email failure is absorbed — it never rolls
+     * back the cancellation (same pattern as signup confirmation, story 3.5 AC4).
+     */
+    public function adminCancelSignup(int $signupId, int $adminUserId, int $kermesseId, bool $notify = false): SignupResult
+    {
+        $signup = $this->signupModel->findActiveInKermesse($signupId, $kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        $db = $this->db ?? db_connect();
+        if (! $db->transBegin()) {
+            return SignupResult::failure('cancel_failed');
+        }
+
+        try {
+            if (! $this->signupModel->markCancelledByAdmin($signupId, $adminUserId)) {
+                $db->transRollback();
+
+                return SignupResult::failure('cancel_failed');
+            }
+
+            $this->signupModel->stampAdminModification($signupId, $adminUserId);
+
+            if (! $db->transCommit()) {
+                $db->transRollback();
+
+                return SignupResult::failure('cancel_failed');
+            }
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'adminCancelSignup transaction failed: ' . $e->getMessage());
+
+            return SignupResult::failure('cancel_failed');
+        }
+
+        if (! $notify) {
+            return SignupResult::success($signupId, (int) $signup['user_id']);
+        }
+
+        // Use the admin-corrected email/name on the signup if set; fall back to the
+        // volunteer's global profile (users table) when no correction has been made.
+        $notifyEmail     = ((string) ($signup['signup_email']     ?? '')) !== ''
+            ? (string) $signup['signup_email']
+            : (string) ($signup['email']      ?? '');
+        $notifyFirstName = ((string) ($signup['signup_first_name'] ?? '')) !== ''
+            ? (string) $signup['signup_first_name']
+            : (string) ($signup['first_name'] ?? '');
+
+        $kermesse  = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
+        $emailSent = $this->sendCancellationEmailSafely(
+            email:        $notifyEmail,
+            firstName:    $notifyFirstName,
+            kermesseName: (string) ($kermesse['name'] ?? ''),
+        );
+
+        return SignupResult::success($signupId, (int) $signup['user_id'], $emailSent);
+    }
+
+    /**
+     * Edit a signup's contact fields on behalf of an admin — Story 5.10 AC2/AC3.
+     *
+     * Writes only to signups.first_name/last_name/email/phone — NEVER to users.
+     * Only allowed when the volunteer has not yet accessed this kermesse
+     * (kermesse_user_roles.first_access_at IS NULL). Once the volunteer has
+     * confirmed their identity at first access (Story 5.4), the profile is locked
+     * and only they can change it via /profile.
+     *
+     * Email is normalized (lowercase + trim) here — not in the controller — so the
+     * stored value is always canonical regardless of the caller.
+     *
+     * updateContactFields and stampAdminModification run in a single transaction so
+     * both writes succeed or neither does.
+     *
+     * Failure codes: not_found | locked_profile | edit_failed
+     *
+     * @param array{first_name?: string, last_name?: string, email?: string, phone?: string} $fields
+     */
+    public function adminEditSignup(int $signupId, int $adminUserId, int $kermesseId, array $fields): SignupResult
+    {
+        $signup = $this->signupModel->findActiveInKermesse($signupId, $kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        // Normalize email in the service so callers don't need to know about it.
+        if (isset($fields['email']) && $fields['email'] !== '') {
+            $fields['email'] = mb_strtolower(trim($fields['email']));
+        }
+
+        $db = $this->db ?? db_connect();
+        if (! $db->transBegin()) {
+            return SignupResult::failure('edit_failed');
+        }
+
+        try {
+            if (! $this->signupModel->updateContactFields($signupId, $fields)) {
+                $db->transRollback();
+
+                return SignupResult::failure('edit_failed');
+            }
+
+            $this->signupModel->stampAdminModification($signupId, $adminUserId);
+
+            if (! $db->transCommit()) {
+                $db->transRollback();
+
+                return SignupResult::failure('edit_failed');
+            }
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'adminEditSignup transaction failed: ' . $e->getMessage());
+
+            return SignupResult::failure('edit_failed');
+        }
+
+        return SignupResult::success($signupId, (int) $signup['user_id']);
+    }
+
+    /**
+     * Send the admin cancellation notification email. Every failure is absorbed.
+     */
+    private function sendCancellationEmailSafely(string $email, string $firstName, string $kermesseName): bool
+    {
+        if ($email === '') {
+            return false;
+        }
+
+        try {
+            $delivery = ($this->emailService ?? new EmailService())->sendSignupCancellationEmail(
+                $email,
+                $firstName,
+                $kermesseName,
+            );
+
+            return $delivery->sent;
+        } catch (\Throwable $e) {
+            log_message('error', sprintf(
+                'SignupService: cancellation email failed for %s (kermesse: %s): %s',
+                $email,
+                $kermesseName,
+                $e->getMessage(),
+            ));
+
+            return false;
+        }
+    }
+
+    /**
      * Run the invariant checks and inserts. Never commits or rolls back: the caller
      * owns the transaction boundary (single rollback point, exception-safe).
      */
@@ -245,11 +407,7 @@ class SignupService
             'role'        => UserRoleModel::ROLE_BENEVOLE,
         ]);
 
-        // Record divergence if the submitted profile differs from the stored one.
-        // Failure must not abort the signup (catch-all in recordProfileDivergence).
-        if ($storedUser !== null && $this->detectsDivergence($storedUser, $fields)) {
-            $this->recordProfileDivergence($db, $userId, (int) $signupId, $kermesseId, $fields);
-        }
+
 
         // Internal result: the slot row rides in context so the caller can build
         // the confirmation email after commit; signup() rebuilds the public result.
@@ -345,8 +503,7 @@ class SignupService
      */
     private function assertSharedConnection(ConnectionInterface $db): void
     {
-        // profileDivergenceModel writes inside the transaction too, so it must share $db.
-        foreach ([$this->userModel, $this->signupModel, $this->profileDivergenceModel] as $model) {
+        foreach ([$this->userModel, $this->signupModel] as $model) {
             if ($model === null) {
                 continue;
             }
@@ -359,59 +516,4 @@ class SignupService
         }
     }
 
-    /**
-     * True when at least one of first_name, last_name, or phone differs between
-     * the stored user record and the submitted signup fields.
-     *
-     * @param array<string, mixed> $storedUser
-     * @param array<string, mixed> $fields
-     */
-    private function detectsDivergence(array $storedUser, array $fields): bool
-    {
-        if ((string) ($storedUser['first_name'] ?? '') !== (string) ($fields['first_name'] ?? '')) {
-            return true;
-        }
-        if ((string) ($storedUser['last_name'] ?? '') !== (string) ($fields['last_name'] ?? '')) {
-            return true;
-        }
-        // Phone is optional on the public form. DELIBERATE DECISION (review 3.4): a blank
-        // submission is treated as "not provided / no change intended", never as a request
-        // to erase the stored number. The frictionless public signup is not a profile
-        // editor — clearing a contact field belongs to a dedicated edit surface — so a
-        // volunteer who simply skips the phone must not silently wipe a number the
-        // organisers rely on. Only a non-empty, different value records a divergence.
-        $submittedPhone = (string) ($fields['phone'] ?? '');
-        return $submittedPhone !== '' && $submittedPhone !== (string) ($storedUser['phone'] ?? '');
-    }
-
-    /**
-     * Insert a profile_divergences row when submitted profile data differs from the
-     * stored profile. Must never throw: any failure is logged and swallowed so the
-     * surrounding transaction and signup can commit normally.
-     */
-    private function recordProfileDivergence(
-        ConnectionInterface $db,
-        int   $userId,
-        int   $signupId,
-        int   $kermesseId,
-        array $fields,
-    ): void {
-        try {
-            // Bind the fallback model to $db so the divergence row is written inside the
-            // open transaction (a model on its own connection would escape it). An injected
-            // model is validated up front by assertSharedConnection().
-            ($this->profileDivergenceModel ?? new ProfileDivergenceModel($db))
-                ->skipValidation(true)
-                ->insert([
-                    'user_id'              => $userId,
-                    'kermesse_id'          => $kermesseId,
-                    'signup_id'            => $signupId,
-                    'submitted_first_name' => (string) ($fields['first_name'] ?? ''),
-                    'submitted_last_name'  => (string) ($fields['last_name']  ?? ''),
-                    'submitted_phone'      => (string) ($fields['phone']      ?? ''),
-                ]);
-        } catch (\Throwable $e) {
-            log_message('error', 'SignupService: profile divergence record failed: ' . $e->getMessage());
-        }
-    }
 }

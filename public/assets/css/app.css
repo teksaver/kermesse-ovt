@@ -1548,3 +1548,125 @@ body {
     align-items: center;
     min-height: 44px;
 }
+
+/* =========================================================================
+   Story 5.10 — Admin cancel / edit panels
+   ========================================================================= */
+
+/* Button variants missing from the BEM set */
+.btn--danger {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+}
+.btn--danger:hover {
+    background-color: #c82333;
+}
+.btn--sm {
+    padding: 6px 12px;
+    font-size: 0.85em;
+    min-height: 36px;
+}
+
+/* Admin participant row — column layout with expanded header + actions */
+.participants-list__item--admin {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+.participants-list__vol-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+.participants-list__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+/* <details> expand panels — hide the default marker */
+.admin-cancel-details > summary,
+.admin-edit-details   > summary {
+    cursor: pointer;
+    list-style: none;
+}
+.admin-cancel-details > summary::-webkit-details-marker,
+.admin-edit-details   > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Cancel panel */
+.admin-cancel-details__panel {
+    background: #fff3f3;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 8px;
+    max-width: 340px;
+}
+.admin-cancel__confirm-text {
+    margin: 0 0 8px;
+    font-size: 0.9em;
+    color: #721c24;
+}
+.admin-cancel__notify-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+.admin-cancel__notify-checkbox {
+    width: 16px;
+    height: 16px;
+}
+
+/* Edit panel */
+.admin-edit-details__panel {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 8px;
+    max-width: 420px;
+}
+.form-group--sm { margin-bottom: 8px; }
+.form-label--sm {
+    font-size: 0.85em;
+    display: block;
+    margin-bottom: 2px;
+}
+.form-input--admin { width: 100%; max-width: 240px; }
+.form-input--admin-phone { width: 100%; max-width: 160px; }
+
+/* Shared action-buttons row */
+.admin-form__buttons { display: flex; gap: 8px; }
+
+/* Locked profile read-only display */
+.admin-locked-display {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 4px;
+    max-width: 420px;
+}
+.admin-locked-display__fields {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 0.88em;
+    margin-bottom: 8px;
+}
+.admin-locked-display__label { color: #6c757d; font-weight: 500; }
+.participants-list__locked-note {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin: 0;
+    font-style: italic;
+}

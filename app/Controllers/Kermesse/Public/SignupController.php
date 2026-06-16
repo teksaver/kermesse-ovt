@@ -4,7 +4,6 @@ namespace App\Controllers\Kermesse\Public;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\ProfileDivergenceModel;
 use App\Models\SignupModel;
 use App\Models\SlotModel;
 use App\Models\UserModel;
@@ -231,7 +230,6 @@ class SignupController extends BaseController
             signupModel:            model(SignupModel::class),
             kermesseModel:          model(KermesseModel::class),
             slotModel:              model(SlotModel::class),
-            profileDivergenceModel: model(ProfileDivergenceModel::class),
         );
     }
 

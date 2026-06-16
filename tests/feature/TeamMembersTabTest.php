@@ -113,6 +113,8 @@ final class TeamMembersTabTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'active-admin@team-tab.test',
                 'role'  => 'admin',
             ]));
@@ -138,6 +140,8 @@ final class TeamMembersTabTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'active-gestion@team-tab.test',
                 'role'  => 'gestionnaire',
             ]));
@@ -173,7 +177,9 @@ final class TeamMembersTabTest extends CIUnitTestCase
         try {
             $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => 'former-member@team-tab.test',
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => 'former-member@team-tab.test',
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -351,7 +357,7 @@ final class TeamMembersTabTest extends CIUnitTestCase
             'email_hash' => hash('sha256', $email),
             'first_name' => $firstName,
             'last_name'  => $lastName,
-            'phone'      => '',
+            'phone'      => '', 
         ]);
         return (int) $db->insertID();
     }

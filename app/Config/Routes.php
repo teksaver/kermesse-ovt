@@ -16,8 +16,7 @@ $routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLogin
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
 $routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
-$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show', ['filter' => 'auth']);
-$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve', ['filter' => 'auth']);
+
 
 // ---------------------------------------------------------------------------
 // Connected home — kermesse list (Story 1.5)
@@ -53,6 +52,10 @@ $routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\D
 // Désistement bénévole : annuler sa propre inscription depuis « Mes participations »
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
 $routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+
+// Story 5.10 — annulation et correction admin (Owner/Admin/Gestionnaire).
+$routes->post('kermesse/(:num)/signups/(:num)/admin-cancel', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminCancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+$routes->post('kermesse/(:num)/signups/(:num)/admin-edit', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminEdit/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
 
 // Quitter une kermesse (Story 5.9). Filtre inclut owner : le rejet Owner produit le
 // message FR spécifique côté service/flash plutôt qu'un 403 générique du RoleFilter.

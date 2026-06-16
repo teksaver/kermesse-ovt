@@ -34,6 +34,11 @@ class SignupModel extends Model
         'deleted_at',
         'last_modified_by_user_id',
         'last_modified_at',
+        'first_name',
+        'last_name',
+        'email',
+        'phone',
+        'admin_notes',
     ];
 
     /**
@@ -218,7 +223,7 @@ class SignupModel extends Model
 
     /**
      * Return every ACTIVE signup for a kermesse, joined to each volunteer's identity and
-     * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3).
+     * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3/5.10).
      *
      * PRIVACY (NFR5): this is the ONLY read that exposes volunteer PII (first_name,
      * last_name, phone, email). Its result must never reach a public view — it is gated
@@ -236,24 +241,132 @@ class SignupModel extends Model
      * Story 5.3: modifier_first_name (nullable) and last_modified_at (nullable) expose
      * who made the last admin correction, via a LEFT JOIN on users aliased as mod_u.
      *
-     * @return list<array{slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string, modifier_first_name: string|null, last_modified_at: string|null}>
+     * Story 5.10: signup_id is exposed for cancel/edit actions. signup_first_name/
+     * last_name/email/phone are the admin-editable copies on signups (NULL when never
+     * corrected). first_access_at from kermesse_user_roles determines whether the
+     * profile is locked (non-NULL) or editable (NULL) by the admin.
+     *
+     * Display rule: if signup_{field} IS NOT NULL → use signup copy; otherwise use user copy.
+     * The controller applies this rule when building the view model.
+     *
+     * first_access_at is derived via MIN() over all roles for the user in this kermesse so
+     * that the lock fires if the user has accessed in ANY capacity (handles multiple-role
+     * edge cases) and never multiplies rows (replaces the prior O(N) correlated subquery).
+     *
+     * @return list<array{signup_id: int, slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string, signup_first_name: string|null, signup_last_name: string|null, signup_email: string|null, signup_phone: string|null, first_access_at: string|null, modifier_first_name: string|null, last_modified_at: string|null}>
      */
     public function findActiveParticipantsForKermesse(int $kermesseId): array
     {
-        return $this->db->table($this->table . ' si')
-            ->select('si.slot_id, sl.stand_id, u.first_name, u.last_name, u.phone, u.email, si.last_modified_at, mod_u.first_name AS modifier_first_name')
+        $si    = $this->db->prefixTable('signups');
+        $sl    = $this->db->prefixTable('slots');
+        $st    = $this->db->prefixTable('stands');
+        $u     = $this->db->prefixTable('users');
+        $kur   = $this->db->prefixTable('kermesse_user_roles');
+        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
+
+        // MIN(first_access_at) returns the earliest non-null access across all roles; returns
+        // null only when ALL rows are null — which is the exact "not yet accessed" condition
+        // needed for the admin-edit lock.  This replaces the prior per-row correlated subquery.
+        $sql = "SELECT
+                si.id AS signup_id, si.slot_id, sl.stand_id,
+                u.first_name, u.last_name, u.phone, u.email, u.last_login_at,
+                si.first_name  AS signup_first_name, si.last_name AS signup_last_name,
+                si.email       AS signup_email,       si.phone    AS signup_phone,
+                si.admin_notes,
+                kur_agg.first_access_at,
+                si.last_modified_at, mod_u.first_name AS modifier_first_name
+            FROM {$si} si
+            JOIN {$sl} sl      ON sl.id = si.slot_id
+            JOIN {$st} st      ON st.id = sl.stand_id
+            JOIN {$u}  u       ON u.id  = si.user_id
+            LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
+            LEFT JOIN (
+                SELECT user_id, kermesse_id, MIN(first_access_at) AS first_access_at
+                FROM {$kur}
+                GROUP BY user_id, kermesse_id
+            ) kur_agg ON kur_agg.user_id = si.user_id AND kur_agg.kermesse_id = st.kermesse_id
+            WHERE st.kermesse_id = ?
+              AND si.status NOT IN ({$inact})
+              AND si.deleted_at IS NULL
+            ORDER BY u.last_name ASC, u.first_name ASC, si.id ASC";
+
+        $result = $this->db->query($sql, array_merge([$kermesseId], self::INACTIVE_STATUSES));
+
+        return $result ? $result->getResultArray() : [];
+    }
+
+    /**
+     * Return an ACTIVE signup that belongs to $kermesseId (via slot→stand scope),
+     * with no user-ownership restriction — used by admin cancel and edit actions.
+     *
+     * A neutral miss (wrong kermesse, already inactive, soft-deleted) returns null.
+     *
+     * signup_email / signup_first_name are the admin-corrected copies from the signups
+     * table (null when never edited). The service uses them to target cancellation emails
+     * at the corrected address rather than the stale global profile.
+     *
+     * @return array{id: int, user_id: int, slot_id: int, email: string, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null}|null
+     */
+    public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
+    {
+        $row = $this->db->table($this->table . ' si')
+            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, si.email AS signup_email, si.first_name AS signup_first_name', false)
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->join('users u', 'u.id = si.user_id')
-            ->join('users mod_u', 'mod_u.id = si.last_modified_by_user_id', 'left')
+            ->where('si.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
             ->whereNotIn('si.status', self::INACTIVE_STATUSES)
             ->where('si.deleted_at', null)
-            ->orderBy('u.last_name', 'ASC')
-            ->orderBy('u.first_name', 'ASC')
-            ->orderBy('si.id', 'ASC')
             ->get()
-            ->getResultArray();
+            ->getRowArray();
+
+        return $row ?: null;
+    }
+
+    /**
+     * Cancel a signup from an admin action — no user-ownership restriction.
+     * Returns true when exactly one active row flipped to CANCELLED.
+     */
+    public function markCancelledByAdmin(int $signupId, int $adminUserId): bool
+    {
+        $this->builder()
+            ->where('id', $signupId)
+            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('deleted_at', null)
+            ->update([
+                'status'     => self::STATUS_CANCELLED,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+        return $this->db->affectedRows() === 1;
+    }
+
+    /**
+     * Write the admin-editable contact fields to the signups row (Story 5.10 AC2).
+     *
+     * Only updates first_name/last_name/email/phone on signups — NEVER touches users.
+     * Returns true when exactly one row was updated.
+     *
+     * @param array{first_name?: string, last_name?: string, email?: string, phone?: string, admin_notes?: string} $fields
+     */
+    public function updateContactFields(int $signupId, array $fields): bool
+    {
+        $allowed = array_intersect_key($fields, array_flip(['first_name', 'last_name', 'email', 'phone', 'admin_notes']));
+        if ($allowed === []) {
+            return false;
+        }
+
+        $allowed['updated_at'] = date('Y-m-d H:i:s');
+
+        $this->builder()
+            ->where('id', $signupId)
+            ->where('deleted_at', null)
+            ->update($allowed);
+
+        // 0 affected rows means all values were already identical — not an error, since the
+        // signup's existence was pre-verified by the caller. Both 0 and 1 are success.
+        return in_array($this->db->affectedRows(), [0, 1], true);
     }
 
     /**

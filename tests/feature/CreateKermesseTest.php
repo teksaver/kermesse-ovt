@@ -136,6 +136,36 @@ final class CreateKermesseTest extends CIUnitTestCase
                 updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_slots (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                stand_id   INTEGER NOT NULL,
+                starts_at  DATETIME NOT NULL,
+                ends_at    DATETIME NOT NULL,
+                capacity   INTEGER  NOT NULL,
+                status     TEXT     NOT NULL DEFAULT "active",
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NOT NULL,
+                status                    TEXT     NOT NULL DEFAULT "active",
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
     }
 
     private function insertUser(string $email, string $firstName = 'Test', string $lastName = 'User'): int

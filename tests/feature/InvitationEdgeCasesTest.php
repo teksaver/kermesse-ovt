@@ -133,6 +133,8 @@ final class InvitationEdgeCasesTest extends CIUnitTestCase
         // Tentative d'inviter un Admin existant comme Admin → already_has_role
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'admin@edge-cases.test',
                 'role'  => 'admin',
             ]));
@@ -161,7 +163,9 @@ final class InvitationEdgeCasesTest extends CIUnitTestCase
         try {
             $result = $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => 'gestion@edge-cases.test',
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => 'gestion@edge-cases.test',
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -203,7 +207,9 @@ final class InvitationEdgeCasesTest extends CIUnitTestCase
         try {
             $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => 'former@edge-cases.test',
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => 'former@edge-cases.test',
                     'role'  => 'admin',
                 ]));
         } finally {

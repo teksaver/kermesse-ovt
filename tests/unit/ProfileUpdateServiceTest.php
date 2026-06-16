@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\ProfileDivergenceModel;
 use App\Models\UserModel;
 use App\Services\ProfileService;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -32,27 +31,12 @@ final class ProfileUpdateServiceTest extends CIUnitTestCase
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
-        $db->query('
-            CREATE TABLE IF NOT EXISTS db_profile_divergences (
-                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id              INTEGER NOT NULL,
-                kermesse_id          INTEGER NOT NULL,
-                signup_id            INTEGER,
-                submitted_first_name TEXT    NOT NULL DEFAULT "",
-                submitted_last_name  TEXT    NOT NULL DEFAULT "",
-                submitted_phone      TEXT    NOT NULL DEFAULT "",
-                last_login_at        DATETIME NULL DEFAULT NULL,
-                resolved_at          DATETIME,
-                created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        ');
+
     }
 
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_profile_divergences');
         $db->query('DELETE FROM db_users');
         parent::tearDown();
     }
@@ -77,7 +61,7 @@ final class ProfileUpdateServiceTest extends CIUnitTestCase
 
     private function makeService(): ProfileService
     {
-        return new ProfileService(new UserModel(), new ProfileDivergenceModel());
+        return new ProfileService(new UserModel());
     }
 
     // ------------------------------------------------------------------

@@ -445,6 +445,13 @@
         <?php endif; ?>
         <h2 class="section-title">Gestion des inscrits</h2>
 
+        <?php if (! empty($pSuccess = session()->getFlashdata('participants_success'))): ?>
+        <p class="form-success" role="status"><?= esc($pSuccess) ?></p>
+        <?php endif; ?>
+        <?php if (! empty($pError = session()->getFlashdata('participants_error'))): ?>
+        <p class="form-error" role="alert"><?= esc($pError) ?></p>
+        <?php endif; ?>
+
         <?php $participantStands = $participantStands ?? []; ?>
         <?php if (empty($participantStands)): ?>
         <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
@@ -471,12 +478,14 @@
                 <?php else: ?>
                 <ul class="participants-list">
                     <?php foreach ($pSlot['volunteers'] as $vol): ?>
-                    <li class="participants-list__item">
-                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                        <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
-                        <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
-                        <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
-                        <?php endif; ?>
+                    <li class="participants-list__item participants-list__item--admin">
+                        <div class="participants-list__vol-header">
+                            <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                            <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
+                            <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
+                            <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
+                            <?php endif; ?>
+                        </div>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>
                             <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
@@ -485,6 +494,96 @@
                             <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
                             <?php endif; ?>
                         </span>
+
+                        <!-- Actions admin : éditer et annuler (Story 5.10) -->
+                        <div class="participants-list__actions">
+                            <!-- Annuler l'inscription -->
+                            <details class="admin-cancel-details">
+                                <summary class="btn btn--danger btn--sm">Annuler l'inscription</summary>
+                                <div class="admin-cancel-details__panel">
+                                    <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
+                                    <form method="post"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-cancel") ?>"
+                                          class="admin-cancel-form">
+                                        <?= csrf_field() ?>
+                                        <label class="admin-cancel__notify-label">
+                                            <input type="checkbox" name="notify" value="1" class="admin-cancel__notify-checkbox">
+                                            Notifier <?= esc($vol['email']) ?>
+                                        </label>
+                                        <div class="admin-form__buttons">
+                                            <button type="submit" class="btn btn--danger btn--sm">Confirmer</button>
+                                            <button type="button" class="btn btn--secondary btn--sm"
+                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </details>
+
+                            <!-- Modifier la fiche -->
+                            <details class="admin-edit-details">
+                                <summary class="btn btn--secondary btn--sm">Modifier la fiche</summary>
+                                <div class="admin-edit-details__panel">
+                                    <form method="post"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-edit") ?>"
+                                          class="admin-edit-form">
+                                        <?= csrf_field() ?>
+
+                                        <?php if ($vol['locked']): ?>
+                                            <div class="admin-locked-display">
+                                                <p class="participants-list__locked-note">Coordonnées validées par le bénévole — modifiables uniquement par lui depuis son profil.</p>
+                                                <dl class="admin-locked-display__fields">
+                                                    <dt class="admin-locked-display__label">Prénom</dt><dd><?= esc($vol['first_name']) ?></dd>
+                                                    <dt class="admin-locked-display__label">Nom</dt><dd><?= esc($vol['last_name']) ?></dd>
+                                                    <?php if ($vol['email'] !== ''): ?>
+                                                    <dt class="admin-locked-display__label">Email</dt><dd><?= esc($vol['email']) ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ($vol['phone'] !== ''): ?>
+                                                    <dt class="admin-locked-display__label">Tél.</dt><dd><?= esc($vol['phone']) ?></dd>
+                                                    <?php endif; ?>
+                                                </dl>
+                                            </div>
+                                            <!-- Hidden fields to satisfy controller validation for identity fields -->
+                                            <input type="hidden" name="first_name" value="<?= esc($vol['first_name'], 'attr') ?>">
+                                            <input type="hidden" name="last_name" value="<?= esc($vol['last_name'], 'attr') ?>">
+                                            <input type="hidden" name="email" value="<?= esc($vol['email'], 'attr') ?>">
+                                            <input type="hidden" name="phone" value="<?= esc($vol['phone'], 'attr') ?>">
+                                        <?php else: ?>
+                                            <div class="form-group form-group--sm">
+                                                <label class="form-label form-label--sm">Prénom</label>
+                                                <input type="text" name="first_name" value="<?= esc($vol['first_name'], 'attr') ?>"
+                                                       class="form-input form-input--admin" maxlength="100" autocomplete="off" required>
+                                            </div>
+                                            <div class="form-group form-group--sm">
+                                                <label class="form-label form-label--sm">Nom</label>
+                                                <input type="text" name="last_name" value="<?= esc($vol['last_name'], 'attr') ?>"
+                                                       class="form-input form-input--admin" maxlength="100" autocomplete="off" required>
+                                            </div>
+                                            <div class="form-group form-group--sm">
+                                                <label class="form-label form-label--sm">Email</label>
+                                                <input type="email" name="email" value="<?= esc($vol['email'], 'attr') ?>"
+                                                       class="form-input form-input--admin" maxlength="255" autocomplete="off">
+                                            </div>
+                                            <div class="form-group form-group--sm">
+                                                <label class="form-label form-label--sm">Téléphone</label>
+                                                <input type="tel" name="phone" value="<?= esc($vol['phone'], 'attr') ?>"
+                                                       class="form-input form-input--admin-phone" maxlength="30" autocomplete="off">
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <div class="form-group form-group--sm">
+                                            <label class="form-label form-label--sm">Notes internes (visibles uniquement par l'équipe)</label>
+                                            <textarea name="admin_notes" class="form-input form-input--admin" rows="2" maxlength="5000" placeholder="Ex: Remplacé par Maman de Léo..."><?= esc($vol['admin_notes']) ?></textarea>
+                                        </div>
+
+                                        <div class="admin-form__buttons">
+                                            <button type="submit" class="btn btn--primary btn--sm">Enregistrer</button>
+                                            <button type="button" class="btn btn--secondary btn--sm"
+                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </details>
+                        </div>
                     </li>
                     <?php endforeach; ?>
                 </ul>
@@ -710,12 +809,12 @@
                 <?= csrf_field() ?>
                 <div class="form-group" style="display: flex; gap: 16px;">
                     <div style="flex: 1;">
-                        <label for="invite-firstname" class="form-label">Prénom (optionnel)</label>
-                        <input type="text" id="invite-firstname" name="first_name" class="form-control" value="<?= esc($oldFirstName) ?>" placeholder="Ex. : Jean">
+                        <label for="invite-firstname" class="form-label">Prénom</label>
+                        <input type="text" id="invite-firstname" name="first_name" class="form-control" value="<?= esc($oldFirstName) ?>" placeholder="Ex. : Jean" required>
                     </div>
                     <div style="flex: 1;">
-                        <label for="invite-lastname" class="form-label">Nom (optionnel)</label>
-                        <input type="text" id="invite-lastname" name="last_name" class="form-control" value="<?= esc($oldLastName) ?>" placeholder="Ex. : Dupont">
+                        <label for="invite-lastname" class="form-label">Nom</label>
+                        <input type="text" id="invite-lastname" name="last_name" class="form-control" value="<?= esc($oldLastName) ?>" placeholder="Ex. : Dupont" required>
                     </div>
                 </div>
                 <div class="form-group">

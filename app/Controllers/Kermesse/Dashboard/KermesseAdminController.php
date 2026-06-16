@@ -177,21 +177,52 @@ class KermesseAdminController extends BaseController
             if ($modifierFirstName === '') {
                 $modifierFirstName = 'un administrateur';
             }
-            $modifierDate      = null;
+            $modifierDate = null;
             if ($modifierFirstName !== null && $p['last_modified_at'] !== null) {
                 try {
                     $modifierDate = Time::parse((string) $p['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
                 } catch (\Throwable) {
                     log_message('warning', 'Invalid signup modification date for kermesse dashboard.');
-                    $modifierFirstName = null; // date invalide → on masque le badge
+                    $modifierFirstName = null;
                 }
             }
 
+            // Story 5.10 display rule: use signup's own copy when an admin has written it
+            // (null = never touched; '' = admin explicitly cleared). Empty-string values
+            // are intentional overrides and must NOT fall back to the global profile.
+            $displayFirstName = $p['signup_first_name'] !== null
+                ? (string) $p['signup_first_name']
+                : (string) $p['first_name'];
+            $displayLastName  = $p['signup_last_name'] !== null
+                ? (string) $p['signup_last_name']
+                : (string) $p['last_name'];
+            $displayEmail     = $p['signup_email'] !== null
+                ? (string) $p['signup_email']
+                : (string) $p['email'];
+            $displayPhone     = $p['signup_phone'] !== null
+                ? (string) $p['signup_phone']
+                : (string) $p['phone'];
+
+            // Story 5.10 (Stateless): if the user has a verified identity (accessed platform or kermesse),
+            // we display their global users profile instead of the signup snapshot.
+            $locked = $p['first_access_at'] !== null || $p['last_login_at'] !== null;
+
+            // When locked, always show the verified profile (users table), not the signup copy.
+            if ($locked) {
+                $displayFirstName = (string) $p['first_name'];
+                $displayLastName  = (string) $p['last_name'];
+                $displayEmail     = (string) $p['email'];
+                $displayPhone     = (string) $p['phone'];
+            }
+
             $participantsBySlot[(int) $p['slot_id']][] = [
-                'first_name'         => (string) $p['first_name'],
-                'last_name'          => (string) $p['last_name'],
-                'phone'              => (string) $p['phone'],
-                'email'              => (string) $p['email'],
+                'signup_id'          => (int) $p['signup_id'],
+                'first_name'         => $displayFirstName,
+                'last_name'          => $displayLastName,
+                'phone'              => $displayPhone,
+                'email'              => $displayEmail,
+                'admin_notes'        => (string) $p['admin_notes'],
+                'locked'             => $locked,
                 'modifier_first_name' => $modifierFirstName,
                 'modifier_date'      => $modifierDate,
             ];
@@ -210,6 +241,7 @@ class KermesseAdminController extends BaseController
                 $end   = Time::parse((string) $slot['ends_at'], $timezone);
 
                 $slots[] = [
+                    'slot_id'    => $slotId,
                     'date'       => $start->format('d/m/Y'),
                     'start_time' => $start->format('H:i'),
                     'end_time'   => $end->format('H:i'),
@@ -346,8 +378,8 @@ class KermesseAdminController extends BaseController
         $isValid    = $validation->setRules([
             'email'      => 'required|valid_email',
             'role'       => 'required|in_list[admin,gestionnaire]',
-            'first_name' => 'permit_empty|string|max_length[100]',
-            'last_name'  => 'permit_empty|string|max_length[100]',
+            'first_name' => 'required|string|max_length[100]',
+            'last_name'  => 'required|string|max_length[100]',
         ])->run([
             'email'      => $email,
             'role'       => $role,
@@ -358,7 +390,7 @@ class KermesseAdminController extends BaseController
         if (! $isValid) {
             return redirect()->back()
                 ->withInput()
-                ->with('invite_error', 'Veuillez saisir un email valide et choisir un rôle (administrateur ou gestionnaire).');
+                ->with('invite_error', 'Veuillez saisir un prénom, un nom, un email valide et choisir un rôle.');
         }
 
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));

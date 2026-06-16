@@ -232,7 +232,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => $phone,
+                'phone'      => $phone, 
             ]);
         }
 

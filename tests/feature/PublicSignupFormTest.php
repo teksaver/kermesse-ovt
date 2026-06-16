@@ -290,7 +290,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'not-an-email',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -312,7 +312,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => '',
             'last_name'  => '',
             'email'      => 'valid@email.example',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -333,7 +333,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => '',
             'last_name'  => '',
             'email'      => '',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -354,7 +354,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@exemple.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // Valid submit redirects to confirmation page (signup created in 3.3)
@@ -462,7 +462,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@exemple.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $db  = db_connect();
@@ -483,7 +483,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Jean',
             'last_name'  => 'Martin',
             'email'      => 'jean@martin.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $db    = db_connect();
@@ -509,7 +509,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'reuse@exemple.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_users WHERE email = 'reuse@exemple.fr'")->getRowArray()['cnt'];
@@ -530,7 +530,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'Marie@EXEMPLE.FR',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $db  = db_connect();
@@ -556,7 +556,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'confirm@exemple.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $this->assertSame(302, $result->response()->getStatusCode());
@@ -600,7 +600,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'flash@exemple.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // The flash must be scoped to the slot signed up, never a bare boolean:
@@ -701,7 +701,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'Marie@Event.FR',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // AC3: success or failure, the attempt must be traced with the normalized recipient
@@ -743,7 +743,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'refused@event.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $count = (int) db_connect()->query(
@@ -781,7 +781,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@token.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // AC1: a magic_link token must be created for the volunteer's email
@@ -822,7 +822,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Hélène',
             'last_name'  => 'Bernard',
             'email'      => 'helene@session.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $identity = session()->get('volunteer_identity');
@@ -885,7 +885,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 'first_name' => 'Hélène',
                 'last_name'  => 'Bernard',
                 'email'      => 'helene@nophone.fr',
-                'phone'      => '0601020304',
+                'phone'      => '0601020304', 
             ],
         ];
 
@@ -952,57 +952,6 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertNull(session()->get('volunteer_identity'), 'L\'identité de session doit être effacée');
     }
 
-    // ------------------------------------------------------------------
-    // Story 3.2 — AC3: Profile divergence recorded when data differs
-    // ------------------------------------------------------------------
-
-    public function testExistingUserWithDifferentNameCreatesProfileDivergenceRow(): void
-    {
-        $kermesseId = $this->insertKermesse('ecole-diverge');
-        $standId    = $this->insertStand($kermesseId);
-        $slotIdA    = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:00:00');
-        $slotIdB    = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:00:00');
-
-        // First signup: creates user with 'Marie Dupont'
-        $this->csrfPost("k/ecole-diverge/slots/{$slotIdA}/signup", [
-            'first_name' => 'Marie',
-            'last_name'  => 'Dupont',
-            'email'      => 'marie@diverge.fr',
-            'phone'      => '',
-        ]);
-
-        // Second signup on a non-overlapping slot: same email, different first name
-        $this->csrfPost("k/ecole-diverge/slots/{$slotIdB}/signup", [
-            'first_name' => 'Maria',
-            'last_name'  => 'Dupont',
-            'email'      => 'marie@diverge.fr',
-            'phone'      => '',
-        ]);
-
-        $count = (int) db_connect()->query(
-            "SELECT COUNT(*) AS cnt FROM db_profile_divergences WHERE submitted_first_name = 'Maria'"
-        )->getRowArray()['cnt'];
-
-        $this->assertSame(1, $count, 'A profile_divergences row must be created when submitted name differs from stored profile');
-    }
-
-    public function testSignupWithSameProfileAsStoredDoesNotCreateDivergenceRow(): void
-    {
-        $kermesseId = $this->insertKermesse('ecole-nodiverg');
-        $standId    = $this->insertStand($kermesseId);
-        $slotIdA    = $this->insertSlotWithTimes($standId, '2026-09-12 09:00:00', '2026-09-12 10:00:00');
-        $slotIdB    = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:00:00');
-
-        $fields = ['first_name' => 'Marie', 'last_name' => 'Dupont', 'email' => 'marie@nodiverg.fr', 'phone' => ''];
-        $this->csrfPost("k/ecole-nodiverg/slots/{$slotIdA}/signup", $fields);
-        $this->csrfPost("k/ecole-nodiverg/slots/{$slotIdB}/signup", $fields);
-
-        $count = (int) db_connect()->query(
-            "SELECT COUNT(*) AS cnt FROM db_profile_divergences"
-        )->getRowArray()['cnt'];
-
-        $this->assertSame(0, $count, 'No divergence row must be created when the same data is submitted twice');
-    }
 
     // ------------------------------------------------------------------
     // Story 3.3 — AC1: Connected user GET shows locked profile + confirm
@@ -1121,7 +1070,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 'first_name' => 'Attaquant',
                 'last_name'  => 'Falsifié',
                 'email'      => 'forge@attaquant.fr',
-                'phone'      => '',
+                'phone'      => '', 
             ]);
 
         $this->assertSame(302, $result->response()->getStatusCode(), 'L\'inscription doit réussir avec les données DB, pas POST');
@@ -1203,7 +1152,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@new.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -1227,7 +1176,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@closed.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertRedirectTo(site_url('k/ecole-closed-post'));
@@ -1257,7 +1206,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@dup.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -1295,7 +1244,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@overlap.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         $result->assertOK();
@@ -1330,7 +1279,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@cancel.fr',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // Capacity 1, cancelled signup = 0 active → signup must succeed
@@ -1358,7 +1307,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             'first_name' => 'Alice',
             'last_name'  => 'Martin',
             'email'      => $email,
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         // Régression uq_signups_user_slot : l'inscription annulée ne doit pas bloquer

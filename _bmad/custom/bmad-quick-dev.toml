@@ -1,0 +1,2 @@
+[workflow]
+on_complete = "Suggérez SYSTÉMATIQUEMENT à l'utilisateur de rester sur le Modèle A et d'invoquer `@[.agents/skills/bmad-checkpoint-preview]` dans la foulée (ou dans une nouvelle session) pour valider le patch final."

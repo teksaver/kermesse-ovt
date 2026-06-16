@@ -107,6 +107,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->gestionId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'admin',
             ]));
@@ -120,6 +122,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->benevoleId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'admin',
             ]));
@@ -140,7 +144,9 @@ final class InviteRoleTest extends CIUnitTestCase
         try {
             $result = $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => self::NEW_INVITEE_EMAIL,
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => self::NEW_INVITEE_EMAIL,
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -192,6 +198,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->adminId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::EXISTING_EMAIL,
                 'role'  => 'gestionnaire',
             ]));
@@ -220,6 +228,8 @@ final class InviteRoleTest extends CIUnitTestCase
         // ligne unique (kermesse_id, user_id) sans lever d'erreur de doublon (idempotence).
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'benevole@invite.test',
                 'role'  => 'gestionnaire',
             ]));
@@ -243,7 +253,9 @@ final class InviteRoleTest extends CIUnitTestCase
         try {
             $result = $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => self::NEW_INVITEE_EMAIL,
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => self::NEW_INVITEE_EMAIL,
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -277,6 +289,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'pas-un-email',
                 'role'  => 'admin',
             ]));
@@ -292,6 +306,8 @@ final class InviteRoleTest extends CIUnitTestCase
         // Tenter d'attribuer un rôle hors liste (owner) doit échouer à la validation.
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'owner',
             ]));
@@ -309,6 +325,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->adminId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'owner@invite.test',
                 'role'  => 'admin',
             ]));
@@ -387,7 +405,7 @@ final class InviteRoleTest extends CIUnitTestCase
         $db->table('users')->insert([
             'email'      => 'admin2@invite.test',
             'email_hash' => hash('sha256', 'admin2@invite.test'),
-            'first_name' => 'Admin2', 'last_name' => 'Test', 'phone' => '',
+            'first_name' => 'Admin2', 'last_name' => 'Test', 'phone' => '', 
         ]);
         $admin2Id = (int) $db->insertID();
         $db->table('kermesse_user_roles')->insert([
@@ -521,7 +539,7 @@ final class InviteRoleTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => '',
+                'phone'      => '', 
             ]);
         }
 

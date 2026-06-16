@@ -137,7 +137,7 @@ final class ConnectedHomeTest extends CIUnitTestCase
             'email_hash' => hash('sha256', $email),
             'first_name' => 'Test',
             'last_name'  => 'User',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         return (int) $db->insertID();

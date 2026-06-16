@@ -148,13 +148,13 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
     // AC1 — valid token: redirect + session + user creation/reuse
     // ------------------------------------------------------------------
 
-    // Story 5.4: first-login always redirects to profile-resolution regardless of prior intent.
-    public function testValidTokenFirstLoginRedirectsToProfileResolution(): void
+    // Story 5.10: first-login redirects to home (or kermesse dashboard if intent exists).
+    public function testValidTokenFirstLoginRedirectsToHome(): void
     {
         $rawToken = $this->insertMagicLinkToken('alice@example.com');
         $result   = $this->get('auth/magic-link/' . $rawToken);
 
-        $result->assertRedirectTo(site_url('auth/profile-resolution'));
+        $result->assertRedirectTo(site_url('/'));
     }
 
     public function testValidTokenWithKermesseIntentRedirectsToDashboard(): void

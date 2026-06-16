@@ -111,7 +111,7 @@ class RoleService
      * @param string $role       Requested role; must be Admin or Gestionnaire.
      * @param int    $invitedBy  User id of the Owner/Admin performing the invitation.
      */
-    public function invite(int $kermesseId, string $email, string $role, int $invitedBy, string $firstName = '', string $lastName = ''): InvitationResult
+    public function invite(int $kermesseId, string $email, string $role, int $invitedBy, string $firstName, string $lastName): InvitationResult
     {
         if (! in_array($role, self::INVITABLE_ROLES, true)) {
             return InvitationResult::failure('invalid_role');

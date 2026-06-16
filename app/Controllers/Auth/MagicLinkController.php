@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
-use App\Models\ProfileDivergenceModel;
+
 use App\Models\UserRoleModel;
 use App\Models\UserModel;
 use App\Services\EmailService;
@@ -118,33 +118,12 @@ class MagicLinkController extends BaseController
             'is_logged_in' => true,
         ]);
 
-        // Story 5.4 — AC1: first login always triggers the confirmation screen regardless
-        // of divergences. last_login_at is deferred until after confirmation.
-        if ($isFirstLogin) {
-            session()->set('pending_first_login_confirmation', true);
-            if ($kermesseId > 0) {
-                session()->set('pending_resolution_kermesse_id', $kermesseId);
-            }
-            return redirect()->to(site_url('auth/profile-resolution'));
-        }
-
-        $profileService = new ProfileService($userModel, new ProfileDivergenceModel());
+        // Story 5.10 (Stateless): first login and returning logins are handled identically,
+        // we just record the timestamp and proceed directly. Divergences are gone.
+        $profileService = new ProfileService($userModel);
         if (! $profileService->recordReturningLogin($userId)) {
             // Non-critical audit write — log but continue so a transient DB hiccup does not lock the user out.
-            log_message('error', 'MagicLink: returning login timestamp update failed for user ' . $userId);
-        }
-
-        // Story 3.6: intercept to profile resolution when pending divergences exist.
-        $divergenceModel       = new ProfileDivergenceModel();
-        $unresolvedDivergences = $kermesseId > 0
-            ? $divergenceModel->findUnresolvedByUserAndKermesse($userId, $kermesseId)
-            : $divergenceModel->findUnresolvedByUser($userId);
-        if (! empty($unresolvedDivergences)) {
-            session()->set('pending_profile_resolution', true);
-            if ($kermesseId > 0) {
-                session()->set('pending_resolution_kermesse_id', $kermesseId);
-            }
-            return redirect()->to(site_url('auth/profile-resolution'));
+            log_message('error', 'MagicLink: login timestamp update failed for user ' . $userId);
         }
 
         if ($kermesseId > 0) {

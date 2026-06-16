@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Controllers\BaseController;
-use App\Models\ProfileDivergenceModel;
+
 use App\Models\UserModel;
 use App\Services\ProfileService;
 
@@ -72,8 +72,7 @@ class ProfileController extends BaseController
         }
 
         $profileService = new ProfileService(
-            model(UserModel::class),
-            model(ProfileDivergenceModel::class),
+            model(UserModel::class)
         );
 
         if (! $profileService->updateOwnProfile($userId, $email, $firstName, $lastName, $phone)) {

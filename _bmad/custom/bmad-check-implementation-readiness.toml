@@ -1,0 +1,2 @@
+[workflow]
+on_complete = "Suggérez SYSTÉMATIQUEMENT à l'utilisateur d'ouvrir une nouvelle session avec le Modèle A (ex: Sonnet) et d'invoquer `@[.agents/skills/bmad-dev-story]` pour coder la story validée."

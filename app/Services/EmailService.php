@@ -153,6 +153,29 @@ class EmailService
         );
     }
 
+    /**
+     * Notify a volunteer that an admin has cancelled their signup — Story 5.10 AC1.
+     */
+    public function sendSignupCancellationEmail(
+        string $recipientEmail,
+        string $firstName,
+        string $kermesseName,
+    ): EmailDeliveryResult {
+        return $this->deliver(
+            recipientEmail: $recipientEmail,
+            subject: 'Votre inscription à « ' . $this->safeSubjectPart($kermesseName) . ' » a été annulée',
+            viewPath: 'emails/signup_cancellation',
+            viewData: [
+                'firstName'    => $firstName,
+                'kermesseName' => $kermesseName,
+            ],
+            eventType: 'signup_cancellation',
+            metadata: [
+                'kermesse_name' => $kermesseName,
+            ],
+        );
+    }
+
     public function hasRecentSuccessfulOwnerValidationEmail(string $recipientEmail, int $cooldownSeconds): bool
     {
         $recipientHash = hash('sha256', strtolower(trim($recipientEmail)));

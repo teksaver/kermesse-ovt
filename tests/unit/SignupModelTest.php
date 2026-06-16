@@ -36,6 +36,7 @@ final class SignupModelTest extends CIUnitTestCase
     {
         $db = db_connect();
         $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
@@ -497,7 +498,8 @@ final class SignupModelTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            DROP TABLE IF EXISTS db_signups;
+            CREATE TABLE db_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NOT NULL,
@@ -505,8 +507,29 @@ final class SignupModelTest extends CIUnitTestCase
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
                 created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        // findActiveParticipantsForKermesse LEFT JOINs kermesse_user_roles (Story 5.10).
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id     INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                role            TEXT    NOT NULL,
+                invited_by      INTEGER,
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }
