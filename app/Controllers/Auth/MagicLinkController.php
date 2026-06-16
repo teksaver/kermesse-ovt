@@ -96,10 +96,6 @@ class MagicLinkController extends BaseController
             return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
         }
 
-        // Story 5.4: capture first-login status BEFORE updating last_login_at.
-        // The confirmation controller sets last_login_at after the user confirms.
-        $isFirstLogin = $userRecord['last_login_at'] === null;
-
         // Mark invitation accepted per-kermesse so the dashboard can distinguish
         // "accepted this kermesse" from "has a global account" (NFR5 privacy).
         $kermesseId = (int) ($tokenRow['kermesse_id'] ?? 0);
