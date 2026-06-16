@@ -101,15 +101,66 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertSee('Restant : 1');
     }
 
-    public function testCancelledSignupVolunteerIsExcluded(): void
+    public function testCancelledSignupVolunteerIsNotCountedButAppearsInHistory(): void
     {
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        // Le bénévole dont l'inscription est annulée n'est ni nommé ni compté (UX-DR23).
-        // (Nom volontairement distinct de toute copie d'UI comme « Annuler ».)
-        $result->assertDontSee('Lefebvre');
+        // Compte : seulement les inscriptions actives (UX-DR23).
+        $result->assertSee('Occupé : 2 / 3');
+        // Lefebvre est visible dans la section historique (Story 5.10 AC1).
+        $result->assertSee('Lefebvre');
+        // Son email n'est jamais exposé dans l'historique (lecture seule, pas de contact).
         $result->assertDontSee('quentin.lefebvre@participant.test');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.10 — Tableau historique (annulé/supprimé par admin)
+    // ------------------------------------------------------------------
+
+    public function testHistoricalSectionShowsCancelledVolunteer(): void
+    {
+        // The fixture already has Lefebvre with status='cancelled'.
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        // Lefebvre should appear in the history section but not in the active table.
+        $result->assertSee('Historique');
+        $result->assertSee('Lefebvre');
+        // The cancelled badge should be shown.
+        $result->assertSee('Annulé');
+        // Lefebvre's email must not appear (history section is read-only, no contact info).
+        $result->assertDontSee('quentin.lefebvre@participant.test');
+    }
+
+    public function testHistoricalSectionShowsRemovedVolunteerWithAdminBadge(): void
+    {
+        // Override Lefebvre's status to 'removed' (admin suppression).
+        db_connect()->table('signups')
+            ->where('user_id', $this->annuleId)
+            ->update(['status' => 'removed']);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Historique');
+        $result->assertSee('Lefebvre');
+        $result->assertSee("Supprimé par l'admin");
+    }
+
+    public function testHistoricalSectionAbsentWhenNoHistoricalSignups(): void
+    {
+        // Remove Lefebvre's signup entirely.
+        db_connect()->table('signups')
+            ->where('user_id', $this->annuleId)
+            ->delete();
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        // No history toggle rendered when no cancelled/removed signups exist.
+        // Use "Historique (" to avoid matching the always-present HTML comment.
+        $result->assertDontSee('Historique (');
     }
 
     public function testManagerOnKermesseWithoutStandsSeesEmptyState(): void
@@ -381,6 +432,11 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 user_id                   INTEGER  NOT NULL,
                 status                    TEXT     NOT NULL DEFAULT "active",
                 deleted_at                DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
                 created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1670,3 +1670,57 @@ body {
     margin: 0;
     font-style: italic;
 }
+
+/* ----- History section (Story 5.10) ----- */
+.participants-slot__history {
+    margin-top: 8px;
+    border-top: 1px solid var(--color-border);
+    padding-top: 6px;
+}
+.participants-slot__history-toggle {
+    font-size: 0.82em;
+    color: var(--color-muted-text);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    padding: 2px 0;
+}
+.participants-slot__history-toggle::-webkit-details-marker { display: none; }
+.participants-list--history {
+    list-style: none;
+    margin: 4px 0 0 0;
+    padding: 0;
+}
+.participants-list__item--history {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 0.85em;
+    color: var(--color-muted-text);
+    border-bottom: none;
+}
+.participants-list__history-meta {
+    font-size: 0.82em;
+    color: var(--color-muted-text);
+}
+.badge--cancelled {
+    display: inline-block;
+    font-size: 11px;
+    color: #856404;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 1px 6px;
+    vertical-align: middle;
+}
+.badge--removed {
+    display: inline-block;
+    font-size: 11px;
+    color: #721c24;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 1px 6px;
+    vertical-align: middle;
+}

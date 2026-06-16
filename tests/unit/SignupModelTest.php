@@ -61,18 +61,20 @@ final class SignupModelTest extends CIUnitTestCase
         $this->assertSame('2026-10-10 12:00:00', $rows[0]['ends_at']);
     }
 
-    public function testExcludesCancelledDeactivatedDeletedAndSoftDeleted(): void
+    public function testExcludesCancelledDeactivatedDeletedRemovedAndSoftDeleted(): void
     {
-        $active     = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $cancelled  = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
+        $active      = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $cancelled   = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
         $deactivated = $this->insertSlot($this->standId, '2026-10-10 11:00:00', '2026-10-10 12:00:00');
-        $deleted    = $this->insertSlot($this->standId, '2026-10-10 12:00:00', '2026-10-10 13:00:00');
+        $deleted     = $this->insertSlot($this->standId, '2026-10-10 12:00:00', '2026-10-10 13:00:00');
         $softDeleted = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
+        $removed     = $this->insertSlot($this->standId, '2026-10-10 14:00:00', '2026-10-10 15:00:00');
 
         $this->insertSignup($active, $this->userId, SignupModel::STATUS_ACTIVE);
         $this->insertSignup($cancelled, $this->userId, SignupModel::STATUS_CANCELLED);
         $this->insertSignup($deactivated, $this->userId, SignupModel::STATUS_DEACTIVATED);
         $this->insertSignup($deleted, $this->userId, SignupModel::STATUS_DELETED);
+        $this->insertSignup($removed, $this->userId, SignupModel::STATUS_REMOVED);
         // Statut 'active' mais soft-deleted : doit aussi être exclu (deleted_at IS NULL).
         $this->insertSignup($softDeleted, $this->userId, SignupModel::STATUS_ACTIVE, '2026-01-01 00:00:00');
 
@@ -212,12 +214,14 @@ final class SignupModelTest extends CIUnitTestCase
         $cancelled   = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
         $deactivated = $this->insertSlot($this->standId, '2026-10-10 11:00:00', '2026-10-10 12:00:00');
         $deleted     = $this->insertSlot($this->standId, '2026-10-10 12:00:00', '2026-10-10 13:00:00');
-        $softDeleted = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
+        $removed     = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
+        $softDeleted = $this->insertSlot($this->standId, '2026-10-10 14:00:00', '2026-10-10 15:00:00');
 
         $this->insertSignup($active, $this->userId, SignupModel::STATUS_ACTIVE);
         $this->insertSignup($cancelled, $this->userId, SignupModel::STATUS_CANCELLED);
         $this->insertSignup($deactivated, $this->userId, SignupModel::STATUS_DEACTIVATED);
         $this->insertSignup($deleted, $this->userId, SignupModel::STATUS_DELETED);
+        $this->insertSignup($removed, $this->userId, SignupModel::STATUS_REMOVED);
         $this->insertSignup($softDeleted, $this->userId, SignupModel::STATUS_ACTIVE, '2026-01-01 00:00:00');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
@@ -342,6 +346,112 @@ final class SignupModelTest extends CIUnitTestCase
         $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
         $this->assertSame($this->userId, (int) $row['last_modified_by_user_id']);
         $this->assertSame('2026-10-11 10:00:00', $row['last_modified_at']);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.10 — markCancelledByAdmin() : statut removed (distinct de cancelled)
+    // ------------------------------------------------------------------
+
+    public function testMarkCancelledByAdminSetsRemovedStatus(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $model = model(SignupModel::class);
+
+        $this->assertTrue($model->markCancelledByAdmin($signupId, $this->otherUserId));
+
+        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+        $this->assertSame(SignupModel::STATUS_REMOVED, $row['status']);
+    }
+
+    public function testMarkCancelledByAdminFreesSlotCapacity(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+
+        $model = model(SignupModel::class);
+        $this->assertSame(1, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
+
+        $model->markCancelledByAdmin($signupId, $this->otherUserId);
+        $this->assertSame(0, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
+    }
+
+    public function testMarkCancelledByAdminIsIdempotentOnAlreadyRemoved(): void
+    {
+        $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_REMOVED);
+
+        $this->assertFalse(model(SignupModel::class)->markCancelledByAdmin($signupId, $this->otherUserId));
+    }
+
+    public function testFindActiveParticipantsExcludesRemovedStatus(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_REMOVED);
+
+        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $this->assertSame([], $rows);
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.10 — findHistoricalParticipantsForKermesse()
+    // ------------------------------------------------------------------
+
+    public function testHistoricalQueryReturnsCancelledAndRemovedSignups(): void
+    {
+        $slot1 = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $slot2 = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
+
+        $this->insertSignup($slot1, $this->userId, SignupModel::STATUS_CANCELLED);
+        $this->insertSignup($slot2, $this->otherUserId, SignupModel::STATUS_REMOVED);
+
+        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(2, $rows);
+        $statuses = array_column($rows, 'status');
+        $this->assertContains('cancelled', $statuses);
+        $this->assertContains('removed', $statuses);
+    }
+
+    public function testHistoricalQueryExcludesActiveAndSystemStatuses(): void
+    {
+        $slot1 = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $slot2 = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
+        $slot3 = $this->insertSlot($this->standId, '2026-10-10 11:00:00', '2026-10-10 12:00:00');
+
+        $this->insertSignup($slot1, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slot2, $this->userId, SignupModel::STATUS_DEACTIVATED);
+        $this->insertSignup($slot3, $this->otherUserId, SignupModel::STATUS_DELETED);
+
+        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+
+        $this->assertSame([], $rows);
+    }
+
+    public function testHistoricalQueryScopedToKermesse(): void
+    {
+        $slotHere = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $this->insertSignup($slotHere, $this->userId, SignupModel::STATUS_CANCELLED);
+
+        $otherStandId = $this->insertStand($this->otherKermesseId, 'Stand Autre');
+        $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        $this->insertSignup($otherSlot, $this->otherUserId, SignupModel::STATUS_REMOVED);
+
+        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($slotHere, (int) $rows[0]['slot_id']);
+    }
+
+    public function testHistoricalQueryExcludesSoftDeleted(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
+        // status = cancelled but soft-deleted — must not appear.
+        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_CANCELLED, '2026-01-01 00:00:00');
+
+        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+        $this->assertSame([], $rows);
     }
 
     // ------------------------------------------------------------------

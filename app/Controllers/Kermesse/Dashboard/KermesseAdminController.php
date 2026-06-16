@@ -161,7 +161,7 @@ class KermesseAdminController extends BaseController
      * the discrete "Modifié par [Prénom] le [date]" badge in the view.
      *
      * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
-     * @return list<array{name: string, slots: list<array{date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{first_name: string, last_name: string, phone: string, email: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
+     * @return list<array{name: string, slots: list<array{slot_id: int, date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{signup_id: int, first_name: string, last_name: string, phone: string, email: string, admin_notes: string, locked: bool, modifier_first_name: string|null, modifier_date: string|null}>, history: list<array{first_name: string, last_name: string, status: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
@@ -171,8 +171,10 @@ class KermesseAdminController extends BaseController
             return [];
         }
 
+        $signupModel = model(SignupModel::class);
+
         $participantsBySlot = [];
-        foreach (model(SignupModel::class)->findActiveParticipantsForKermesse($kermesseId) as $p) {
+        foreach ($signupModel->findActiveParticipantsForKermesse($kermesseId) as $p) {
             $modifierFirstName = $p['modifier_first_name'] !== null ? trim((string) $p['modifier_first_name']) : null;
             if ($modifierFirstName === '') {
                 $modifierFirstName = 'un administrateur';
@@ -216,15 +218,47 @@ class KermesseAdminController extends BaseController
             }
 
             $participantsBySlot[(int) $p['slot_id']][] = [
-                'signup_id'          => (int) $p['signup_id'],
-                'first_name'         => $displayFirstName,
-                'last_name'          => $displayLastName,
-                'phone'              => $displayPhone,
-                'email'              => $displayEmail,
-                'admin_notes'        => (string) $p['admin_notes'],
-                'locked'             => $locked,
+                'signup_id'           => (int) $p['signup_id'],
+                'first_name'          => $displayFirstName,
+                'last_name'           => $displayLastName,
+                'phone'               => $displayPhone,
+                'email'               => $displayEmail,
+                'admin_notes'         => (string) $p['admin_notes'],
+                'locked'              => $locked,
                 'modifier_first_name' => $modifierFirstName,
-                'modifier_date'      => $modifierDate,
+                'modifier_date'       => $modifierDate,
+            ];
+        }
+
+        $historicalBySlot = [];
+        foreach ($signupModel->findHistoricalParticipantsForKermesse($kermesseId) as $h) {
+            $modifierFirstName = $h['modifier_first_name'] !== null ? trim((string) $h['modifier_first_name']) : null;
+            if ($modifierFirstName === '') {
+                $modifierFirstName = 'un administrateur';
+            }
+            $modifierDate = null;
+            if ($modifierFirstName !== null && $h['last_modified_at'] !== null) {
+                try {
+                    $modifierDate = Time::parse((string) $h['last_modified_at'], $timezone)->format('d/m/Y \à H:i');
+                } catch (\Throwable) {
+                    log_message('warning', 'Invalid historical signup date for kermesse dashboard.');
+                    $modifierFirstName = null;
+                }
+            }
+
+            $displayFirstName = $h['signup_first_name'] !== null
+                ? (string) $h['signup_first_name']
+                : (string) $h['first_name'];
+            $displayLastName = $h['signup_last_name'] !== null
+                ? (string) $h['signup_last_name']
+                : (string) $h['last_name'];
+
+            $historicalBySlot[(int) $h['slot_id']][] = [
+                'first_name'          => $displayFirstName,
+                'last_name'           => $displayLastName,
+                'status'              => (string) $h['status'],
+                'modifier_first_name' => $modifierFirstName,
+                'modifier_date'       => $modifierDate,
             ];
         }
 
@@ -249,6 +283,7 @@ class KermesseAdminController extends BaseController
                     'occupied'   => $occupied,
                     'remaining'  => max(0, $capacity - $occupied),
                     'volunteers' => $volunteers,
+                    'history'    => $historicalBySlot[$slotId] ?? [],
                 ];
             }
 

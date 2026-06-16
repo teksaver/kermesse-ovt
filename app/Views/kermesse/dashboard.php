@@ -588,6 +588,28 @@
                     <?php endforeach; ?>
                 </ul>
                 <?php endif; ?>
+
+                <!-- Historique des inscriptions annulées/supprimées (Story 5.10) -->
+                <?php if (! empty($pSlot['history'])): ?>
+                <details class="participants-slot__history">
+                    <summary class="participants-slot__history-toggle">Historique (<?= count($pSlot['history']) ?>)</summary>
+                    <ul class="participants-list participants-list--history">
+                        <?php foreach ($pSlot['history'] as $hist): ?>
+                        <li class="participants-list__item participants-list__item--history">
+                            <span class="participants-list__name"><strong><?= esc($hist['last_name']) ?> <?= esc($hist['first_name']) ?></strong></span>
+                            <?php if ($hist['status'] === 'removed'): ?>
+                            <span class="badge badge--removed">Supprimé par l'admin</span>
+                            <?php else: ?>
+                            <span class="badge badge--cancelled">Annulé</span>
+                            <?php endif; ?>
+                            <?php if ($hist['modifier_first_name'] !== null && $hist['modifier_date'] !== null): ?>
+                            <span class="participants-list__history-meta">par <?= esc($hist['modifier_first_name']) ?> le <?= esc($hist['modifier_date']) ?></span>
+                            <?php endif; ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </details>
+                <?php endif; ?>
             </div>
             <?php endforeach; ?>
             <?php endif; ?>

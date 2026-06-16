@@ -16,15 +16,33 @@ class SignupModel extends Model
     protected $useTimestamps = true;
     protected $useSoftDeletes = true;
 
+    // Legacy statuses (still in use)
     public const STATUS_ACTIVE      = 'active';
     public const STATUS_CANCELLED   = 'cancelled';
     public const STATUS_DEACTIVATED = 'deactivated';
     public const STATUS_DELETED     = 'deleted';
+    // Story 5.10 — extended lifecycle statuses
+    public const STATUS_UNCONFIRMED = 'unconfirmed'; // admin-created, awaiting volunteer confirmation
+    public const STATUS_CONFIRMED   = 'confirmed';   // volunteer has confirmed their identity
+    public const STATUS_CERTIFIED   = 'certified';   // future: admin-validated presence
+    public const STATUS_SEEN        = 'seen';         // future: checked in on the day
+    public const STATUS_REFUSED     = 'refused';      // future: volunteer declined after invitation
+    public const STATUS_REMOVED     = 'removed';      // admin cancellation (distinct from self-cancel)
 
+    // Statuses that free slot capacity (not counted toward occupancy).
     public const INACTIVE_STATUSES = [
         self::STATUS_CANCELLED,
         self::STATUS_DEACTIVATED,
         self::STATUS_DELETED,
+        self::STATUS_REMOVED,
+        self::STATUS_REFUSED,
+    ];
+
+    // Visible historical statuses shown in the admin "Historique" table (Story 5.10 AC1).
+    public const HISTORICAL_STATUSES = [
+        self::STATUS_CANCELLED,
+        self::STATUS_REMOVED,
+        self::STATUS_REFUSED,
     ];
 
     protected $allowedFields = [
@@ -296,6 +314,44 @@ class SignupModel extends Model
     }
 
     /**
+     * Return historical (cancelled/removed) signups for a kermesse, grouped by slot.
+     *
+     * Exposes status so the view can distinguish volunteer self-cancellation ('cancelled')
+     * from admin removal ('removed'). Only these two visible historical statuses are
+     * returned — 'deactivated' and 'deleted' are internal system states.
+     *
+     * @return list<array{signup_id: int, slot_id: int, stand_id: int, status: string, first_name: string, last_name: string, signup_first_name: string|null, signup_last_name: string|null, last_modified_at: string|null, modifier_first_name: string|null}>
+     */
+    public function findHistoricalParticipantsForKermesse(int $kermesseId): array
+    {
+        $si   = $this->db->prefixTable('signups');
+        $sl   = $this->db->prefixTable('slots');
+        $st   = $this->db->prefixTable('stands');
+        $u    = $this->db->prefixTable('users');
+        $hist = implode(', ', array_fill(0, count(self::HISTORICAL_STATUSES), '?'));
+
+        $sql = "SELECT
+                si.id AS signup_id, si.slot_id, sl.stand_id,
+                si.status,
+                u.first_name, u.last_name,
+                si.first_name AS signup_first_name, si.last_name AS signup_last_name,
+                si.last_modified_at, mod_u.first_name AS modifier_first_name
+            FROM {$si} si
+            JOIN {$sl} sl      ON sl.id = si.slot_id
+            JOIN {$st} st      ON st.id = sl.stand_id
+            JOIN {$u}  u       ON u.id  = si.user_id
+            LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
+            WHERE st.kermesse_id = ?
+              AND si.status IN ({$hist})
+              AND si.deleted_at IS NULL
+            ORDER BY si.last_modified_at DESC, u.last_name ASC, si.id ASC";
+
+        $result = $this->db->query($sql, array_merge([$kermesseId], self::HISTORICAL_STATUSES));
+
+        return $result ? $result->getResultArray() : [];
+    }
+
+    /**
      * Return an ACTIVE signup that belongs to $kermesseId (via slot→stand scope),
      * with no user-ownership restriction — used by admin cancel and edit actions.
      *
@@ -325,8 +381,8 @@ class SignupModel extends Model
     }
 
     /**
-     * Cancel a signup from an admin action — no user-ownership restriction.
-     * Returns true when exactly one active row flipped to CANCELLED.
+     * Mark an admin-removed signup as REMOVED (distinct from volunteer self-cancellation).
+     * Returns true when exactly one active row flipped to REMOVED.
      */
     public function markCancelledByAdmin(int $signupId, int $adminUserId): bool
     {
@@ -335,7 +391,7 @@ class SignupModel extends Model
             ->whereNotIn('status', self::INACTIVE_STATUSES)
             ->where('deleted_at', null)
             ->update([
-                'status'     => self::STATUS_CANCELLED,
+                'status'     => self::STATUS_REMOVED,
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
 
