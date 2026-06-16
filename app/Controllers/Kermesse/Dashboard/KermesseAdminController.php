@@ -115,6 +115,11 @@ class KermesseAdminController extends BaseController
             $teamMembers = $roleService->getTeamMembersGroupedByStatus($id);
         }
 
+        // Story 5.9 — "Quitter cette kermesse" : visible uniquement si non-Owner ET
+        // aucune inscription active. On réutilise $myParticipations déjà calculé pour
+        // éviter une requête supplémentaire (la définition d'inscription active est identique).
+        $canLeave = $userRole !== UserRoleModel::ROLE_OWNER && empty($myParticipations);
+
         // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
         // Onglets non autorisés absents du tableau → absents du DOM.
         $tabs = [];
@@ -130,6 +135,7 @@ class KermesseAdminController extends BaseController
             'canModify'             => $canModify,
             'canManageParticipants' => $canManageParticipants,
             'canInvite'             => $canInvite,
+            'canLeave'              => $canLeave,
             'isBenevole'            => $userRole === UserRoleModel::ROLE_BENEVOLE,
             'participantStands'     => $participantStands,
             'myParticipations'      => $myParticipations,

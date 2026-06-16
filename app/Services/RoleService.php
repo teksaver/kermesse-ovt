@@ -378,6 +378,53 @@ class RoleService
     }
 
     /**
+     * Allow any non-Owner member to leave a kermesse entirely (Story 5.9).
+     *
+     * Invariants (in order):
+     *   1. Non-member (row absent)  → failure('unauthorized_role') — idempotent; the
+     *      route filter already blocks probing by non-members, but we must not throw.
+     *   2. Owner                    → failure('unauthorized_role').
+     *   3. Active slot signups      → failure('has_active_signups'), row preserved.
+     *   4. Otherwise                → DELETE the kermesse_user_roles row, success().
+     *
+     * Stable error codes: `unauthorized_role` (pre-existing) and `has_active_signups` (new).
+     */
+    public function leaveKermesse(int $kermesseId, int $userId): LeaveKermesseResult
+    {
+        $existing = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
+
+        if ($existing === null || (string) $existing['role'] === UserRoleModel::ROLE_OWNER) {
+            return LeaveKermesseResult::failure('unauthorized_role');
+        }
+
+        if ($this->hasActiveSlotSignups($kermesseId, $userId)) {
+            return LeaveKermesseResult::failure('has_active_signups');
+        }
+
+        $this->userRoleModel->delete((int) $existing['id']);
+
+        return LeaveKermesseResult::success();
+    }
+
+    /**
+     * Returns true when the user is eligible to leave the kermesse:
+     * not Owner AND no active slot signups.
+     *
+     * Used by controllers to pre-compute the "canLeave" View Model boolean without
+     * exposing hasActiveSlotSignups() beyond this class.
+     */
+    public function canLeaveKermesse(int $kermesseId, int $userId): bool
+    {
+        $role = $this->getRoleForUser($kermesseId, $userId);
+
+        if ($role === null || $role === UserRoleModel::ROLE_OWNER) {
+            return false;
+        }
+
+        return ! $this->hasActiveSlotSignups($kermesseId, $userId);
+    }
+
+    /**
      * Fetch team members (Owner/Admin/Gestionnaire) grouped by status and role.
      * Story 5.5 — Onglet « Équipe ».
      *

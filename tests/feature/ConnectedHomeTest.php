@@ -31,6 +31,9 @@ final class ConnectedHomeTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slots');
+        $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_users');
@@ -85,6 +88,43 @@ final class ConnectedHomeTest extends CIUnitTestCase
                 last_access_at  DATETIME NULL DEFAULT NULL,
                 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        // Story 5.9: HomeController::index() calls canLeaveKermesse() which queries signups.
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_stands (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id   INTEGER NOT NULL,
+                name          TEXT    NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                status        TEXT    NOT NULL DEFAULT "active",
+                created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_slots (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                stand_id   INTEGER NOT NULL,
+                starts_at  DATETIME NOT NULL,
+                ends_at    DATETIME NOT NULL,
+                capacity   INTEGER NOT NULL DEFAULT 1,
+                status     TEXT    NOT NULL DEFAULT "active",
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_signups (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                  INTEGER  NOT NULL,
+                user_id                  INTEGER  NOT NULL,
+                status                   TEXT     NOT NULL DEFAULT "active",
+                last_modified_by_user_id INTEGER  NULL DEFAULT NULL,
+                last_modified_at         DATETIME NULL DEFAULT NULL,
+                deleted_at               DATETIME NULL DEFAULT NULL,
+                created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

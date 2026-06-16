@@ -759,8 +759,16 @@
 
         <?php $myParticipations = $myParticipations ?? []; ?>
         <?php $signupsOpen = $signupsOpen ?? false; ?>
+        <?php $canLeave = $canLeave ?? false; ?>
         <?php if (empty($myParticipations)): ?>
-        <p class="section-placeholder">Vous n'avez aucune inscription active pour cette kermesse.</p>
+        <p class="section-placeholder">Vous n'avez aucune inscription active sur cette kermesse.</p>
+        <?php if ($canLeave): ?>
+        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/leave") ?>" style="margin-top:16px;"
+              onsubmit="if (!confirm('Voulez-vous quitter cette kermesse ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn--secondary btn--sm">Quitter cette kermesse</button>
+        </form>
+        <?php endif; ?>
         <?php else: ?>
         <ul class="my-signups-list">
             <?php foreach ($myParticipations as $participation): ?>

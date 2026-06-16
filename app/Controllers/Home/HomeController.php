@@ -3,7 +3,9 @@
 namespace App\Controllers\Home;
 
 use App\Controllers\BaseController;
+use App\Models\UserModel;
 use App\Models\UserRoleModel;
+use App\Services\RoleService;
 
 /**
  * Global home: public landing page (unauthenticated) and connected home (kermesse list).
@@ -27,7 +29,13 @@ class HomeController extends BaseController
             UserRoleModel::ROLE_BENEVOLE     => 'Bénévole',
         ];
 
-        $kermesses = model(UserRoleModel::class)->findKermessesForUser($userId);
+        $kermesses   = model(UserRoleModel::class)->findKermessesForUser($userId);
+        $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+
+        foreach ($kermesses as &$k) {
+            $k['canLeave'] = $roleService->canLeaveKermesse((int) $k['id'], $userId);
+        }
+        unset($k);
 
         return view('home/connected', [
             'title'      => 'Mes kermesses',

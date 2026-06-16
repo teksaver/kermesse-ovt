@@ -54,6 +54,10 @@ $routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\D
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
 $routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
+// Quitter une kermesse (Story 5.9). Filtre inclut owner : le rejet Owner produit le
+// message FR spécifique côté service/flash plutôt qu'un 403 générique du RoleFilter.
+$routes->post('kermesse/(:num)/leave', '\App\Controllers\Kermesse\Dashboard\LeaveKermesseController::leave/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+
 // ---------------------------------------------------------------------------
 // Lifecycle management — Owner/Admin only (Story 2.5)
 // ---------------------------------------------------------------------------
