@@ -946,12 +946,18 @@
         });
     }
 
-    /* Initialisation : on active la première section (ou celle déjà active dans le HTML) */
-    var activeSidebarBtn = document.querySelector('.sidebar-nav__btn.is-active');
-    if (activeSidebarBtn) {
-        activateSection(activeSidebarBtn.getAttribute('data-tab'));
-    } else if (sidebarBtns.length > 0) {
-        activateSection(sidebarBtns[0].getAttribute('data-tab'));
+    /* Initialisation : hash URL en priorité, sinon première section */
+    var hashTab = window.location.hash ? window.location.hash.slice(1) : null;
+    var hashTabValid = hashTab && document.querySelector('[data-tab-content="' + hashTab + '"]');
+    if (hashTabValid) {
+        activateSection(hashTab);
+    } else {
+        var activeSidebarBtn = document.querySelector('.sidebar-nav__btn.is-active');
+        if (activeSidebarBtn) {
+            activateSection(activeSidebarBtn.getAttribute('data-tab'));
+        } else if (sidebarBtns.length > 0) {
+            activateSection(sidebarBtns[0].getAttribute('data-tab'));
+        }
     }
 
     /* Event listeners Sidebar */
