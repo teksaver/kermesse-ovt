@@ -93,6 +93,9 @@ final class SignupServiceAdminTest extends CIUnitTestCase
             'email'      => 'vol@example.com',
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
+            'stand_name' => 'Pâtisseries',
+            'starts_at'  => '2026-06-20 14:00:00',
+            'ends_at'    => '2026-06-20 16:00:00',
         ];
         $kermesseRow = ['id' => 1, 'name' => 'Kermesse Test', 'status' => 'open'];
 
@@ -107,7 +110,7 @@ final class SignupServiceAdminTest extends CIUnitTestCase
         $emailService = $this->createMock(EmailService::class);
         $emailService->expects($this->once())
             ->method('sendSignupCancellationEmail')
-            ->with('vol@example.com', 'Marie', 'Kermesse Test')
+            ->with('vol@example.com', 'Marie', 'Kermesse Test', 'Pâtisseries (20/06 14h – 16h)')
             ->willReturn(new EmailDeliveryResult(true, null));
 
         $service = $this->buildService(
@@ -120,6 +123,8 @@ final class SignupServiceAdminTest extends CIUnitTestCase
 
         $this->assertTrue($result->success);
         $this->assertTrue($result->emailSent);
+        $this->assertSame('Marie Dupont', $result->context['volunteer_name']);
+        $this->assertSame('Pâtisseries (20/06 14h – 16h)', $result->context['slot_label']);
     }
 
     public function testAdminCancelDoesNotSendEmailWhenNotifyFalse(): void

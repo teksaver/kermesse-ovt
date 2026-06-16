@@ -160,6 +160,7 @@ class EmailService
         string $recipientEmail,
         string $firstName,
         string $kermesseName,
+        string $slotLabel = '',
     ): EmailDeliveryResult {
         return $this->deliver(
             recipientEmail: $recipientEmail,
@@ -168,6 +169,7 @@ class EmailService
             viewData: [
                 'firstName'    => $firstName,
                 'kermesseName' => $kermesseName,
+                'slotLabel'    => $slotLabel,
             ],
             eventType: 'signup_cancellation',
             metadata: [

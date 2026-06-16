@@ -50,7 +50,17 @@ class AdminSignupController extends BaseController
         );
 
         if ($result->success) {
-            $msg = 'L\'inscription a été annulée.';
+            $volunteerName = (string) ($result->context['volunteer_name'] ?? '');
+            $slotLabel     = (string) ($result->context['slot_label']     ?? '');
+
+            if ($volunteerName !== '' && $slotLabel !== '') {
+                $msg = sprintf("L'inscription de %s au créneau %s a été annulée.", $volunteerName, $slotLabel);
+            } elseif ($volunteerName !== '') {
+                $msg = sprintf("L'inscription de %s a été annulée.", $volunteerName);
+            } else {
+                $msg = 'L\'inscription a été annulée.';
+            }
+
             if ($notify && $result->emailSent === true) {
                 $msg .= ' Le bénévole a été notifié par email.';
             } elseif ($notify && $result->emailSent === false) {

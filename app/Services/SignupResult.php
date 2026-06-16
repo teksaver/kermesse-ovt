@@ -18,9 +18,10 @@ final class SignupResult
         public readonly ?bool   $emailSent = null,
     ) {}
 
-    public static function success(int $signupId, int $volunteerId, ?bool $emailSent = null): self
+    /** @param array<string, mixed> $context */
+    public static function success(int $signupId, int $volunteerId, ?bool $emailSent = null, array $context = []): self
     {
-        return new self(true, $signupId, $volunteerId, null, [], $emailSent);
+        return new self(true, $signupId, $volunteerId, null, $context, $emailSent);
     }
 
     /** @param array<string, mixed> $context */

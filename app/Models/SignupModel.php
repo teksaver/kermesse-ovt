@@ -305,12 +305,12 @@ class SignupModel extends Model
      * table (null when never edited). The service uses them to target cancellation emails
      * at the corrected address rather than the stale global profile.
      *
-     * @return array{id: int, user_id: int, slot_id: int, email: string, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null}|null
+     * @return array{id: int, user_id: int, slot_id: int, email: string, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null, stand_name: string, starts_at: string, ends_at: string}|null
      */
     public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
     {
         $row = $this->db->table($this->table . ' si')
-            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, si.email AS signup_email, si.first_name AS signup_first_name', false)
+            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, si.email AS signup_email, si.first_name AS signup_first_name, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->join('users u', 'u.id = si.user_id')

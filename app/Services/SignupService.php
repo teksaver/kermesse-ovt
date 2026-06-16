@@ -215,27 +215,37 @@ class SignupService
             return SignupResult::failure('cancel_failed');
         }
 
-        if (! $notify) {
-            return SignupResult::success($signupId, (int) $signup['user_id']);
-        }
-
-        // Use the admin-corrected email/name on the signup if set; fall back to the
-        // volunteer's global profile (users table) when no correction has been made.
-        $notifyEmail     = ((string) ($signup['signup_email']     ?? '')) !== ''
-            ? (string) $signup['signup_email']
-            : (string) ($signup['email']      ?? '');
+        // Use the admin-corrected name/email on the signup if set; fall back to users table.
         $notifyFirstName = ((string) ($signup['signup_first_name'] ?? '')) !== ''
             ? (string) $signup['signup_first_name']
             : (string) ($signup['first_name'] ?? '');
+        $notifyLastName  = (string) ($signup['last_name'] ?? '');
+        $notifyEmail     = ((string) ($signup['signup_email'] ?? '')) !== ''
+            ? (string) $signup['signup_email']
+            : (string) ($signup['email'] ?? '');
+
+        $volunteerName = trim($notifyFirstName . ' ' . $notifyLastName) ?: $notifyEmail;
+        $slotLabel     = $this->formatSlotLabel(
+            standName: (string) ($signup['stand_name'] ?? ''),
+            startsAt:  (string) ($signup['starts_at']  ?? ''),
+            endsAt:    (string) ($signup['ends_at']    ?? ''),
+        );
+
+        $context = ['volunteer_name' => $volunteerName, 'slot_label' => $slotLabel];
+
+        if (! $notify) {
+            return SignupResult::success($signupId, (int) $signup['user_id'], null, $context);
+        }
 
         $kermesse  = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
         $emailSent = $this->sendCancellationEmailSafely(
             email:        $notifyEmail,
             firstName:    $notifyFirstName,
             kermesseName: (string) ($kermesse['name'] ?? ''),
+            slotLabel:    $slotLabel,
         );
 
-        return SignupResult::success($signupId, (int) $signup['user_id'], $emailSent);
+        return SignupResult::success($signupId, (int) $signup['user_id'], $emailSent, $context);
     }
 
     /**
@@ -299,9 +309,30 @@ class SignupService
     }
 
     /**
+     * "Pâtisseries (20/06 14h – 16h30)" — safe fallback if dates are unparseable.
+     */
+    private function formatSlotLabel(string $standName, string $startsAt, string $endsAt): string
+    {
+        $start = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $startsAt);
+        $end   = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $endsAt);
+
+        if ($start === false || $end === false) {
+            return $standName;
+        }
+
+        $fmt = static function (\DateTimeImmutable $dt): string {
+            return $dt->format('i') === '00'
+                ? $dt->format('H') . 'h'
+                : $dt->format('H') . 'h' . $dt->format('i');
+        };
+
+        return sprintf('%s (%s %s – %s)', $standName, $start->format('d/m'), $fmt($start), $fmt($end));
+    }
+
+    /**
      * Send the admin cancellation notification email. Every failure is absorbed.
      */
-    private function sendCancellationEmailSafely(string $email, string $firstName, string $kermesseName): bool
+    private function sendCancellationEmailSafely(string $email, string $firstName, string $kermesseName, string $slotLabel = ''): bool
     {
         if ($email === '') {
             return false;
@@ -312,6 +343,7 @@ class SignupService
                 $email,
                 $firstName,
                 $kermesseName,
+                $slotLabel,
             );
 
             return $delivery->sent;
