@@ -225,18 +225,28 @@ class SignupModel extends Model
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
     {
-        return $this->db->table($this->table . ' si')
+        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
+
+        $builder = $this->db->table($this->table . ' si')
             ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
-            ->where('si.user_id', $userId)
             ->where('st.kermesse_id', $kermesseId)
             ->whereNotIn('si.status', self::INACTIVE_STATUSES)
             ->where('si.deleted_at', null)
             ->orderBy('sl.starts_at', 'ASC')
-            ->orderBy('sl.id', 'ASC')
-            ->get()
-            ->getResultArray();
+            ->orderBy('sl.id', 'ASC');
+
+        if ($userRow !== null && $userRow->email !== '') {
+            $builder->groupStart()
+                ->where('si.user_id', $userId)
+                ->orWhere('si.email', $userRow->email)
+                ->groupEnd();
+        } else {
+            $builder->where('si.user_id', $userId);
+        }
+
+        return $builder->get()->getResultArray();
     }
 
     /**
@@ -438,17 +448,27 @@ class SignupModel extends Model
      */
     public function findActiveOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
     {
-        $row = $this->db->table($this->table . ' si')
+        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
+
+        $builder = $this->db->table($this->table . ' si')
             ->select('si.id, si.user_id, si.slot_id')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('si.id', $signupId)
-            ->where('si.user_id', $userId)
             ->where('st.kermesse_id', $kermesseId)
             ->whereNotIn('si.status', self::INACTIVE_STATUSES)
-            ->where('si.deleted_at', null)
-            ->get()
-            ->getRowArray();
+            ->where('si.deleted_at', null);
+
+        if ($userRow !== null && $userRow->email !== '') {
+            $builder->groupStart()
+                ->where('si.user_id', $userId)
+                ->orWhere('si.email', $userRow->email)
+                ->groupEnd();
+        } else {
+            $builder->where('si.user_id', $userId);
+        }
+
+        $row = $builder->get()->getRowArray();
 
         return $row ?: null;
     }

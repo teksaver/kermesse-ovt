@@ -124,6 +124,26 @@ final class SignupModelTest extends CIUnitTestCase
         $this->assertSame([], $rows);
     }
 
+    public function testReturnsActiveSignupMatchedByEmailWhenUserIdIsZeroForStateless(): void
+    {
+        $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
+
+        // On simule une inscription stateless publique (user_id = 0)
+        db_connect()->table('signups')->insert([
+            'slot_id'    => $slotId,
+            'user_id'    => 0,
+            'email'      => 'benevole@signupmodel.test', // Correspond à l'email de $this->userId
+            'status'     => SignupModel::STATUS_ACTIVE,
+            'deleted_at' => null,
+        ]);
+
+        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('Stand Buvette', $rows[0]['stand_name']);
+    }
+
+
     // ------------------------------------------------------------------
     // Story 4.3 — findActiveOwnedInKermesse() : garde ownership + scope kermesse
     // ------------------------------------------------------------------
