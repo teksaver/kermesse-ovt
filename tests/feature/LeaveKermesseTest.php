@@ -339,7 +339,7 @@ final class LeaveKermesseTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id     INTEGER NOT NULL,
-                user_id         INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role            TEXT    NOT NULL,
                 invited_by      INTEGER,
                 invited_at      DATETIME NULL DEFAULT NULL,
@@ -356,7 +356,7 @@ final class LeaveKermesseTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -368,22 +368,33 @@ final class LeaveKermesseTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER NOT NULL DEFAULT 1,
-                status     TEXT    NOT NULL DEFAULT "active",
+                status     TEXT    NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
-                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id                 INTEGER NOT NULL,
-                user_id                 INTEGER NOT NULL,
-                status                  TEXT    NOT NULL DEFAULT "active",
-                last_modified_by_user_id INTEGER NULL DEFAULT NULL,
-                last_modified_at        DATETIME NULL DEFAULT NULL,
-                deleted_at              DATETIME NULL DEFAULT NULL,
-                created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

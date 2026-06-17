@@ -57,6 +57,12 @@ class SignupModel extends Model
         'email',
         'phone',
         'admin_notes',
+        'created_by',
+        'viewed_at',
+        'accepted_at',
+        'rejected_at',
+        'canceled_at',
+        'canceled_by',
     ];
 
     /**
@@ -96,18 +102,25 @@ class SignupModel extends Model
      * this transaction's snapshot (the user-row lock alone does not refresh
      * plain reads under REPEATABLE READ).
      */
-    public function findActiveByUserAndSlot(int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
+    public function findActiveByEmailOrUserAndSlot(string $email, ?int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
     {
         $conn  = $db ?? $this->db;
         $table = $conn->prefixTable('signups');
         $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
+        $userCond = $userId !== null ? "OR user_id = ?" : "";
+        $params = [$slotId, $email];
+        if ($userId !== null) {
+            $params[] = $userId;
+        }
+        $params = array_merge($params, self::INACTIVE_STATUSES);
+
         $result = $conn->query(
             "SELECT id, status FROM {$table}
-             WHERE user_id = ? AND slot_id = ?
+             WHERE slot_id = ? AND (email = ? {$userCond})
                AND status NOT IN ({$inact}) AND deleted_at IS NULL
              LIMIT 1" . $this->forUpdateSuffix($conn),
-            array_merge([$userId, $slotId], self::INACTIVE_STATUSES),
+            $params,
         );
 
         if ($result === false) {
@@ -125,8 +138,9 @@ class SignupModel extends Model
      * Used for overlap detection inside a transaction. On MySQLi this is a locking read
      * for the same snapshot-freshness reason as findActiveByUserAndSlot.
      */
-    public function findOverlappingActiveByUser(
-        int    $userId,
+    public function findOverlappingActiveByEmailOrUser(
+        string $email,
+        ?int   $userId,
         string $startsAt,
         string $endsAt,
         int    $excludeSlotId,
@@ -137,16 +151,17 @@ class SignupModel extends Model
         $tSlots  = $conn->prefixTable('slots');
         $inact   = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
-        $params = array_merge(
-            [$userId, $excludeSlotId],
-            self::INACTIVE_STATUSES,
-            [$endsAt, $startsAt]
-        );
+        $userCond = $userId !== null ? "OR user_id = ?" : "";
+        $params = [$excludeSlotId, $email];
+        if ($userId !== null) {
+            $params[] = $userId;
+        }
+        $params = array_merge($params, self::INACTIVE_STATUSES);
 
         $signups = $conn->query(
             "SELECT id, slot_id FROM {$tSign}
-             WHERE user_id = ? AND slot_id != ? AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
-            array_merge([$userId, $excludeSlotId], self::INACTIVE_STATUSES)
+             WHERE slot_id != ? AND (email = ? {$userCond}) AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
+            $params
         )->getResultArray();
 
         if (empty($signups)) {
@@ -527,5 +542,24 @@ class SignupModel extends Model
             ]);
 
         return $this->db->affectedRows() === 1;
+    }
+
+    /**
+     * Attaches orphan signups to a user.
+     * Updates signups with matching email and null user_id.
+     *
+     * @return int Number of affected rows
+     */
+    public function attachOrphansToUser(string $email, int $userId): int
+    {
+        $this->builder()
+             ->where('email', strtolower(trim($email)))
+             ->where('user_id', null)
+             ->update([
+                 'user_id'   => $userId,
+                 'viewed_at' => date('Y-m-d H:i:s'),
+             ]);
+
+        return $this->db->affectedRows();
     }
 }

@@ -19,7 +19,7 @@ final class SignupResult
     ) {}
 
     /** @param array<string, mixed> $context */
-    public static function success(int $signupId, int $volunteerId, ?bool $emailSent = null, array $context = []): self
+    public static function success(int $signupId, ?int $volunteerId, ?bool $emailSent = null, array $context = []): self
     {
         return new self(true, $signupId, $volunteerId, null, $context, $emailSent);
     }

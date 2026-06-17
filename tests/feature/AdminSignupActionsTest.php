@@ -29,6 +29,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     private int $volunteerId = 0;
     private int $kermesseId = 0;
     private int $signupId   = 0;
+    private int $slotId     = 0;
 
     protected function setUp(): void
     {
@@ -181,6 +182,167 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+    // adminAddSignup — Story 5.11
+    // ------------------------------------------------------------------
+
+    public function testAdminAddSignupCreatesSignupWithBasicFields(): void
+    {
+        $db       = db_connect();
+        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Nouveau',
+                'last_name'   => 'Bénévole',
+                'email'       => 'nouveau.benevole@test-5-11.com',
+                'phone'       => '',
+            ]);
+
+        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $this->assertSame($countBefore + 1, $countAfter);
+    }
+
+    public function testAdminAddSignupWorksWhenKermesseClosed(): void
+    {
+        // AC3 override: admin may add signups even when kermesse is closed.
+        db_connect()->table('kermesses')
+            ->where('id', $this->kermesseId)
+            ->update(['status' => 'closed']);
+
+        $db          = db_connect();
+        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Fermé',
+                'last_name'   => 'Override',
+                'email'       => 'ferme.override@test-5-11.com',
+                'phone'       => '',
+            ]);
+
+        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $this->assertSame($countBefore + 1, $countAfter);
+    }
+
+    public function testAdminAddSignupStampsLastModifiedByUserId(): void
+    {
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Tampon',
+                'last_name'   => 'Admin',
+                'email'       => 'tampon.admin@test-5-11.com',
+                'phone'       => '',
+            ]);
+
+        $row = db_connect()
+            ->table('signups')
+            ->where('slot_id', $this->slotId)
+            ->orderBy('id', 'DESC')
+            ->limit(1)
+            ->get()
+            ->getRowArray();
+
+        $this->assertNotNull($row);
+        $this->assertSame($this->adminId, (int) $row['last_modified_by_user_id']);
+        $this->assertNotNull($row['last_modified_at']);
+    }
+
+    public function testAdminAddSignupRedirectsToInscritsTab(): void
+    {
+        $result = $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Redirect',
+                'last_name'   => 'Test',
+                'email'       => 'redirect.test@test-5-11.com',
+                'phone'       => '',
+            ]);
+
+        $result->assertRedirect();
+        $this->assertStringContainsString(
+            "kermesse/{$this->kermesseId}#inscrits",
+            (string) $result->response()->getHeader('Location'),
+        );
+    }
+
+    public function testAdminAddSignupRequiresEmail(): void
+    {
+        $db          = db_connect();
+        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Sans',
+                'last_name'   => 'Email',
+                'email'       => '',
+            ]);
+
+        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $this->assertSame($countBefore, $countAfter, 'Signup should not be created when email is missing.');
+    }
+
+    public function testAdminAddSignupRequiresFirstName(): void
+    {
+        $db          = db_connect();
+        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => '',
+                'last_name'   => 'SansPrenom',
+                'email'       => 'sans.prenom@test-5-11.com',
+            ]);
+
+        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $this->assertSame($countBefore, $countAfter, 'Signup should not be created when first name is missing.');
+    }
+
+    public function testAdminAddSignupRejectsFullSlot(): void
+    {
+        // Fill slot to capacity (3 places) — 1 signup already exists from fixture.
+        $db = db_connect();
+        $existingUserId = $this->volunteerId;
+
+        // Create 2 more volunteers and fill the slot.
+        foreach (['fill1@test-5-11.com', 'fill2@test-5-11.com'] as $e) {
+            $db->table('users')->insert([
+                'email' => $e, 'email_hash' => hash('sha256', $e),
+                'first_name' => 'Fill', 'last_name' => 'Slot', 'phone' => '',
+            ]);
+            $uid = (int) $db->insertID();
+            $db->table('signups')->insert([
+                'slot_id' => $this->slotId, 'user_id' => $uid, 'status' => 'active',
+            ]);
+        }
+
+        $countBefore = (int) $db->table('signups')
+            ->where('slot_id', $this->slotId)
+            ->whereNotIn('status', ['cancelled', 'removed', 'deactivated', 'deleted', 'refused'])
+            ->countAllResults();
+        $this->assertSame(3, $countBefore, 'Slot should be full before the test.');
+
+        $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+                csrf_token()  => csrf_hash(),
+                'first_name'  => 'Trop',
+                'last_name'   => 'Tard',
+                'email'       => 'trop.tard@test-5-11.com',
+                'phone'       => '',
+            ]);
+
+        $countAfter = (int) $db->table('signups')
+            ->where('slot_id', $this->slotId)
+            ->whereNotIn('status', ['cancelled', 'removed', 'deactivated', 'deleted', 'refused'])
+            ->countAllResults();
+        $this->assertSame(3, $countAfter, 'Signup count should remain 3 when slot is full.');
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -237,10 +399,10 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             'capacity'  => 3,
             'status'    => 'active',
         ]);
-        $slotId = (int) $db->insertID();
+        $this->slotId = (int) $db->insertID();
 
         $db->table('signups')->insert([
-            'slot_id'    => $slotId,
+            'slot_id'    => $this->slotId,
             'user_id'    => $this->volunteerId,
             'status'     => 'active',
             'deleted_at' => null,
@@ -288,7 +450,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id     INTEGER NOT NULL,
-                user_id         INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role            TEXT    NOT NULL,
                 invited_by      INTEGER,
                 invited_at      DATETIME NULL DEFAULT NULL,
@@ -305,7 +467,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -317,7 +479,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -326,16 +488,22 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
-                user_id                   INTEGER  NOT NULL,
-                status                    TEXT     NOT NULL DEFAULT "active",
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
                 first_name                TEXT     NULL DEFAULT NULL,
                 last_name                 TEXT     NULL DEFAULT NULL,
                 email                     TEXT     NULL DEFAULT NULL,
                 phone                     TEXT     NULL DEFAULT NULL,
                 admin_notes               TEXT     NULL DEFAULT NULL,
-                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
-                last_modified_at          DATETIME NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
                 created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

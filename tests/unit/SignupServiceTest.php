@@ -109,7 +109,7 @@ final class SignupServiceTest extends CIUnitTestCase
 
     /**
      * Build a SignupModel mock with insert preconfigured.
-     * countActiveForSlot/findActiveByUserAndSlot/findOverlappingActiveByUser
+     * countActiveForSlot/findActiveByEmailOrUserAndSlot/findOverlappingActiveByEmailOrUser
      * are left unconfigured so callers can override without FIFO stub conflicts.
      * Unconfigured mock methods return null — which the service treats as "no issue" (0
      * active signups, no duplicate, no overlap) for happy-path tests.
@@ -118,7 +118,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $mock = $this->getMockBuilder(SignupModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByUserAndSlot', 'findOverlappingActiveByUser'])
+            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
             ->getMock();
         $mock->method('skipValidation')->willReturnSelf();
         $mock->method('insert')->willReturn($returnedId);
@@ -166,17 +166,21 @@ final class SignupServiceTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // Story 3.3 — AC1: New email → creates user + signup
+    // Story 5.14 — AC: New email → creates signup with null user_id, no user created
     // ------------------------------------------------------------------
 
-    public function testNewEmailCreatesUserAndReturnsSuccess(): void
+    public function testNewEmailDoesNotCreateUserAndReturnsSuccessWithNullUserId(): void
     {
         $userMock = $this->buildMockUserModel(42);
         $userMock->method('findByEmailHash')->willReturn(null);
-        $userMock->expects($this->once())->method('insert');
+        $userMock->expects($this->never())->method('insert');
 
         $signupMock = $this->buildMockSignupModel(99);
-        $signupMock->expects($this->once())->method('insert');
+        $signupMock->expects($this->once())->method('insert')->willReturnCallback(function (array $data) {
+            $this->assertNull($data['user_id']);
+            $this->assertSame('marie@exemple.fr', $data['email']);
+            return 99;
+        });
 
         $service = $this->buildService($userMock, $signupMock);
         $result  = $service->signup(1, 10, $this->validFields());
@@ -184,6 +188,7 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertInstanceOf(SignupResult::class, $result);
         $this->assertTrue($result->success);
         $this->assertSame(99, $result->signupId);
+        $this->assertNull($result->volunteerId);
     }
 
     // ------------------------------------------------------------------
@@ -243,7 +248,7 @@ final class SignupServiceTest extends CIUnitTestCase
         );
     }
 
-    public function testNormalizedEmailStoredOnNewUser(): void
+    public function testNormalizedEmailStoredOnNewSignup(): void
     {
         $capturedData = null;
 
@@ -253,14 +258,21 @@ final class SignupServiceTest extends CIUnitTestCase
             ->getMock();
         $userMock->method('findByEmailHash')->willReturn(null);
         $userMock->method('skipValidation')->willReturnSelf();
-        $userMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+        $userMock->expects($this->never())->method('insert');
+
+        $signupMock = $this->getMockBuilder(SignupModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
+            ->getMock();
+        $signupMock->method('skipValidation')->willReturnSelf();
+        $signupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
             $capturedData = $data;
             return 1;
         });
 
         $fields = array_merge($this->validFields(), ['email' => 'Marie@Example.FR']);
 
-        $service = $this->buildService($userMock, $this->buildMockSignupModel());
+        $service = $this->buildService($userMock, $signupMock);
         $service->signup(1, 10, $fields);
 
         $this->assertSame('marie@example.fr', $capturedData['email'] ?? null);
@@ -274,12 +286,17 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $capturedSignup = null;
 
-        $userMock = $this->buildMockUserModel(55);
-        $userMock->method('findByEmailHash')->willReturn(null);
+        $userMock = $this->getMockBuilder(UserModel::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
+            ->getMock();
+        $userMock->method('skipValidation')->willReturnSelf();
+        $userMock->method('insert')->willReturn(55);
+        $userMock->method('findByEmailHash')->willReturn(['id' => 55, 'email' => 'marie@exemple.fr']);
 
         $signupMock = $this->getMockBuilder(SignupModel::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByUserAndSlot', 'findOverlappingActiveByUser'])
+            ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
             ->getMock();
         $signupMock->method('skipValidation')->willReturnSelf();
         $signupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedSignup) {
@@ -365,7 +382,7 @@ final class SignupServiceTest extends CIUnitTestCase
     public function testSignupRefusedWhenDuplicateExists(): void
     {
         $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findActiveByUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
         $service = $this->buildService(signupModel: $signupMock);
 
@@ -388,7 +405,7 @@ final class SignupServiceTest extends CIUnitTestCase
         ];
 
         $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByUser')->willReturn($conflictingSlot);
+        $signupMock->method('findOverlappingActiveByEmailOrUser')->willReturn($conflictingSlot);
 
         $service = $this->buildService(signupModel: $signupMock);
 
@@ -403,7 +420,7 @@ final class SignupServiceTest extends CIUnitTestCase
     public function testOverlapContextCarriesConflictingTimes(): void
     {
         $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByUser')->willReturn([
+        $signupMock->method('findOverlappingActiveByEmailOrUser')->willReturn([
             'starts_at' => '2026-09-12 11:00:00',
             'ends_at'   => '2026-09-12 12:30:00',
         ]);
@@ -422,7 +439,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         $signupMock = $this->buildMockSignupModel();
         $signupMock->method('countActiveForSlot')->willReturn(5);
-        $signupMock->method('findActiveByUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
         $service = $this->buildService(
             signupModel: $signupMock,
@@ -483,7 +500,7 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         // A failed overlap check must abort the signup, never pass as "no overlap"
         $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByUser')
+        $signupMock->method('findOverlappingActiveByEmailOrUser')
             ->willThrowException(new DatabaseException('overlap check failed'));
 
         $result = $this->buildService(signupModel: $signupMock)->signup(1, 10, $this->validFields());
@@ -492,38 +509,7 @@ final class SignupServiceTest extends CIUnitTestCase
         $this->assertSame('transaction_failed', $result->errorCode);
     }
 
-    // ------------------------------------------------------------------
-    // Story 3.3 — user insert race: the duplicate-key loser must reuse
-    // the competitor's committed user via the locking re-read
-    // ------------------------------------------------------------------
-
-    public function testUserInsertRaceFallsBackToExistingUser(): void
-    {
-        $userMock = $this->getMockBuilder(UserModel::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods(['findByEmailHash', 'skipValidation', 'insert'])
-            ->getMock();
-        // Plain lookup misses (stale snapshot), insert loses the unique-key race,
-        // the locking re-read then sees the competitor's committed row.
-        // Third call: divergence-check locking read — returns same existing row.
-        $userMock->method('findByEmailHash')
-            ->willReturnOnConsecutiveCalls(
-                null,
-                ['id' => 7, 'email' => 'marie@exemple.fr'],
-                ['id' => 7, 'email' => 'marie@exemple.fr', 'first_name' => 'Marie', 'last_name' => 'Dupont', 'phone' => '0612345678'],
-            );
-        $userMock->method('skipValidation')->willReturnSelf();
-        $userMock->method('insert')
-            ->willThrowException(new DatabaseException('Duplicate entry for uq_users_email_hash'));
-
-        $signupMock = $this->buildMockSignupModel(123);
-        $signupMock->expects($this->once())->method('insert');
-
-        $result = $this->buildService($userMock, $signupMock)->signup(1, 10, $this->validFields());
-
-        $this->assertTrue($result->success);
-        $this->assertSame(7, $result->volunteerId);
-    }
+    // Removed testUserInsertRaceFallsBackToExistingUser because we no longer insert a user during signup
 
     // ------------------------------------------------------------------
     // Story 3.5 — confirmation email sent after commit, never blocking
@@ -561,7 +547,7 @@ final class SignupServiceTest extends CIUnitTestCase
         $emailMock->expects($this->never())->method('sendSignupConfirmationEmail');
 
         $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findActiveByUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
         $result = $this->buildService(signupModel: $signupMock, emailService: $emailMock)
             ->signup(1, 10, $this->validFields());

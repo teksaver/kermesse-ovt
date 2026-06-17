@@ -84,7 +84,7 @@ final class CreateKermesseTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id  INTEGER NOT NULL,
-                user_id      INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
                 invited_at      DATETIME NULL DEFAULT NULL,
@@ -101,7 +101,7 @@ final class CreateKermesseTest extends CIUnitTestCase
                 kermesse_id    INTEGER NOT NULL,
                 name           TEXT    NOT NULL,
                 display_order  INTEGER NOT NULL DEFAULT 0,
-                status         TEXT    NOT NULL DEFAULT "active",
+                status         TEXT    NOT NULL DEFAULT \'active\',
                 created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -143,7 +143,7 @@ final class CreateKermesseTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -152,8 +152,8 @@ final class CreateKermesseTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
-                user_id                   INTEGER  NOT NULL,
-                status                    TEXT     NOT NULL DEFAULT "active",
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
@@ -162,6 +162,12 @@ final class CreateKermesseTest extends CIUnitTestCase
                 email                     TEXT     NULL DEFAULT NULL,
                 phone                     TEXT     NULL DEFAULT NULL,
                 admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
                 created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

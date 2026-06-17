@@ -629,10 +629,10 @@ final class SignupModelTest extends CIUnitTestCase
         ');
         $db->query('
             DROP TABLE IF EXISTS db_signups;
-            CREATE TABLE db_signups (
+            CREATE TABLE IF NOT EXISTS db_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
-                user_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
                 status                    TEXT     NOT NULL DEFAULT "active",
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
@@ -642,6 +642,12 @@ final class SignupModelTest extends CIUnitTestCase
                 email                     TEXT     NULL DEFAULT NULL,
                 phone                     TEXT     NULL DEFAULT NULL,
                 admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
                 created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

@@ -24,7 +24,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query('
             CREATE TABLE IF NOT EXISTS db_profile_divergences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 kermesse_id INTEGER NOT NULL,
                 signup_id INTEGER,
                 submitted_first_name TEXT NOT NULL DEFAULT \'\',
@@ -87,13 +87,26 @@ final class PublicSignupFormTest extends CIUnitTestCase
         ');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_signups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT \'active\',
-                deleted_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -452,7 +465,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     // Story 3.3 — AC1: valid POST creates user + signup, redirects
     // ------------------------------------------------------------------
 
-    public function testValidSubmitCreatesUserRowInDb(): void
+    public function testValidSubmitDoesNotCreateUserRowInDb(): void
     {
         $kermesseId = $this->insertKermesse('ecole-create-user');
         $standId    = $this->insertStand($kermesseId);
@@ -468,9 +481,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db  = db_connect();
         $row = $db->query("SELECT * FROM db_users WHERE email = 'marie@exemple.fr'")->getRowArray();
 
-        $this->assertNotNull($row, 'A user row must be created after successful signup');
-        $this->assertSame('Marie', $row['first_name']);
-        $this->assertSame('Dupont', $row['last_name']);
+        $this->assertNull($row, 'No user row should be created after successful signup (Story 5.14)');
     }
 
     public function testValidSubmitCreatesSignupRow(): void
@@ -527,19 +538,18 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $this->csrfPost("k/ecole-case-norm/slots/{$slotId}/signup", [
-            'first_name' => 'Marie',
-            'last_name'  => 'Dupont',
-            'email'      => 'Marie@EXEMPLE.FR',
+            'first_name' => 'John',
+            'last_name'  => 'Doe',
+            'email'      => ' JOHN.Doe@Example.COM  ',
             'phone'      => '', 
         ]);
 
-        $db  = db_connect();
-        $row = $db->query(
-            "SELECT email FROM db_users WHERE email_hash = '" . hash('sha256', 'marie@exemple.fr') . "'"
+        $signup = db_connect()->query(
+            "SELECT email FROM db_signups WHERE email = 'john.doe@example.com'"
         )->getRowArray();
 
-        $this->assertNotNull($row);
-        $this->assertSame('marie@exemple.fr', $row['email'], 'Stored email must be normalized to lowercase');
+        $this->assertNotNull($signup);
+        $this->assertSame('john.doe@example.com', $signup['email']);
     }
 
     // ------------------------------------------------------------------

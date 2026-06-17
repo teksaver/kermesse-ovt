@@ -114,6 +114,19 @@ class MagicLinkController extends BaseController
             'is_logged_in' => true,
         ]);
 
+        // Story 5.14: Rapatrier les inscriptions orphelines (invités) et acter leur prise de connaissance.
+        $signupService = new \App\Services\SignupService(
+            userModel:     model(\App\Models\UserModel::class),
+            signupModel:   model(\App\Models\SignupModel::class),
+            kermesseModel: model(\App\Models\KermesseModel::class),
+            slotModel:     model(\App\Models\SlotModel::class),
+            db:            \Config\Database::connect(),
+            emailService:  new \App\Services\EmailService(),
+            standModel:    model(\App\Models\StandModel::class),
+            tokenService:  new \App\Services\TokenService(),
+        );
+        $signupService->resolveOrphanSignups($userRecord['email'], $userId);
+
         // Story 5.10 (Stateless): first login and returning logins are handled identically,
         // we just record the timestamp and proceed directly. Divergences are gone.
         $profileService = new ProfileService($userModel);

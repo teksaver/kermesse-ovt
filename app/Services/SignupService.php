@@ -55,7 +55,7 @@ class SignupService
      *
      * @param array<string, mixed> $fields  Validated: first_name, last_name, email, phone
      */
-    public function signup(int $slotId, int $kermesseId, array $fields): SignupResult
+    public function signup(int $slotId, int $kermesseId, array $fields, ?int $createdBy = null): SignupResult
     {
         $email = strtolower(trim((string) ($fields['email'] ?? '')));
 
@@ -82,7 +82,7 @@ class SignupService
         }
 
         try {
-            $result = $this->signupWithinTransaction($db, $slotId, $kermesseId, $email, $fields);
+            $result = $this->signupWithinTransaction($db, $slotId, $kermesseId, $email, $fields, $createdBy);
         } catch (DatabaseException $e) {
             $db->transRollback();
             log_message('error', 'Signup transaction aborted: ' . $e->getMessage());
@@ -110,7 +110,7 @@ class SignupService
             ? $this->sendConfirmationEmailSafely($kermesse, $slot, $email, $fields)
             : false;
 
-        return SignupResult::success((int) $result->signupId, (int) $result->volunteerId, $emailSent);
+        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
     }
 
     /**
@@ -146,6 +146,86 @@ class SignupService
         }
 
         return SignupResult::success($signupId, $userId);
+    }
+
+    /**
+     * Admin-initiated manual signup — Story 5.11.
+     *
+     * Identical invariants to signup() (capacity, duplicate, overlap, slot status) with
+     * one deliberate override: the kermesse lifecycle check is skipped so admins can
+     * register volunteers even when the kermesse is "closed" (AC3).
+     *
+     * stampAdminModification runs inside the same transaction as the insert so
+     * last_modified_by_user_id is committed atomically with the signup row.
+     *
+     * The optional confirmation email is sent post-commit and absorbed on failure
+     * (same pattern as signup(), story 3.5 AC4).
+     *
+     * Failure codes (inherited from signupWithinTransaction):
+     *   signups_not_open | slot_full | slot_unavailable | duplicate_signup
+     *   overlap_conflict | volunteer_insert_failed | signup_insert_failed
+     *   transaction_failed
+     */
+    public function createSignupByAdmin(AdminCreateSignupDTO $dto): SignupResult
+    {
+        $email = strtolower(trim($dto->email));
+        if ($email === '') {
+            return SignupResult::failure('volunteer_insert_failed');
+        }
+
+        // Admin override: kermesse must exist, but does NOT need to be "open" (AC3).
+        $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($dto->kermesseId);
+        if ($kermesse === null) {
+            return SignupResult::failure('signups_not_open');
+        }
+
+        $db = $this->db ?? db_connect();
+        $this->assertSharedConnection($db);
+
+        if (! $db->transBegin()) {
+            return SignupResult::failure('transaction_failed');
+        }
+
+        try {
+            $result = $this->signupWithinTransaction($db, $dto->slotId, $dto->kermesseId, $email, [
+                'first_name' => $dto->firstName,
+                'last_name'  => $dto->lastName,
+                'phone'      => $dto->phone,
+            ], $dto->adminUserId);
+
+            if (! $result->success) {
+                $db->transRollback();
+
+                return $result;
+            }
+
+            // Stamp admin tracking inside the same transaction (AC3 — last_modified_by_user_id).
+            $this->signupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
+        } catch (DatabaseException $e) {
+            $db->transRollback();
+            log_message('error', 'createSignupByAdmin transaction aborted: ' . $e->getMessage());
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        if (! $db->transCommit()) {
+            $db->transRollback();
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        // Post-commit: optional confirmation email. Failure is absorbed (story 3.5 AC4).
+        $slot      = $result->context['slot'] ?? null;
+        $emailSent = null;
+
+        if ($dto->sendConfirmationEmail && is_array($slot)) {
+            $emailSent = $this->sendConfirmationEmailSafely($kermesse, $slot, $email, [
+                'first_name' => $dto->firstName,
+                'last_name'  => $dto->lastName,
+            ]);
+        }
+
+        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
     }
 
     /**
@@ -369,6 +449,7 @@ class SignupService
         int $kermesseId,
         string $email,
         array $fields,
+        ?int $createdBy = null,
     ): SignupResult {
         // Lock the slot row so concurrent transactions serialize on the capacity check;
         // the count below is then this transaction's first plain read and its snapshot
@@ -391,22 +472,14 @@ class SignupService
             return SignupResult::failure('slot_full');
         }
 
-        $userId = $this->findOrCreateUser($db, $email, $fields);
-        if ($userId === null) {
-            return SignupResult::failure('volunteer_insert_failed');
-        }
+        $userId = $this->findUserByEmail($db, $email);
 
-        // One locking read does both jobs: it acquires the FOR UPDATE lock on the user
-        // row (serializing same-user submissions before the duplicate/overlap checks,
-        // which are themselves locking reads — see SignupModel) AND returns the stored
-        // profile for divergence detection. A second lock on the same row would be redundant.
-        $storedUser = $this->userModel->findByEmailHash($this->userModel->hashEmail($email), $db, true);
-
-        if ($this->signupModel->findActiveByUserAndSlot($userId, $slotId, $db) !== null) {
+        if ($this->signupModel->findActiveByEmailOrUserAndSlot($email, $userId, $slotId, $db) !== null) {
             return SignupResult::failure('duplicate_signup');
         }
 
-        $overlap = $this->signupModel->findOverlappingActiveByUser(
+        $overlap = $this->signupModel->findOverlappingActiveByEmailOrUser(
+            $email,
             $userId,
             (string) $slot['starts_at'],
             (string) $slot['ends_at'],
@@ -421,23 +494,30 @@ class SignupService
         }
 
         $signupId = $this->signupModel->skipValidation(true)->insert([
-            'slot_id' => $slotId,
-            'user_id' => $userId,
-            'status'  => SignupModel::STATUS_ACTIVE,
+            'slot_id'    => $slotId,
+            'user_id'    => $userId,
+            'status'     => SignupModel::STATUS_ACTIVE,
+            'email'      => $email,
+            'first_name' => (string) ($fields['first_name'] ?? ''),
+            'last_name'  => (string) ($fields['last_name'] ?? ''),
+            'phone'      => (string) ($fields['phone'] ?? ''),
+            'created_by' => $createdBy,
         ]);
 
         if ($signupId === false) {
             return SignupResult::failure('signup_insert_failed');
         }
 
-        // Assign benevole role so the volunteer can access the dashboard (Story 4.1).
-        // INSERT IGNORE: preserves any higher role (owner/admin/gestionnaire) if the
-        // user was already a member of this kermesse before signing up as volunteer.
-        $db->table('kermesse_user_roles')->ignore(true)->insert([
-            'kermesse_id' => $kermesseId,
-            'user_id'     => $userId,
-            'role'        => UserRoleModel::ROLE_BENEVOLE,
-        ]);
+        if ($userId !== null) {
+            // Assign benevole role so the volunteer can access the dashboard (Story 4.1).
+            // INSERT IGNORE: preserves any higher role (owner/admin/gestionnaire) if the
+            // user was already a member of this kermesse before signing up as volunteer.
+            $db->table('kermesse_user_roles')->ignore(true)->insert([
+                'kermesse_id' => $kermesseId,
+                'user_id'     => $userId,
+                'role'        => UserRoleModel::ROLE_BENEVOLE,
+            ]);
+        }
 
 
 
@@ -488,44 +568,24 @@ class SignupService
     }
 
     /**
-     * Find the global user by normalized email or create it, surviving the
-     * concurrent-creation race on the uq_users_email_hash unique key.
+     * Find the global user by normalized email.
      */
-    private function findOrCreateUser(ConnectionInterface $db, string $email, array $fields): ?int
+    private function findUserByEmail(ConnectionInterface $db, string $email): ?int
     {
         $emailHash = $this->userModel->hashEmail($email);
-
-        $existing = $this->userModel->findByEmailHash($emailHash, $db);
-        if ($existing !== null) {
-            return (int) $existing['id'];
-        }
-
-        try {
-            $inserted = $this->userModel->skipValidation(true)->insert([
-                'email'      => $email,
-                'email_hash' => $emailHash,
-                'first_name' => (string) ($fields['first_name'] ?? ''),
-                'last_name'  => (string) ($fields['last_name'] ?? ''),
-                'phone'      => (string) ($fields['phone'] ?? ''),
-            ]);
-
-            if ($inserted !== false) {
-                return (int) $inserted;
-            }
-        } catch (DatabaseException $e) {
-            // A concurrent request won the insert race on the unique key. Manual
-            // transaction mode keeps this transaction usable; fall through to the
-            // locking re-read, which sees the competitor's committed row.
-            if ($e->getCode() === 1062 || str_contains($e->getMessage(), 'Duplicate entry')) {
-                log_message('info', 'User insert race, falling back to reuse: ' . $e->getMessage());
-            } else {
-                throw $e;
-            }
-        }
-
         $existing = $this->userModel->findByEmailHash($emailHash, $db, true);
 
         return $existing !== null ? (int) $existing['id'] : null;
+    }
+
+    /**
+     * Resolves orphan signups for a newly logged in user.
+     * Maps any unassigned signups created by guests with this email to the user,
+     * and records that the user has viewed them.
+     */
+    public function resolveOrphanSignups(string $email, int $userId): int
+    {
+        return $this->signupModel->attachOrphansToUser($email, $userId);
     }
 
     /**

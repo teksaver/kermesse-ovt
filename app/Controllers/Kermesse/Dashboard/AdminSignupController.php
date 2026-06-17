@@ -9,6 +9,7 @@ use App\Models\KermesseModel;
 use App\Models\SignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
+use App\Services\AdminCreateSignupDTO;
 use App\Services\EmailService;
 use App\Services\SignupService;
 
@@ -24,6 +25,103 @@ use App\Services\SignupService;
  */
 class AdminSignupController extends BaseController
 {
+    /** POST /kermesse/{kermesseId}/slots/{slotId}/admin-add-signup — Story 5.11 */
+    public function adminAddSignup(string $kermesseId, string $slotId): mixed
+    {
+        $kermesseIntId = (int) $kermesseId;
+        $slotIntId     = (int) $slotId;
+        $adminUserId   = (int) session()->get('user_id');
+
+        $firstNameRaw = $this->request->getPost('first_name');
+        $lastNameRaw  = $this->request->getPost('last_name');
+        $emailRaw     = $this->request->getPost('email');
+        $phoneRaw     = $this->request->getPost('phone');
+        $sendEmailRaw = $this->request->getPost('send_confirmation_email');
+
+        $firstName = trim(is_array($firstNameRaw) ? '' : (string) $firstNameRaw);
+        $lastName  = trim(is_array($lastNameRaw)  ? '' : (string) $lastNameRaw);
+        $email     = trim(is_array($emailRaw)     ? '' : (string) $emailRaw);
+        $phone     = trim(is_array($phoneRaw)     ? '' : (string) $phoneRaw);
+        $sendEmail = ! empty($sendEmailRaw);
+
+        $validation = service('validation');
+        $isValid    = $validation->setRules([
+            'first_name' => 'required|string|min_length[1]|max_length[100]',
+            'last_name'  => 'required|string|min_length[1]|max_length[100]',
+            'email'      => 'required|valid_email|max_length[255]',
+            'phone'      => 'permit_empty|string|max_length[30]',
+        ])->run([
+            'first_name' => $firstName,
+            'last_name'  => $lastName,
+            'email'      => $email,
+            'phone'      => $phone,
+        ]);
+
+        if (! $isValid) {
+            session()->setFlashdata('participants_error', 'Prénom, nom et email (valide) sont obligatoires.');
+            session()->setFlashdata('participants_add_errors', $validation->getErrors());
+
+            return redirect()
+                ->to(site_url("kermesse/{$kermesseIntId}#inscrits"))
+                ->withInput();
+        }
+
+        $dto = new AdminCreateSignupDTO(
+            slotId:                $slotIntId,
+            kermesseId:            $kermesseIntId,
+            adminUserId:           $adminUserId,
+            firstName:             $firstName,
+            lastName:              $lastName,
+            email:                 $email,
+            phone:                 $phone,
+            sendConfirmationEmail: $sendEmail,
+        );
+
+        $service = new SignupService(
+            userModel:     model(UserModel::class),
+            signupModel:   model(SignupModel::class),
+            kermesseModel: model(KermesseModel::class),
+            emailService:  new EmailService(),
+            userRoleModel: model(UserRoleModel::class),
+        );
+
+        $result = $service->createSignupByAdmin($dto);
+
+        if ($result->success) {
+            $msg = sprintf(
+                '%s %s a été inscrit(e) au créneau.',
+                $firstName,
+                $lastName,
+            );
+
+            if ($sendEmail && $result->emailSent === true) {
+                $msg .= ' Un email de confirmation lui a été envoyé.';
+            } elseif ($sendEmail && $result->emailSent === false) {
+                $msg .= " (L'email de confirmation n'a pas pu être envoyé.)";
+            } elseif ($sendEmail && $result->emailSent === null) {
+                $msg .= " (L'email de confirmation n'a pas pu être envoyé — données du créneau manquantes.)";
+            }
+
+            session()->setFlashdata('participants_success', $msg);
+        } else {
+            $msg = match ($result->errorCode) {
+                'slot_full'        => 'Ce créneau est complet. Impossible d\'ajouter un bénévole.',
+                'slot_unavailable' => 'Ce créneau n\'est plus disponible (passé ou désactivé).',
+                'duplicate_signup' => 'Ce bénévole est déjà inscrit à ce créneau.',
+                'overlap_conflict' => 'Ce bénévole a déjà un créneau qui chevauche celui-ci.',
+                default            => "L'inscription n'a pas pu être créée. Veuillez réessayer.",
+            };
+
+            session()->setFlashdata('participants_error', $msg);
+
+            return redirect()
+                ->to(site_url("kermesse/{$kermesseIntId}#inscrits"))
+                ->withInput();
+        }
+
+        return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
+    }
+
     /** POST /kermesse/{kermesseId}/signups/{signupId}/admin-cancel */
     public function adminCancel(string $kermesseId, string $signupId): mixed
     {

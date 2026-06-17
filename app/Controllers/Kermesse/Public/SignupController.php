@@ -169,6 +169,7 @@ class SignupController extends BaseController
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],
             fields:     $fields,
+            createdBy:  $isAuthenticated ? $authUserId : null,
         );
 
         if (! $result->success) {

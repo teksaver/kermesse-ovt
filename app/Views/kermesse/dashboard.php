@@ -452,6 +452,7 @@
         <p class="form-error" role="alert"><?= esc($pError) ?></p>
         <?php endif; ?>
 
+        <?php $addFieldErrors = session()->getFlashdata('participants_add_errors') ?? []; ?>
         <?php $participantStands = $participantStands ?? []; ?>
         <?php if (empty($participantStands)): ?>
         <p class="section-placeholder">Aucun stand n'a encore été créé pour cette kermesse.</p>
@@ -588,6 +589,140 @@
                     <?php endforeach; ?>
                 </ul>
                 <?php endif; ?>
+
+                <!-- Bouton Ajouter un bénévole (Story 5.11) -->
+                <?php $addModalId = 'modal-add-signup-' . (int) $pSlot['slot_id']; ?>
+                <?php $addFormId  = 'form-add-signup-'  . (int) $pSlot['slot_id']; ?>
+                <?php $addBtnId   = 'btn-add-signup-'   . (int) $pSlot['slot_id']; ?>
+                <?php $errorSlot  = (old('_error_slot_id') === (string) $pSlot['slot_id']); ?>
+                <div class="participants-slot__add-action">
+                    <button type="button" class="btn btn--sm btn--secondary"
+                            onclick="document.getElementById('<?= esc($addModalId, 'attr') ?>').showModal()">
+                        + Ajouter un bénévole
+                    </button>
+                </div>
+
+                <!-- Modale Ajouter un bénévole (Story 5.11) -->
+                <dialog id="<?= esc($addModalId, 'attr') ?>" class="k-modal">
+                    <div class="k-modal__body">
+                        <button type="button" class="k-modal__close"
+                                onclick="this.closest('dialog').close()" aria-label="Fermer">×</button>
+                        <h3 class="k-modal__title">Ajouter un bénévole</h3>
+                        <p class="k-modal__subtitle">
+                            <?= esc($pStand['name']) ?> · <?= esc($pSlot['date']) ?> · <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
+                        </p>
+                        <form method="post"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/slots/{$pSlot['slot_id']}/admin-add-signup") ?>"
+                              class="k-modal__form"
+                              id="<?= esc($addFormId, 'attr') ?>">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="_error_slot_id" value="<?= (int) $pSlot['slot_id'] ?>">
+
+                            <div class="form-group form-group--sm">
+                                <label class="form-label form-label--sm" for="<?= esc($addFormId, 'attr') ?>-fn">
+                                    Prénom <span class="form-required" aria-hidden="true">*</span>
+                                </label>
+                                <input type="text"
+                                       id="<?= esc($addFormId, 'attr') ?>-fn"
+                                       name="first_name"
+                                       value="<?= $errorSlot ? esc(old('first_name'), 'attr') : '' ?>"
+                                       class="form-input form-input--admin"
+                                       maxlength="100"
+                                       autocomplete="given-name"
+                                       required>
+                                <?php if ($errorSlot && isset($addFieldErrors['first_name'])): ?>
+                                <span class="form-error"><?= esc($addFieldErrors['first_name']) ?></span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="form-group form-group--sm">
+                                <label class="form-label form-label--sm" for="<?= esc($addFormId, 'attr') ?>-ln">
+                                    Nom <span class="form-required" aria-hidden="true">*</span>
+                                </label>
+                                <input type="text"
+                                       id="<?= esc($addFormId, 'attr') ?>-ln"
+                                       name="last_name"
+                                       value="<?= $errorSlot ? esc(old('last_name'), 'attr') : '' ?>"
+                                       class="form-input form-input--admin"
+                                       maxlength="100"
+                                       autocomplete="family-name"
+                                       required>
+                                <?php if ($errorSlot && isset($addFieldErrors['last_name'])): ?>
+                                <span class="form-error"><?= esc($addFieldErrors['last_name']) ?></span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="form-group form-group--sm">
+                                <label class="form-label form-label--sm" for="<?= esc($addFormId, 'attr') ?>-email">
+                                    Email <span class="form-required" aria-hidden="true">*</span>
+                                </label>
+                                <input type="email"
+                                       id="<?= esc($addFormId, 'attr') ?>-email"
+                                       name="email"
+                                       value="<?= $errorSlot ? esc(old('email'), 'attr') : '' ?>"
+                                       class="form-input form-input--admin"
+                                       maxlength="255"
+                                       autocomplete="email"
+                                       required>
+                                <?php if ($errorSlot && isset($addFieldErrors['email'])): ?>
+                                <span class="form-error"><?= esc($addFieldErrors['email']) ?></span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="form-group form-group--sm">
+                                <label class="form-label form-label--sm" for="<?= esc($addFormId, 'attr') ?>-phone">
+                                    Téléphone
+                                </label>
+                                <input type="tel"
+                                       id="<?= esc($addFormId, 'attr') ?>-phone"
+                                       name="phone"
+                                       value="<?= $errorSlot ? esc(old('phone'), 'attr') : '' ?>"
+                                       class="form-input form-input--admin-phone"
+                                       maxlength="30"
+                                       autocomplete="tel">
+                                <?php if ($errorSlot && isset($addFieldErrors['phone'])): ?>
+                                <span class="form-error"><?= esc($addFieldErrors['phone']) ?></span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="form-group form-group--sm">
+                                <label class="form-label form-label--sm form-label--checkbox">
+                                    <input type="checkbox"
+                                           name="send_confirmation_email"
+                                           value="1"
+                                           <?= ($errorSlot && old('send_confirmation_email') === '1') ? 'checked' : '' ?>>
+                                    Envoyer un email de confirmation au bénévole
+                                </label>
+                            </div>
+
+                            <div class="admin-form__buttons">
+                                <button type="submit"
+                                        class="btn btn--primary btn--sm"
+                                        id="<?= esc($addBtnId, 'attr') ?>"
+                                        disabled>
+                                    Inscrire
+                                </button>
+                                <button type="button"
+                                        class="btn btn--secondary btn--sm"
+                                        onclick="this.closest('dialog').close()">
+                                    Annuler
+                                </button>
+                            </div>
+                        </form>
+                        <script>
+                        (function () {
+                            var f = document.getElementById('<?= esc($addFormId) ?>');
+                            var b = document.getElementById('<?= esc($addBtnId) ?>');
+                            function sync() { b.disabled = !f.checkValidity(); }
+                            f.addEventListener('input', sync);
+                            sync();
+                        }());
+                        </script>
+                        <?php if ($errorSlot): ?>
+                        <script>document.getElementById('<?= esc($addModalId) ?>').showModal();</script>
+                        <?php endif; ?>
+                    </div>
+                </dialog>
 
                 <!-- Historique des inscriptions annulées/supprimées (Story 5.10) -->
                 <?php if (! empty($pSlot['history'])): ?>
