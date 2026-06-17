@@ -449,7 +449,7 @@
         <p class="form-success" role="status"><?= esc($pSuccess) ?></p>
         <?php endif; ?>
         <?php if (! empty($pError = session()->getFlashdata('participants_error'))): ?>
-        <p class="form-error" role="alert"><?= esc($pError) ?></p>
+        <p class="form-error-banner" role="alert"><?= esc($pError) ?></p>
         <?php endif; ?>
 
         <?php $addFieldErrors = session()->getFlashdata('participants_add_errors') ?? []; ?>
@@ -496,7 +496,7 @@
                             <?php endif; ?>
                         </span>
 
-                        <!-- Actions admin : éditer et annuler (Story 5.10) -->
+                        <!-- Actions admin : éditer, déplacer et annuler (Story 5.10/5.12) -->
                         <div class="participants-list__actions">
                             <!-- Annuler l'inscription -->
                             <details class="admin-cancel-details">
@@ -584,6 +584,49 @@
                                     </form>
                                 </div>
                             </details>
+
+                            <!-- Déplacer l'inscription (Story 5.12) -->
+                            <?php $moveTargets = $vol['move_targets']; ?>
+                            <?php if (! empty($moveTargets)): ?>
+                            <details class="admin-move-details">
+                                <summary class="btn btn--secondary btn--sm">Déplacer</summary>
+                                <div class="admin-move-details__panel">
+                                    <form method="post"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-move-signup") ?>"
+                                          class="admin-move-form">
+                                        <?= csrf_field() ?>
+                                        <div class="form-group form-group--sm">
+                                            <label class="form-label form-label--sm" for="move-target-<?= (int) $vol['signup_id'] ?>">
+                                                Créneau cible <span class="form-required" aria-hidden="true">*</span>
+                                            </label>
+                                            <select id="move-target-<?= (int) $vol['signup_id'] ?>"
+                                                    name="target_slot_id"
+                                                    class="form-input form-input--admin"
+                                                    required>
+                                                <option value="">— Choisir un créneau —</option>
+                                                <?php foreach ($moveTargets as $mt): ?>
+                                                <option value="<?= (int) $mt['slot_id'] ?>">
+                                                    <?= esc($mt['stand_name']) ?> · <?= esc($mt['date']) ?> <?= esc($mt['start_time']) ?>–<?= esc($mt['end_time']) ?>
+                                                    (<?= (int) $mt['remaining'] ?> place<?= (int) $mt['remaining'] > 1 ? 's' : '' ?>)
+                                                </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="form-group form-group--sm">
+                                            <label class="form-label form-label--sm form-label--checkbox">
+                                                <input type="checkbox" name="send_notification_email" value="1">
+                                                Notifier <?= esc($vol['email']) ?>
+                                            </label>
+                                        </div>
+                                        <div class="admin-form__buttons">
+                                            <button type="submit" class="btn btn--primary btn--sm">Confirmer le déplacement</button>
+                                            <button type="button" class="btn btn--secondary btn--sm"
+                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </details>
+                            <?php endif; ?>
                         </div>
                     </li>
                     <?php endforeach; ?>

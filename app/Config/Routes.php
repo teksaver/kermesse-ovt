@@ -60,6 +60,9 @@ $routes->post('kermesse/(:num)/signups/(:num)/admin-edit', '\App\Controllers\Ker
 // Story 5.11 — ajout manuel d'une inscription (Owner/Admin/Gestionnaire).
 $routes->post('kermesse/(:num)/slots/(:num)/admin-add-signup', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminAddSignup/$1/$2', ['filter' => ['auth', 'role:owner,admin,gestionnaire']]);
 
+// Story 5.12 — déplacement admin d'une inscription (Owner/Admin/Gestionnaire).
+$routes->post('kermesse/(:num)/signups/(:num)/admin-move-signup', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminMoveSignup/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+
 // Quitter une kermesse (Story 5.9). Filtre inclut owner : le rejet Owner produit le
 // message FR spécifique côté service/flash plutôt qu'un 403 générique du RoleFilter.
 $routes->post('kermesse/(:num)/leave', '\App\Controllers\Kermesse\Dashboard\LeaveKermesseController::leave/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);

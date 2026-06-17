@@ -276,6 +276,8 @@ class KermesseAdminController extends BaseController
 
                 $slots[] = [
                     'slot_id'    => $slotId,
+                    'starts_at'  => (string) $slot['starts_at'],
+                    'ends_at'    => (string) $slot['ends_at'],
                     'date'       => $start->format('d/m/Y'),
                     'start_time' => $start->format('H:i'),
                     'end_time'   => $end->format('H:i'),
@@ -292,6 +294,70 @@ class KermesseAdminController extends BaseController
                 'slots' => $slots,
             ];
         }
+
+        // Story 5.12 — pre-compute per-slot move targets so the view stays logic-free.
+        // A flat index of available slots (remaining > 0) keyed by slot_id.
+        $availableBySlotId = [];
+        foreach ($result as $s) {
+            foreach ($s['slots'] as $sl) {
+                if ($sl['remaining'] > 0) {
+                    $availableBySlotId[$sl['slot_id']] = array_merge($sl, ['stand_name' => $s['name']]);
+                }
+            }
+        }
+
+        foreach ($result as &$s) {
+            foreach ($s['slots'] as &$sl) {
+                $sourceId           = $sl['slot_id'];
+                $sl['move_targets'] = array_values(
+                    array_filter($availableBySlotId, static fn(array $t): bool => $t['slot_id'] !== $sourceId)
+                );
+            }
+        }
+        unset($s, $sl);
+
+        // Per-volunteer move targets: further filter out slots the volunteer is already
+        // in or that overlap with their other active signups in this kermesse.
+        $emailToSlots = [];
+        foreach ($result as $s) {
+            foreach ($s['slots'] as $sl) {
+                foreach ($sl['volunteers'] as $vol) {
+                    if ($vol['email'] !== '') {
+                        $emailToSlots[$vol['email']][] = [
+                            'slot_id'   => $sl['slot_id'],
+                            'starts_at' => $sl['starts_at'],
+                            'ends_at'   => $sl['ends_at'],
+                        ];
+                    }
+                }
+            }
+        }
+
+        foreach ($result as &$s) {
+            foreach ($s['slots'] as &$sl) {
+                foreach ($sl['volunteers'] as &$vol) {
+                    $otherSlots = array_filter(
+                        $emailToSlots[$vol['email']] ?? [],
+                        static fn(array $entry): bool => $entry['slot_id'] !== $sl['slot_id']
+                    );
+                    $vol['move_targets'] = array_values(array_filter(
+                        $sl['move_targets'],
+                        static function (array $target) use ($otherSlots): bool {
+                            foreach ($otherSlots as $other) {
+                                if ($target['slot_id'] === $other['slot_id']) {
+                                    return false;
+                                }
+                                if ($target['starts_at'] < $other['ends_at'] && $other['starts_at'] < $target['ends_at']) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        }
+                    ));
+                }
+            }
+        }
+        unset($s, $sl, $vol);
 
         return $result;
     }

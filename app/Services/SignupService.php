@@ -201,7 +201,7 @@ class SignupService
 
             // Stamp admin tracking inside the same transaction (AC3 — last_modified_by_user_id).
             $this->signupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
-        } catch (DatabaseException $e) {
+        } catch (\Throwable $e) {
             $db->transRollback();
             log_message('error', 'createSignupByAdmin transaction aborted: ' . $e->getMessage());
 
@@ -389,6 +389,106 @@ class SignupService
     }
 
     /**
+     * Move a volunteer's signup to a different slot — Story 5.12.
+     *
+     * Admin override: kermesse must exist but does NOT need to be "open".
+     * All capacity, duplicate, and overlap invariants are enforced on the target slot.
+     * The source signup is marked REMOVED and the new signup is created atomically.
+     *
+     * The overlap check naturally excludes the source slot because markCancelledByAdmin
+     * runs inside the same transaction — locking reads (FOR UPDATE) see the REMOVED
+     * status and exclude it from the active set before signupWithinTransaction runs.
+     *
+     * Failure codes: not_found | same_slot | slot_full | slot_unavailable
+     *                duplicate_signup | overlap_conflict | transaction_failed
+     */
+    public function moveSignup(AdminMoveSignupDTO $dto): SignupResult
+    {
+        $signup = $this->signupModel->findActiveInKermesse($dto->sourceSignupId, $dto->kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        if ((int) $signup['slot_id'] === $dto->targetSlotId) {
+            return SignupResult::failure('same_slot');
+        }
+
+        $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($dto->kermesseId);
+        if ($kermesse === null) {
+            return SignupResult::failure('signups_not_open');
+        }
+
+        // Resolve contact info: admin-corrected signup copy takes precedence over users table.
+        $email     = strtolower(trim(
+            ((string) ($signup['signup_email']      ?? '')) !== '' ? (string) $signup['signup_email']      : (string) ($signup['email']      ?? '')
+        ));
+        $firstName = trim(((string) ($signup['signup_first_name'] ?? '')) !== '' ? (string) $signup['signup_first_name'] : (string) ($signup['first_name'] ?? ''));
+        $lastName  = trim(((string) ($signup['signup_last_name']  ?? '')) !== '' ? (string) $signup['signup_last_name']  : (string) ($signup['last_name']  ?? ''));
+        $phone     = trim(((string) ($signup['signup_phone']      ?? '')) !== '' ? (string) $signup['signup_phone']      : (string) ($signup['phone']      ?? ''));
+
+        if ($email === '') {
+            return SignupResult::failure('volunteer_insert_failed');
+        }
+
+        $db = $this->db ?? db_connect();
+        $this->assertSharedConnection($db);
+
+        if (! $db->transBegin()) {
+            return SignupResult::failure('transaction_failed');
+        }
+
+        try {
+            // Cancel the source signup first; now REMOVED → invisible to locking reads below.
+            if (! $this->signupModel->markCancelledByAdmin($dto->sourceSignupId, $dto->adminUserId)) {
+                $db->transRollback();
+
+                return SignupResult::failure('not_found');
+            }
+
+            $result = $this->signupWithinTransaction($db, $dto->targetSlotId, $dto->kermesseId, $email, [
+                'first_name' => $firstName,
+                'last_name'  => $lastName,
+                'phone'      => $phone,
+            ], $dto->adminUserId);
+
+            if (! $result->success) {
+                $db->transRollback();
+
+                return $result;
+            }
+
+            $this->signupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'moveSignup transaction aborted: ' . $e->getMessage());
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        if (! $db->transCommit()) {
+            $db->transRollback();
+
+            return SignupResult::failure('transaction_failed');
+        }
+
+        $slot      = $result->context['slot'] ?? null;
+        $emailSent = null;
+
+        if ($dto->sendNotificationEmail && is_array($slot)) {
+            $emailSent = $this->sendConfirmationEmailSafely($kermesse, $slot, $email, [
+                'first_name' => $firstName,
+                'last_name'  => $lastName,
+            ]);
+        }
+
+        $volunteerName = trim($firstName . ' ' . $lastName) ?: $email;
+
+        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent, [
+            'volunteer_name' => $volunteerName,
+        ]);
+    }
+
+    /**
      * "Pâtisseries (20/06 14h – 16h30)" — safe fallback if dates are unparseable.
      */
     private function formatSlotLabel(string $standName, string $startsAt, string $endsAt): string
@@ -501,7 +601,6 @@ class SignupService
             'first_name' => (string) ($fields['first_name'] ?? ''),
             'last_name'  => (string) ($fields['last_name'] ?? ''),
             'phone'      => (string) ($fields['phone'] ?? ''),
-            'created_by' => $createdBy,
         ]);
 
         if ($signupId === false) {

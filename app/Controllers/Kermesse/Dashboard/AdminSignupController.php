@@ -10,6 +10,7 @@ use App\Models\SignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\AdminCreateSignupDTO;
+use App\Services\AdminMoveSignupDTO;
 use App\Services\EmailService;
 use App\Services\SignupService;
 
@@ -117,6 +118,73 @@ class AdminSignupController extends BaseController
             return redirect()
                 ->to(site_url("kermesse/{$kermesseIntId}#inscrits"))
                 ->withInput();
+        }
+
+        return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
+    }
+
+    /** POST /kermesse/{kermesseId}/signups/{signupId}/admin-move-signup — Story 5.12 */
+    public function adminMoveSignup(string $kermesseId, string $signupId): mixed
+    {
+        $kermesseIntId = (int) $kermesseId;
+        $signupIntId   = (int) $signupId;
+        $adminUserId   = (int) session()->get('user_id');
+
+        $targetSlotRaw = $this->request->getPost('target_slot_id');
+        $sendEmailRaw  = $this->request->getPost('send_notification_email');
+
+        $targetSlotId = (int) ($targetSlotRaw ?? 0);
+        $sendEmail    = ! empty($sendEmailRaw);
+
+        if ($targetSlotId <= 0) {
+            session()->setFlashdata('participants_error', 'Veuillez sélectionner un créneau cible.');
+
+            return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
+        }
+
+        $dto = new AdminMoveSignupDTO(
+            sourceSignupId:       $signupIntId,
+            targetSlotId:         $targetSlotId,
+            kermesseId:           $kermesseIntId,
+            adminUserId:          $adminUserId,
+            sendNotificationEmail: $sendEmail,
+        );
+
+        $service = new SignupService(
+            userModel:     model(UserModel::class),
+            signupModel:   model(SignupModel::class),
+            kermesseModel: model(KermesseModel::class),
+            emailService:  new EmailService(),
+            userRoleModel: model(UserRoleModel::class),
+        );
+
+        $result = $service->moveSignup($dto);
+
+        if ($result->success) {
+            $volunteerName = (string) ($result->context['volunteer_name'] ?? '');
+            $msg = $volunteerName !== ''
+                ? sprintf("L'inscription de %s a été déplacée.", $volunteerName)
+                : "L'inscription a été déplacée.";
+
+            if ($sendEmail && $result->emailSent === true) {
+                $msg .= ' Le bénévole a été notifié par email.';
+            } elseif ($sendEmail && $result->emailSent === false) {
+                $msg .= " (L'email de notification n'a pas pu être envoyé.)";
+            }
+
+            session()->setFlashdata('participants_success', $msg);
+        } else {
+            $msg = match ($result->errorCode) {
+                'not_found'        => 'Cette inscription est introuvable ou déjà annulée.',
+                'same_slot'        => 'Le créneau cible est identique au créneau source.',
+                'slot_full'        => 'Le créneau cible est complet. Déplacement impossible.',
+                'slot_unavailable' => 'Le créneau cible n\'est plus disponible (passé ou désactivé).',
+                'duplicate_signup' => 'Ce bénévole est déjà inscrit au créneau cible.',
+                'overlap_conflict' => 'Ce bénévole a un autre créneau qui chevauche le créneau cible.',
+                default            => "Le déplacement a échoué. Veuillez réessayer.",
+            };
+
+            session()->setFlashdata('participants_error', $msg);
         }
 
         return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));

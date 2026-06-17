@@ -57,7 +57,6 @@ class SignupModel extends Model
         'email',
         'phone',
         'admin_notes',
-        'created_by',
         'viewed_at',
         'accepted_at',
         'rejected_at',
@@ -391,7 +390,7 @@ class SignupModel extends Model
     public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
     {
         $row = $this->db->table($this->table . ' si')
-            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, si.email AS signup_email, si.first_name AS signup_first_name, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
+            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, u.phone, si.email AS signup_email, si.first_name AS signup_first_name, si.last_name AS signup_last_name, si.phone AS signup_phone, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->join('users u', 'u.id = si.user_id')
