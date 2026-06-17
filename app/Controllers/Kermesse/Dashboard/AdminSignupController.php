@@ -44,7 +44,7 @@ class AdminSignupController extends BaseController
         $phone     = trim(is_array($phoneRaw)     ? '' : (string) $phoneRaw);
         $sendEmail = ! empty($sendEmailRaw);
 
-        $validation = service('validation');
+        $validation = \Config\Services::validation(null, false);
         $isValid    = $validation->setRules([
             'first_name' => 'required|string|min_length[1]|max_length[100]',
             'last_name'  => 'required|string|min_length[1]|max_length[100]',
@@ -194,7 +194,7 @@ class AdminSignupController extends BaseController
         $phone      = trim(is_array($phoneRaw)     ? '' : (string) $phoneRaw);
         $adminNotes = trim(is_array($adminNotesRaw) ? '' : (string) $adminNotesRaw);
 
-        $validation = service('validation');
+        $validation = \Config\Services::validation(null, false);
         $isValid    = $validation->setRules([
             // First and last name are required — an admin must not be able to submit
             // an empty name and silently wipe the volunteer's identity in the signup.

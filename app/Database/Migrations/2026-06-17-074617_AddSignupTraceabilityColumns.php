@@ -29,8 +29,13 @@ class AddSignupTraceabilityColumns extends Migration
             ],
         ]);
 
+        // Index for email-based duplicate/overlap checks introduced in Story 5.11/5.14.
+        $this->db->query('CREATE INDEX IF NOT EXISTS idx_signups_email ON ' . $this->db->prefixTable('signups') . ' (email)');
+    }
+
     public function down()
     {
+        $this->db->query('DROP INDEX IF EXISTS idx_signups_email ON ' . $this->db->prefixTable('signups'));
         $this->forge->dropColumn('signups', 'created_by');
         $this->forge->dropColumn('signups', 'viewed_at');
         $this->forge->dropColumn('signups', 'accepted_at');

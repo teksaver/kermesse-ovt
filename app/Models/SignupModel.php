@@ -552,10 +552,9 @@ class SignupModel extends Model
      */
     public function attachOrphansToUser(string $email, int $userId): int
     {
-        $this->builder()
-             ->where('email', strtolower(trim($email)))
+        $this->where('email', strtolower(trim($email)))
              ->where('user_id', null)
-             ->update([
+             ->update(null, [
                  'user_id'   => $userId,
                  'viewed_at' => date('Y-m-d H:i:s'),
              ]);
