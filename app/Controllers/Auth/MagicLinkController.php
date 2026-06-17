@@ -125,7 +125,12 @@ class MagicLinkController extends BaseController
             standModel:    model(\App\Models\StandModel::class),
             tokenService:  new \App\Services\TokenService(),
         );
-        $signupService->resolveOrphanSignups($userRecord['email'], $userId);
+        try {
+            $signupService->resolveOrphanSignups($userRecord['email'], $userId);
+        } catch (\Throwable $e) {
+            // Non-critical: a DB failure here must not block login.
+            log_message('error', 'MagicLink: orphan signup resolution failed for user ' . $userId . ': ' . $e->getMessage());
+        }
 
         // Story 5.10 (Stateless): first login and returning logins are handled identically,
         // we just record the timestamp and proceed directly. Divergences are gone.
