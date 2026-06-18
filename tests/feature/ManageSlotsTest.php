@@ -42,6 +42,7 @@ final class ManageSlotsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -122,6 +123,29 @@ final class ManageSlotsTest extends CIUnitTestCase
                 status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_signups (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                  INTEGER  NOT NULL,
+                user_id                  INTEGER  NULL,
+                deleted_at               DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id INTEGER  NULL DEFAULT NULL,
+                last_modified_at         DATETIME NULL DEFAULT NULL,
+                first_name               TEXT     NULL DEFAULT NULL,
+                last_name                TEXT     NULL DEFAULT NULL,
+                email                    TEXT     NULL DEFAULT NULL,
+                phone                    TEXT     NULL DEFAULT NULL,
+                admin_notes              TEXT     NULL DEFAULT NULL,
+                created_by               INTEGER  NULL DEFAULT NULL,
+                viewed_at                DATETIME NULL DEFAULT NULL,
+                accepted_at              DATETIME NULL DEFAULT NULL,
+                rejected_at              DATETIME NULL DEFAULT NULL,
+                canceled_at              DATETIME NULL DEFAULT NULL,
+                canceled_by              INTEGER  NULL DEFAULT NULL,
+                created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }
@@ -477,5 +501,278 @@ final class ManageSlotsTest extends CIUnitTestCase
             ->query("SELECT status FROM db_slots WHERE id = {$slotId}")
             ->getRowArray();
         $this->assertSame('deactivated', $row['status']);
+    }
+
+    // ------------------------------------------------------------------
+    // AC1–3, 7 — Ajout d'un créneau sur kermesse ouverte (preuve rouge)
+    // ------------------------------------------------------------------
+
+    /**
+     * Transitions the existing kermesse to `open` with a deterministic event_date
+     * so slot starts_at/ends_at are stable and future-proof in assertions.
+     */
+    private function makeKermesseOpen(string $eventDate = '2099-09-01'): void
+    {
+        db_connect()->query(
+            "UPDATE db_kermesses SET status = 'open', event_date = '{$eventDate}' WHERE id = {$this->kermesseId}"
+        );
+    }
+
+    public function testOwnerCanAddSlotOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen('2099-09-01');
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '3',
+            ]);
+
+        // PRG exact avec ancre de stand (AC1)
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#slots-stand-' . $this->standId);
+
+        // Ligne persistée avec tous les champs attendus (AC1)
+        $row = db_connect()
+            ->query("SELECT starts_at, ends_at, capacity, status FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray();
+        $this->assertNotNull($row, 'Le créneau doit être persisté en base');
+        $this->assertSame('2099-09-01 09:00:00', $row['starts_at']);
+        $this->assertSame('2099-09-01 11:00:00', $row['ends_at']);
+        $this->assertSame(3, (int) $row['capacity']);
+        $this->assertSame('active', $row['status']);
+
+        // Dashboard rechargé — créneau visible dans la liste Modification (AC1)
+        $dashboard = $this->withSession($this->session($this->ownerId))
+            ->get("kermesse/{$this->kermesseId}");
+        $dashboard->assertStatus(200);
+        $dashboard->assertSee('09:00');
+
+        // Page publique rechargée en anonyme — créneau visible, zéro PII (AC1 + NFR5)
+        $public = $this->withSession([])->get('k/test-kermesse-23');
+        $public->assertStatus(200);
+        $public->assertSee('09:00');
+        $public->assertDontSee('owner@kermesse-test.com');
+        $public->assertDontSee('admin@kermesse-test.com');
+        $public->assertDontSee('Owner Test');
+        $public->assertDontSee('Admin Test');
+        $public->assertDontSee('/auth/validate/');
+    }
+
+    public function testAdminCanAddSlotOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen('2099-09-01');
+
+        $result = $this->withSession($this->session($this->adminId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '14:00',
+                'ends_at'   => '16:00',
+                'capacity'  => '5',
+            ]);
+
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#slots-stand-' . $this->standId);
+
+        $row = db_connect()
+            ->query("SELECT starts_at, ends_at, capacity, status FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray();
+        $this->assertNotNull($row, 'Le créneau doit être persisté en base (Admin sur kermesse open)');
+        $this->assertSame('2099-09-01 14:00:00', $row['starts_at']);
+        $this->assertSame('2099-09-01 16:00:00', $row['ends_at']);
+        $this->assertSame(5, (int) $row['capacity']);
+        $this->assertSame('active', $row['status']);
+
+        // Page publique anonyme — parité Admin/Owner (AC2)
+        $public = $this->withSession([])->get('k/test-kermesse-23');
+        $public->assertStatus(200);
+        $public->assertSee('14:00');
+    }
+
+    // ------------------------------------------------------------------
+    // AC5 — Autorisation serveur sur kermesse ouverte
+    // ------------------------------------------------------------------
+
+    public function testGestionnaireCannotAddSlotOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        $result = $this->withSession($this->session($this->gestionId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '3',
+            ]);
+
+        $result->assertStatus(403);
+        $this->assertStringContainsString('unauthorized_role', (string) $result->response()->getBody());
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    public function testBenevoleCannotAddSlotOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        $db = db_connect();
+        $db->table('users')->insert([
+            'email'      => 'benevole@kermesse-test.com',
+            'email_hash' => hash('sha256', 'benevole@kermesse-test.com'),
+            'first_name' => 'Bénévole',
+            'last_name'  => 'Test',
+            'phone'      => '',
+        ]);
+        $benevoleId = (int) $db->insertID();
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $this->kermesseId,
+            'user_id'     => $benevoleId,
+            'role'        => 'benevole',
+        ]);
+
+        $result = $this->withSession($this->session($benevoleId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '3',
+            ]);
+
+        $result->assertStatus(403);
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    public function testUnauthenticatedCannotAddSlotOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        $result = $this->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+            'starts_at' => '09:00',
+            'ends_at'   => '11:00',
+            'capacity'  => '3',
+        ]);
+
+        $this->assertContains($result->response()->getStatusCode(), [302, 403]);
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    // ------------------------------------------------------------------
+    // AC6 — Isolation et cycle de vie du stand sur kermesse ouverte
+    // ------------------------------------------------------------------
+
+    public function testCannotAddSlotToDeactivatedStandOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        // Deactivate the stand
+        db_connect()->query(
+            "UPDATE db_stands SET status = 'deactivated' WHERE id = {$this->standId}"
+        );
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '3',
+            ]);
+
+        $result->assertStatus(404);
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    public function testCannotAddSlotToStandFromOtherKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        // Create a second kermesse with its own stand
+        $db = db_connect();
+        $db->table('kermesses')->insert([
+            'created_by'  => $this->ownerId,
+            'public_slug' => 'other-kermesse',
+            'name'        => 'Autre Kermesse',
+            'location'    => 'Ailleurs',
+            'status'      => 'preparation',
+        ]);
+        $otherKermesseId = (int) $db->insertID();
+
+        $db->table('stands')->insert([
+            'kermesse_id'   => $otherKermesseId,
+            'name'          => 'Stand Autre',
+            'display_order' => 1,
+            'status'        => 'active',
+        ]);
+        $otherStandId = (int) $db->insertID();
+
+        // Attempt to post to THIS kermesse with the OTHER kermesse's stand_id
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$otherStandId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '3',
+            ]);
+
+        $result->assertStatus(404);
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$otherStandId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    // ------------------------------------------------------------------
+    // AC4 — Entrée invalide avec conservation des valeurs sur open
+    // ------------------------------------------------------------------
+
+    public function testDecimalCapacityIsRejectedOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => '2.5',
+            ]);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('slot_errors');
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
+    }
+
+    public function testAlphaCapacityIsRejectedOnOpenKermesse(): void
+    {
+        $this->makeKermesseOpen();
+
+        $result = $this->withSession($this->session($this->ownerId))
+            ->csrfPost("kermesse/{$this->kermesseId}/stands/{$this->standId}/slots", [
+                'starts_at' => '09:00',
+                'ends_at'   => '11:00',
+                'capacity'  => 'abc',
+            ]);
+
+        $result->assertStatus(302);
+        $result->assertSessionHas('slot_errors');
+        $result->assertSessionHas('slot_form');
+        $result->assertSessionHas('slot_form_stand_id');
+
+        $count = (int) db_connect()
+            ->query("SELECT COUNT(*) AS cnt FROM db_slots WHERE stand_id = {$this->standId}")
+            ->getRowArray()['cnt'];
+        $this->assertSame(0, $count);
     }
 }
