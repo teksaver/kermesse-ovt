@@ -311,10 +311,11 @@ class SignupService
             endsAt:    (string) ($signup['ends_at']    ?? ''),
         );
 
-        $context = ['volunteer_name' => $volunteerName, 'slot_label' => $slotLabel];
+        $context     = ['volunteer_name' => $volunteerName, 'slot_label' => $slotLabel];
+        $volunteerId = ($signup['user_id'] !== null) ? (int) $signup['user_id'] : null;
 
         if (! $notify) {
-            return SignupResult::success($signupId, (int) $signup['user_id'], null, $context);
+            return SignupResult::success($signupId, $volunteerId, null, $context);
         }
 
         $kermesse  = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
@@ -325,7 +326,7 @@ class SignupService
             slotLabel:    $slotLabel,
         );
 
-        return SignupResult::success($signupId, (int) $signup['user_id'], $emailSent, $context);
+        return SignupResult::success($signupId, $volunteerId, $emailSent, $context);
     }
 
     /**
@@ -593,15 +594,24 @@ class SignupService
             ]);
         }
 
-        $signupId = $this->signupModel->skipValidation(true)->insert([
+        // Story 5.14: created_by determines the initial confirmation state.
+        // If the session user creates their own signup → accepted_at set immediately (certified).
+        // If a visitor (createdBy = null) or admin creates for someone else → unconfirmed.
+        $now = date('Y-m-d H:i:s');
+        $row = [
             'slot_id'    => $slotId,
             'user_id'    => $userId,
-            'status'     => SignupModel::STATUS_ACTIVE,
+            'created_by' => $createdBy,
             'email'      => $email,
             'first_name' => (string) ($fields['first_name'] ?? ''),
             'last_name'  => (string) ($fields['last_name'] ?? ''),
             'phone'      => (string) ($fields['phone'] ?? ''),
-        ]);
+        ];
+        if ($createdBy !== null && $userId !== null && $createdBy === $userId) {
+            $row['accepted_at'] = $now;
+        }
+
+        $signupId = $this->signupModel->skipValidation(true)->insert($row);
 
         if ($signupId === false) {
             return SignupResult::failure('signup_insert_failed');
@@ -678,13 +688,106 @@ class SignupService
     }
 
     /**
+     * Accept a signup on behalf of the volunteer — Story 5.14 AC3.
+     *
+     * Sets accepted_at, which transitions the signup to "certified". Scoped to the
+     * volunteer's own signups (by user_id or email) within the kermesse. Only applies
+     * when the signup is currently unconfirmed (accepted_at IS NULL).
+     *
+     * Failure codes: not_found | accept_failed
+     */
+    public function acceptSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    {
+        // Ownership + scope guard: the signup must be an active one in this kermesse.
+        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        if (! $this->signupModel->markAccepted($signupId, $userId)) {
+            return SignupResult::failure('accept_failed');
+        }
+
+        return SignupResult::success($signupId, $userId);
+    }
+
+    /**
+     * Reject a signup on behalf of the volunteer — Story 5.14 AC4.
+     *
+     * Sets rejected_at, which transitions the signup to "refused" and frees the slot
+     * capacity immediately (rejected_at IS NOT NULL → excluded from active count).
+     * Scoped to the volunteer's own signups within the kermesse.
+     *
+     * No kermesse lifecycle check: a volunteer can refuse an invitation even when
+     * the kermesse is closed (the action is defensive, not a new booking).
+     *
+     * Failure codes: not_found | reject_failed
+     */
+    public function rejectSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    {
+        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
+        if ($signup === null) {
+            return SignupResult::failure('not_found');
+        }
+
+        if (! $this->signupModel->markRejected($signupId, $userId)) {
+            return SignupResult::failure('reject_failed');
+        }
+
+        return SignupResult::success($signupId, $userId);
+    }
+
+    /**
      * Resolves orphan signups for a newly logged in user.
      * Maps any unassigned signups created by guests with this email to the user,
-     * and records that the user has viewed them.
+     * records that the user has viewed them, inserts the benevole role for each
+     * kermesse where orphan signups were attached, and backfills the user profile
+     * from signup snapshot data if the profile is still empty.
      */
     public function resolveOrphanSignups(string $email, int $userId): int
     {
-        return $this->signupModel->attachOrphansToUser($email, $userId);
+        $attached = $this->signupModel->attachOrphansToUser($email, $userId);
+        // Also stamp viewed_at for non-orphan unconfirmed signups already linked to this user
+        $this->signupModel->stampViewedForUnconfirmedSignups($userId);
+
+        if ($attached > 0) {
+            // Ensure the user has a benevole role for every kermesse they signed up to as guest.
+            // (The role INSERT is normally done in signupWithinTransaction, but was skipped when
+            // user_id was NULL at signup time.)
+            $db = $this->db ?? db_connect();
+            foreach ($this->signupModel->findKermesseIdsForUser($userId) as $kermesseId) {
+                $db->table('kermesse_user_roles')->ignore(true)->insert([
+                    'kermesse_id' => (int) $kermesseId,
+                    'user_id'     => $userId,
+                    'role'        => \App\Models\UserRoleModel::ROLE_BENEVOLE,
+                ]);
+            }
+
+            // Backfill first_name/last_name/phone into users from the signup snapshot
+            // when the profile was never filled (newly created accounts via magic link).
+            $userRow = $this->userModel->find($userId);
+            if ($userRow !== null && (string) ($userRow['first_name'] ?? '') === '') {
+                $snapshot = $this->signupModel->db->table('signups')
+                    ->select('first_name, last_name, phone')
+                    ->where('user_id', $userId)
+                    ->where('first_name !=', '')
+                    ->where('deleted_at', null)
+                    ->orderBy('id', 'ASC')
+                    ->limit(1)
+                    ->get()
+                    ->getRowArray();
+
+                if ($snapshot !== null) {
+                    $this->userModel->update($userId, [
+                        'first_name' => (string) $snapshot['first_name'],
+                        'last_name'  => (string) ($snapshot['last_name'] ?? ''),
+                        'phone'      => (string) ($snapshot['phone']     ?? ''),
+                    ]);
+                }
+            }
+        }
+
+        return $attached;
     }
 
     /**

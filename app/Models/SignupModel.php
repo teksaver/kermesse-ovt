@@ -16,39 +16,10 @@ class SignupModel extends Model
     protected $useTimestamps = true;
     protected $useSoftDeletes = true;
 
-    // Legacy statuses (still in use)
-    public const STATUS_ACTIVE      = 'active';
-    public const STATUS_CANCELLED   = 'cancelled';
-    public const STATUS_DEACTIVATED = 'deactivated';
-    public const STATUS_DELETED     = 'deleted';
-    // Story 5.10 — extended lifecycle statuses
-    public const STATUS_UNCONFIRMED = 'unconfirmed'; // admin-created, awaiting volunteer confirmation
-    public const STATUS_CONFIRMED   = 'confirmed';   // volunteer has confirmed their identity
-    public const STATUS_CERTIFIED   = 'certified';   // future: admin-validated presence
-    public const STATUS_SEEN        = 'seen';         // future: checked in on the day
-    public const STATUS_REFUSED     = 'refused';      // future: volunteer declined after invitation
-    public const STATUS_REMOVED     = 'removed';      // admin cancellation (distinct from self-cancel)
-
-    // Statuses that free slot capacity (not counted toward occupancy).
-    public const INACTIVE_STATUSES = [
-        self::STATUS_CANCELLED,
-        self::STATUS_DEACTIVATED,
-        self::STATUS_DELETED,
-        self::STATUS_REMOVED,
-        self::STATUS_REFUSED,
-    ];
-
-    // Visible historical statuses shown in the admin "Historique" table (Story 5.10 AC1).
-    public const HISTORICAL_STATUSES = [
-        self::STATUS_CANCELLED,
-        self::STATUS_REMOVED,
-        self::STATUS_REFUSED,
-    ];
-
     protected $allowedFields = [
         'slot_id',
         'user_id',
-        'status',
+        'created_by',
         'deleted_at',
         'last_modified_by_user_id',
         'last_modified_at',
@@ -65,6 +36,52 @@ class SignupModel extends Model
     ];
 
     /**
+     * Compute the status of a signup row from its timestamps.
+     *
+     * Priority (highest to lowest):
+     *   soft-deleted       → 'deactivated' (system removal via stand/slot deletion)
+     *   canceled_at set    → 'cancelled' (by volunteer) or 'removed' (by admin)
+     *   rejected_at set    → 'refused'
+     *   accepted_at set    → 'certified'
+     *   unconfirmed cond.  → 'unconfirmed'  (visitor signup or created by someone else)
+     *   default            → 'active'
+     */
+    public static function getStatus(array $row): string
+    {
+        if (! empty($row['deleted_at'])) {
+            return 'deactivated';
+        }
+        if (! empty($row['canceled_at'])) {
+            $canceledBy = isset($row['canceled_by']) ? (int) $row['canceled_by'] : null;
+            $userId     = isset($row['user_id'])     ? (int) $row['user_id']     : null;
+            return ($canceledBy !== null && $userId !== null && $canceledBy === $userId)
+                ? 'cancelled'
+                : 'removed';
+        }
+        if (! empty($row['rejected_at'])) {
+            return 'refused';
+        }
+        if (! empty($row['accepted_at'])) {
+            return 'certified';
+        }
+        $createdBy = isset($row['created_by']) ? (int) $row['created_by'] : null;
+        $userId    = isset($row['user_id'])    ? (int) $row['user_id']    : null;
+        // Visitor signup (created_by IS NULL) or created by someone else (admin/other)
+        if ($createdBy === null || ($userId !== null && $createdBy !== $userId)) {
+            return 'unconfirmed';
+        }
+        return 'active';
+    }
+
+    /**
+     * SQL fragment that evaluates to true when a signup is "active" (counts toward
+     * capacity and is visible). Alias for the WHERE clause in raw queries.
+     *
+     * Active = not canceled, not refused, not soft-deleted.
+     */
+    public const ACTIVE_CONDITION = 'canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL';
+
+    /**
      * Return the active signup count for a single slot.
      *
      * Pass $db to run on the signup transaction's connection — the count is correct
@@ -78,12 +95,11 @@ class SignupModel extends Model
         }
 
         $table = $db->prefixTable('signups');
-        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
         $result = $db->query(
             "SELECT COUNT(*) AS cnt FROM {$table}
-             WHERE slot_id = ? AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($db),
-            array_merge([$slotId], self::INACTIVE_STATUSES),
+             WHERE slot_id = ? AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL" . $this->forUpdateSuffix($db),
+            [$slotId],
         );
 
         if ($result === false) {
@@ -96,28 +112,23 @@ class SignupModel extends Model
     /**
      * Return an active signup for the given user on the given slot, or null.
      *
-     * Used for duplicate-signup detection inside a transaction. On MySQLi this is a
-     * locking read: it must see signups committed by concurrent transactions after
-     * this transaction's snapshot (the user-row lock alone does not refresh
-     * plain reads under REPEATABLE READ).
+     * Used for duplicate-signup detection inside a transaction.
      */
     public function findActiveByEmailOrUserAndSlot(string $email, ?int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
     {
         $conn  = $db ?? $this->db;
         $table = $conn->prefixTable('signups');
-        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
         $userCond = $userId !== null ? "OR user_id = ?" : "";
         $params = [$slotId, $email];
         if ($userId !== null) {
             $params[] = $userId;
         }
-        $params = array_merge($params, self::INACTIVE_STATUSES);
 
         $result = $conn->query(
-            "SELECT id, status FROM {$table}
+            "SELECT id FROM {$table}
              WHERE slot_id = ? AND (email = ? {$userCond})
-               AND status NOT IN ({$inact}) AND deleted_at IS NULL
+               AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL
              LIMIT 1" . $this->forUpdateSuffix($conn),
             $params,
         );
@@ -132,10 +143,6 @@ class SignupModel extends Model
     /**
      * Return the first active signup whose slot overlaps [$startsAt, $endsAt) for
      * the given user, excluding $excludeSlotId (the target slot).
-     *
-     * Two intervals overlap when: existing.starts_at < endsAt AND existing.ends_at > startsAt.
-     * Used for overlap detection inside a transaction. On MySQLi this is a locking read
-     * for the same snapshot-freshness reason as findActiveByUserAndSlot.
      */
     public function findOverlappingActiveByEmailOrUser(
         string $email,
@@ -148,18 +155,17 @@ class SignupModel extends Model
         $conn    = $db ?? $this->db;
         $tSign   = $conn->prefixTable('signups');
         $tSlots  = $conn->prefixTable('slots');
-        $inact   = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
         $userCond = $userId !== null ? "OR user_id = ?" : "";
         $params = [$excludeSlotId, $email];
         if ($userId !== null) {
             $params[] = $userId;
         }
-        $params = array_merge($params, self::INACTIVE_STATUSES);
 
         $signups = $conn->query(
             "SELECT id, slot_id FROM {$tSign}
-             WHERE slot_id != ? AND (email = ? {$userCond}) AND status NOT IN ({$inact}) AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
+             WHERE slot_id != ? AND (email = ? {$userCond})
+               AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
             $params
         )->getResultArray();
 
@@ -169,7 +175,7 @@ class SignupModel extends Model
 
         $slotIds = array_column($signups, 'slot_id');
         $placeholders = implode(',', array_fill(0, count($slotIds), '?'));
-        
+
         $overlaps = $conn->query(
             "SELECT id, starts_at, ends_at FROM {$tSlots}
              WHERE id IN ({$placeholders}) AND starts_at < ? AND ends_at > ?
@@ -190,10 +196,6 @@ class SignupModel extends Model
     /**
      * Return active signup counts keyed by slot ID.
      *
-     * Active = status NOT IN ('cancelled','deactivated','deleted') AND deleted_at IS NULL.
-     * Same definition as StandDeletionService::applyActiveSignupFilter so public
-     * availability and admin planning never diverge.
-     *
      * @param int[] $slotIds
      * @return array<int, int>  slot_id => count
      */
@@ -205,7 +207,8 @@ class SignupModel extends Model
 
         $rows = $this->select('slot_id, COUNT(*) AS cnt')
             ->whereIn('slot_id', $slotIds)
-            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
             ->groupBy('slot_id')
             ->findAll();
 
@@ -221,32 +224,21 @@ class SignupModel extends Model
      * Return a connected user's ACTIVE signups for one kermesse, joined to the slot
      * and stand for the dashboard "Mes participations" section (Story 4.2).
      *
-     * Active = status NOT IN ('cancelled','deactivated','deleted') AND deleted_at IS NULL —
-     * the SAME definition as countActiveBySlotIds(), so a cancelled inscription the public
-     * availability already treats as freed never reappears here (UX-DR23). Scoped to the
-     * single user (privacy boundary) and ordered chronologically by slot start.
+     * Active = canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL.
      *
-     * Filtering on signup status alone is sufficient (no slot/stand status filter needed):
-     * deactivating a stand or a slot cascades to its signups in the same transaction
-     * (StandDeletionService / SlotDeletionService set them to 'deactivated'), so an active
-     * signup can never point at a removed slot/stand. The signup status is the single
-     * source of truth for "active" across the whole codebase.
-     *
-     * The signup id rides along so the dashboard can target the per-row cancel
-     * action (Story 4.3) without a second query.
-     *
-     * @return list<array{signup_id: int, stand_name: string, starts_at: string, ends_at: string}>
+     * @return list<array{signup_id: int, stand_name: string, starts_at: string, ends_at: string, accepted_at: string|null, created_by: int|null}>
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
     {
         $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
 
         $builder = $this->db->table($this->table . ' si')
-            ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at')
+            ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at, si.accepted_at, si.created_by')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('st.kermesse_id', $kermesseId)
-            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.canceled_at', null)
+            ->where('si.rejected_at', null)
             ->where('si.deleted_at', null)
             ->orderBy('sl.starts_at', 'ASC')
             ->orderBy('sl.id', 'ASC');
@@ -265,37 +257,14 @@ class SignupModel extends Model
 
     /**
      * Return every ACTIVE signup for a kermesse, joined to each volunteer's identity and
-     * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3/5.10).
+     * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3/5.10/5.14).
      *
-     * PRIVACY (NFR5): this is the ONLY read that exposes volunteer PII (first_name,
-     * last_name, phone, email). Its result must never reach a public view — it is gated
-     * behind the Owner/Admin/Gestionnaire role check in KermesseAdminController.
+     * Story 5.14: LEFT JOIN users so orphan signups (user_id IS NULL) are included.
+     * The display name falls back to signup snapshot fields when the status is 'unconfirmed'.
      *
-     * Active = status NOT IN INACTIVE_STATUSES AND deleted_at IS NULL — the SAME
-     * definition as countActiveBySlotIds() / findActiveForUserAndKermesse(), so the
-     * occupied/remaining counts derived from this list match public availability exactly
-     * (a cancelled inscription the public planning already freed never reappears here).
+     * PRIVACY (NFR5): this is the ONLY read that exposes volunteer PII.
      *
-     * Each row carries slot_id (to group volunteers under their slot) and stand_id;
-     * rows are ordered by volunteer name for a stable nominative list. Empty slots simply
-     * have no row — the controller overlays them onto the full slot list for the recap.
-     *
-     * Story 5.3: modifier_first_name (nullable) and last_modified_at (nullable) expose
-     * who made the last admin correction, via a LEFT JOIN on users aliased as mod_u.
-     *
-     * Story 5.10: signup_id is exposed for cancel/edit actions. signup_first_name/
-     * last_name/email/phone are the admin-editable copies on signups (NULL when never
-     * corrected). first_access_at from kermesse_user_roles determines whether the
-     * profile is locked (non-NULL) or editable (NULL) by the admin.
-     *
-     * Display rule: if signup_{field} IS NOT NULL → use signup copy; otherwise use user copy.
-     * The controller applies this rule when building the view model.
-     *
-     * first_access_at is derived via MIN() over all roles for the user in this kermesse so
-     * that the lock fires if the user has accessed in ANY capacity (handles multiple-role
-     * edge cases) and never multiplies rows (replaces the prior O(N) correlated subquery).
-     *
-     * @return list<array{signup_id: int, slot_id: int, stand_id: int, first_name: string, last_name: string, phone: string, email: string, signup_first_name: string|null, signup_last_name: string|null, signup_email: string|null, signup_phone: string|null, first_access_at: string|null, modifier_first_name: string|null, last_modified_at: string|null}>
+     * @return list<array{signup_id: int, slot_id: int, stand_id: int, user_id: int|null, accepted_at: string|null, created_by: int|null, first_name: string|null, last_name: string|null, phone: string|null, email: string|null, last_login_at: string|null, signup_first_name: string|null, signup_last_name: string|null, signup_email: string|null, signup_phone: string|null, admin_notes: string|null, first_access_at: string|null, modifier_first_name: string|null, last_modified_at: string|null}>
      */
     public function findActiveParticipantsForKermesse(int $kermesseId): array
     {
@@ -304,13 +273,10 @@ class SignupModel extends Model
         $st    = $this->db->prefixTable('stands');
         $u     = $this->db->prefixTable('users');
         $kur   = $this->db->prefixTable('kermesse_user_roles');
-        $inact = implode(', ', array_fill(0, count(self::INACTIVE_STATUSES), '?'));
 
-        // MIN(first_access_at) returns the earliest non-null access across all roles; returns
-        // null only when ALL rows are null — which is the exact "not yet accessed" condition
-        // needed for the admin-edit lock.  This replaces the prior per-row correlated subquery.
         $sql = "SELECT
                 si.id AS signup_id, si.slot_id, sl.stand_id,
+                si.user_id, si.accepted_at, si.created_by,
                 u.first_name, u.last_name, u.phone, u.email, u.last_login_at,
                 si.first_name  AS signup_first_name, si.last_name AS signup_last_name,
                 si.email       AS signup_email,       si.phone    AS signup_phone,
@@ -320,7 +286,7 @@ class SignupModel extends Model
             FROM {$si} si
             JOIN {$sl} sl      ON sl.id = si.slot_id
             JOIN {$st} st      ON st.id = sl.stand_id
-            JOIN {$u}  u       ON u.id  = si.user_id
+            LEFT JOIN {$u}  u       ON u.id  = si.user_id
             LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
             LEFT JOIN (
                 SELECT user_id, kermesse_id, MIN(first_access_at) AS first_access_at
@@ -328,64 +294,65 @@ class SignupModel extends Model
                 GROUP BY user_id, kermesse_id
             ) kur_agg ON kur_agg.user_id = si.user_id AND kur_agg.kermesse_id = st.kermesse_id
             WHERE st.kermesse_id = ?
-              AND si.status NOT IN ({$inact})
+              AND si.canceled_at IS NULL
+              AND si.rejected_at IS NULL
               AND si.deleted_at IS NULL
             ORDER BY u.last_name ASC, u.first_name ASC, si.id ASC";
 
-        $result = $this->db->query($sql, array_merge([$kermesseId], self::INACTIVE_STATUSES));
+        $result = $this->db->query($sql, [$kermesseId]);
 
         return $result ? $result->getResultArray() : [];
     }
 
     /**
-     * Return historical (cancelled/removed) signups for a kermesse, grouped by slot.
+     * Return historical (cancelled/removed/refused) signups for a kermesse.
      *
-     * Exposes status so the view can distinguish volunteer self-cancellation ('cancelled')
-     * from admin removal ('removed'). Only these two visible historical statuses are
-     * returned — 'deactivated' and 'deleted' are internal system states.
+     * Story 5.14: status is computed from timestamps. Cancelled = canceled_at set by
+     * volunteer (canceled_by = user_id). Removed = canceled_at set by admin (canceled_by
+     * != user_id or IS NULL). Refused = rejected_at set.
      *
-     * @return list<array{signup_id: int, slot_id: int, stand_id: int, status: string, first_name: string, last_name: string, signup_first_name: string|null, signup_last_name: string|null, last_modified_at: string|null, modifier_first_name: string|null}>
+     * @return list<array{signup_id: int, slot_id: int, stand_id: int, computed_status: string, first_name: string|null, last_name: string|null, signup_first_name: string|null, signup_last_name: string|null, last_modified_at: string|null, modifier_first_name: string|null}>
      */
     public function findHistoricalParticipantsForKermesse(int $kermesseId): array
     {
-        $si   = $this->db->prefixTable('signups');
-        $sl   = $this->db->prefixTable('slots');
-        $st   = $this->db->prefixTable('stands');
-        $u    = $this->db->prefixTable('users');
-        $hist = implode(', ', array_fill(0, count(self::HISTORICAL_STATUSES), '?'));
+        $si  = $this->db->prefixTable('signups');
+        $sl  = $this->db->prefixTable('slots');
+        $st  = $this->db->prefixTable('stands');
+        $u   = $this->db->prefixTable('users');
 
         $sql = "SELECT
                 si.id AS signup_id, si.slot_id, sl.stand_id,
-                si.status,
+                si.canceled_at, si.canceled_by, si.rejected_at, si.user_id,
                 u.first_name, u.last_name,
                 si.first_name AS signup_first_name, si.last_name AS signup_last_name,
                 si.last_modified_at, mod_u.first_name AS modifier_first_name
             FROM {$si} si
             JOIN {$sl} sl      ON sl.id = si.slot_id
             JOIN {$st} st      ON st.id = sl.stand_id
-            JOIN {$u}  u       ON u.id  = si.user_id
+            LEFT JOIN {$u}  u       ON u.id  = si.user_id
             LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
             WHERE st.kermesse_id = ?
-              AND si.status IN ({$hist})
+              AND (si.canceled_at IS NOT NULL OR si.rejected_at IS NOT NULL)
               AND si.deleted_at IS NULL
             ORDER BY si.last_modified_at DESC, u.last_name ASC, si.id ASC";
 
-        $result = $this->db->query($sql, array_merge([$kermesseId], self::HISTORICAL_STATUSES));
+        $result = $this->db->query($sql, [$kermesseId]);
 
-        return $result ? $result->getResultArray() : [];
+        if (! $result) {
+            return [];
+        }
+
+        return array_map(static function (array $row): array {
+            $row['status'] = self::getStatus($row);
+            return $row;
+        }, $result->getResultArray());
     }
 
     /**
      * Return an ACTIVE signup that belongs to $kermesseId (via slot→stand scope),
      * with no user-ownership restriction — used by admin cancel and edit actions.
      *
-     * A neutral miss (wrong kermesse, already inactive, soft-deleted) returns null.
-     *
-     * signup_email / signup_first_name are the admin-corrected copies from the signups
-     * table (null when never edited). The service uses them to target cancellation emails
-     * at the corrected address rather than the stale global profile.
-     *
-     * @return array{id: int, user_id: int, slot_id: int, email: string, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null, stand_name: string, starts_at: string, ends_at: string}|null
+     * @return array{id: int, user_id: int|null, slot_id: int, email: string|null, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null, stand_name: string, starts_at: string, ends_at: string}|null
      */
     public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
     {
@@ -393,10 +360,11 @@ class SignupModel extends Model
             ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, u.phone, si.email AS signup_email, si.first_name AS signup_first_name, si.last_name AS signup_last_name, si.phone AS signup_phone, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
-            ->join('users u', 'u.id = si.user_id')
+            ->join('users u', 'u.id = si.user_id', 'left')
             ->where('si.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
-            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.canceled_at', null)
+            ->where('si.rejected_at', null)
             ->where('si.deleted_at', null)
             ->get()
             ->getRowArray();
@@ -405,18 +373,21 @@ class SignupModel extends Model
     }
 
     /**
-     * Mark an admin-removed signup as REMOVED (distinct from volunteer self-cancellation).
-     * Returns true when exactly one active row flipped to REMOVED.
+     * Mark a signup as cancelled by admin (sets canceled_at and canceled_by to admin).
+     * Returns true when exactly one active row was updated.
      */
     public function markCancelledByAdmin(int $signupId, int $adminUserId): bool
     {
+        $now = date('Y-m-d H:i:s');
         $this->builder()
             ->where('id', $signupId)
-            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
             ->where('deleted_at', null)
             ->update([
-                'status'     => self::STATUS_REMOVED,
-                'updated_at' => date('Y-m-d H:i:s'),
+                'canceled_at' => $now,
+                'canceled_by' => $adminUserId,
+                'updated_at'  => $now,
             ]);
 
         return $this->db->affectedRows() === 1;
@@ -424,9 +395,6 @@ class SignupModel extends Model
 
     /**
      * Write the admin-editable contact fields to the signups row (Story 5.10 AC2).
-     *
-     * Only updates first_name/last_name/email/phone on signups — NEVER touches users.
-     * Returns true when exactly one row was updated.
      *
      * @param array{first_name?: string, last_name?: string, email?: string, phone?: string, admin_notes?: string} $fields
      */
@@ -444,19 +412,12 @@ class SignupModel extends Model
             ->where('deleted_at', null)
             ->update($allowed);
 
-        // 0 affected rows means all values were already identical — not an error, since the
-        // signup's existence was pre-verified by the caller. Both 0 and 1 are success.
         return in_array($this->db->affectedRows(), [0, 1], true);
     }
 
     /**
      * Return an ACTIVE signup that belongs to $userId AND to $kermesseId, or null.
-     *
-     * Ownership + scope guard for Story 4.3 cancellation: the signup is bound to the
-     * kermesse through slot→stand, so a volunteer cannot target a signup id from
-     * another kermesse, and the user_id match enforces that one can only cancel one's
-     * own inscription. A miss (wrong owner, wrong kermesse, already inactive,
-     * soft-deleted) returns null so the service can answer neutrally.
+     * Ownership + scope guard for volunteer self-cancellation (Story 4.3).
      *
      * @return array{id: int, user_id: int, slot_id: int}|null
      */
@@ -470,7 +431,8 @@ class SignupModel extends Model
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('si.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
-            ->whereNotIn('si.status', self::INACTIVE_STATUSES)
+            ->where('si.canceled_at', null)
+            ->where('si.rejected_at', null)
             ->where('si.deleted_at', null);
 
         if ($userRow !== null && $userRow->email !== '') {
@@ -489,20 +451,6 @@ class SignupModel extends Model
 
     /**
      * Stamp the modification-tracking columns — Story 5.1.
-     *
-     * Called by SignupService::stampAdminModification() for every admin correction
-     * (Stories 5.3, 5.10, 5.11, 5.12). Returns true only when exactly one row was
-     * updated. The signup must exist and not be soft-deleted; a miss (wrong id,
-     * already deleted) returns false so the caller can detect the no-op.
-     *
-     * $modifiedByUserId references users.id (FK RESTRICT): revoking an admin role
-     * only touches kermesse_user_roles — the users row persists, so traceability
-     * is preserved without any special handling.
-     *
-     * NOTE: affectedRows() === 1 relies on at least one column value actually changing.
-     * last_modified_at is always set to the current second, so the only theoretical
-     * false-negative is calling this twice within the same second with the same admin
-     * on the same signup. This edge case is not reachable through normal UI actions.
      */
     public function stampAdminModification(int $signupId, int $modifiedByUserId): bool
     {
@@ -519,44 +467,159 @@ class SignupModel extends Model
     }
 
     /**
-     * Transition an ACTIVE signup to CANCELLED, scoped to its owner. Returns true only
-     * when exactly one active row flipped.
-     *
-     * The status guard makes this safe under a double submit / already-cancelled row
-     * (no row matches → false, so the place is never "freed twice"), and the user_id
-     * guard is defence in depth on top of the service's ownership read. Setting
-     * CANCELLED frees the slot instantly: every active-signup count excludes
-     * INACTIVE_STATUSES, so public availability recovers the place with no extra write.
+     * Transition an ACTIVE signup to CANCELLED by the volunteer (sets canceled_at,
+     * canceled_by = userId). Returns true only when exactly one active row flipped.
      */
     public function markCancelled(int $signupId, int $userId): bool
     {
+        $now = date('Y-m-d H:i:s');
         $this->builder()
             ->where('id', $signupId)
             ->where('user_id', $userId)
-            ->whereNotIn('status', self::INACTIVE_STATUSES)
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
             ->where('deleted_at', null)
             ->update([
-                'status'     => self::STATUS_CANCELLED,
-                'updated_at' => date('Y-m-d H:i:s'),
+                'canceled_at' => $now,
+                'canceled_by' => $userId,
+                'updated_at'  => $now,
             ]);
 
         return $this->db->affectedRows() === 1;
     }
 
     /**
-     * Attaches orphan signups to a user.
-     * Updates signups with matching email and null user_id.
+     * Mark a signup as accepted (certified) by the volunteer (Story 5.14 AC3).
+     * Sets accepted_at. Only applies when the signup has no accepted_at yet.
+     */
+    public function markAccepted(int $signupId, int $userId): bool
+    {
+        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
+
+        $builder = $this->builder()
+            ->where('id', $signupId)
+            ->where('accepted_at', null)
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
+            ->where('deleted_at', null);
+
+        // Match by user_id or email (orphan signups re-attached at login)
+        if ($userRow !== null && $userRow->email !== '') {
+            $builder->groupStart()
+                ->where('user_id', $userId)
+                ->orWhere('email', $userRow->email)
+                ->groupEnd();
+        } else {
+            $builder->where('user_id', $userId);
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $builder->update([
+            'accepted_at' => $now,
+            'updated_at'  => $now,
+        ]);
+
+        return $this->db->affectedRows() === 1;
+    }
+
+    /**
+     * Mark a signup as rejected by the volunteer (Story 5.14 AC4).
+     * Sets rejected_at, which frees the slot capacity.
+     */
+    public function markRejected(int $signupId, int $userId): bool
+    {
+        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
+
+        $builder = $this->builder()
+            ->where('id', $signupId)
+            ->where('rejected_at', null)
+            ->where('canceled_at', null)
+            ->where('deleted_at', null);
+
+        if ($userRow !== null && $userRow->email !== '') {
+            $builder->groupStart()
+                ->where('user_id', $userId)
+                ->orWhere('email', $userRow->email)
+                ->groupEnd();
+        } else {
+            $builder->where('user_id', $userId);
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $builder->update([
+            'rejected_at' => $now,
+            'updated_at'  => $now,
+        ]);
+
+        return $this->db->affectedRows() === 1;
+    }
+
+    /**
+     * Attaches orphan signups to a user and stamps viewed_at for those not yet seen.
      *
-     * @return int Number of affected rows
+     * @return int Number of rows attached (viewed_at updated)
      */
     public function attachOrphansToUser(string $email, int $userId): int
     {
+        $now = date('Y-m-d H:i:s');
         $this->where('email', strtolower(trim($email)))
              ->where('user_id', null)
              ->update(null, [
-                 'user_id'   => $userId,
-                 'viewed_at' => date('Y-m-d H:i:s'),
+                 'user_id'    => $userId,
+                 'viewed_at'  => $now,
+                 'updated_at' => $now,
              ]);
+
+        return $this->db->affectedRows();
+    }
+
+    /**
+     * Return the distinct kermesse IDs for all active signups belonging to a user.
+     * Used by resolveOrphanSignups to insert benevole roles after orphan attachment.
+     *
+     * @return list<int>
+     */
+    public function findKermesseIdsForUser(int $userId): array
+    {
+        $si = $this->db->prefixTable('signups');
+        $sl = $this->db->prefixTable('slots');
+        $st = $this->db->prefixTable('stands');
+
+        $result = $this->db->query(
+            "SELECT DISTINCT st.kermesse_id
+             FROM {$si} si
+             JOIN {$sl} sl ON sl.id = si.slot_id
+             JOIN {$st} st ON st.id = sl.stand_id
+             WHERE si.user_id = ? AND si.deleted_at IS NULL",
+            [$userId]
+        );
+
+        return $result
+            ? array_column($result->getResultArray(), 'kermesse_id')
+            : [];
+    }
+
+    /**
+     * Stamp viewed_at for existing unconfirmed signups of a user that have not yet been seen.
+     * Called at login for signups already attached to the user but not yet acknowledged (AC1).
+     *
+     * @return int Number of rows updated
+     */
+    public function stampViewedForUnconfirmedSignups(int $userId): int
+    {
+        $now = date('Y-m-d H:i:s');
+
+        $this->db->table($this->table)
+            ->where('user_id', $userId)
+            ->where('accepted_at', null)
+            ->where('rejected_at', null)
+            ->where('canceled_at', null)
+            ->where('deleted_at', null)
+            ->where('viewed_at', null)
+            ->update([
+                'viewed_at'  => $now,
+                'updated_at' => $now,
+            ]);
 
         return $this->db->affectedRows();
     }
