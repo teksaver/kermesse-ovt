@@ -5,13 +5,17 @@
 -- ces lignes ont user_id IS NULL jusqu'au rattachement lors de la première connexion
 -- via resolveOrphanSignups().
 --
--- On supprime la contrainte FK fk_signups_user (DELETE RESTRICT incompatible avec NULL)
--- et on la remplace par une FK nullable (ON DELETE SET NULL) pour que la suppression
--- d'un utilisateur n'invalide pas les inscriptions orphelines qui lui ont été rattachées.
+-- La FK est remplacée par ON DELETE SET NULL pour que la suppression d'un utilisateur
+-- préserve les inscriptions au lieu de les bloquer.
+--
+-- Note: les 3 ALTER TABLE doivent être séparés — MariaDB refuse de DROP et re-ADD
+-- une contrainte avec le même nom dans un seul statement (errno 121).
+
+ALTER TABLE `signups` DROP FOREIGN KEY `fk_signups_user`;
+
+ALTER TABLE `signups` MODIFY COLUMN `user_id` BIGINT UNSIGNED NULL DEFAULT NULL;
 
 ALTER TABLE `signups`
-    DROP FOREIGN KEY `fk_signups_user`,
-    MODIFY COLUMN `user_id` BIGINT UNSIGNED NULL DEFAULT NULL,
     ADD CONSTRAINT `fk_signups_user`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
         ON DELETE SET NULL ON UPDATE CASCADE;
