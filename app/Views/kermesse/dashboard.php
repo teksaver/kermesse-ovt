@@ -1180,6 +1180,10 @@
             activateSection(activeSidebarBtn.getAttribute('data-tab'));
         } else if (sidebarBtns.length > 0) {
             activateSection(sidebarBtns[0].getAttribute('data-tab'));
+        } else {
+            // No sidebar (single-panel view, e.g. benevole): activate the only panel so
+            // the CSS rule body.js-active .tab-panel:not(.is-open) doesn't hide it.
+            activateSection(panels[0].getAttribute('data-tab-content'));
         }
     }
 

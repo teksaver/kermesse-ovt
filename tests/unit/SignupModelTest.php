@@ -124,22 +124,21 @@ final class SignupModelTest extends CIUnitTestCase
         $this->assertSame([], $rows);
     }
 
-    public function testReturnsActiveSignupMatchedByEmailWhenUserIdIsZeroForStateless(): void
+    public function testOrphanSignupNotVisibleBeforeResolution(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
 
-        // On simule une inscription stateless publique (user_id = 0)
+        // Orphan signup (user_id = null, email matches) — not yet resolved via resolveOrphanSignups.
+        // findActiveForUserAndKermesse uses user_id only; orphan is invisible until attached.
         db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => 0,
-            'email'      => 'benevole@signupmodel.test', // Correspond à l'email de $this->userId
-            'deleted_at' => null,
+            'slot_id' => $slotId,
+            'user_id' => null,
+            'email'   => 'benevole@signupmodel.test',
         ]);
 
         $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
-        $this->assertCount(1, $rows);
-        $this->assertSame('Stand Buvette', $rows[0]['stand_name']);
+        $this->assertSame([], $rows, 'Orphan signup must not appear before resolveOrphanSignups sets user_id');
     }
 
 

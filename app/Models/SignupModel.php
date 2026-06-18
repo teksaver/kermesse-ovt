@@ -214,29 +214,19 @@ class SignupModel extends Model
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
     {
-        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
-
-        $builder = $this->db->table($this->table . ' si')
+        return $this->db->table($this->table . ' si')
             ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at, si.accepted_at, si.created_by')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('st.kermesse_id', $kermesseId)
+            ->where('si.user_id', $userId)
             ->where('si.canceled_at', null)
             ->where('si.rejected_at', null)
             ->where('si.deleted_at', null)
             ->orderBy('sl.starts_at', 'ASC')
-            ->orderBy('sl.id', 'ASC');
-
-        if ($userRow !== null && $userRow->email !== '') {
-            $builder->groupStart()
-                ->where('si.user_id', $userId)
-                ->orWhere('si.email', $userRow->email)
-                ->groupEnd();
-        } else {
-            $builder->where('si.user_id', $userId);
-        }
-
-        return $builder->get()->getResultArray();
+            ->orderBy('sl.id', 'ASC')
+            ->get()
+            ->getResultArray();
     }
 
     /**

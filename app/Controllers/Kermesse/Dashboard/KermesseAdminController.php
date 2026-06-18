@@ -11,6 +11,7 @@ use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\KermesseLifecycleService;
 use App\Services\RoleService;
+use App\Services\SignupService;
 use App\Services\StandDeletionService;
 use CodeIgniter\I18n\Time;
 
@@ -37,6 +38,15 @@ class KermesseAdminController extends BaseController
         // Story 5.2 — suivi d'accès par kermesse: first_access_at (1er chargement)
         // et last_access_at (chaque chargement). Hooks Story 5.4 et 5.10 à venir.
         $roleService->recordAccess($id, $userId);
+
+        // Attach any orphan signups created since the last login (e.g. signup submitted
+        // from another browser or by an admin with an email not yet in users).
+        // attachOrphansToUser is a single UPDATE — cheap no-op when nothing to attach.
+        $userEmail = (string) (model(UserModel::class)->find($userId)['email'] ?? '');
+        if ($userEmail !== '') {
+            (new SignupService(model(UserModel::class), model(SignupModel::class)))
+                ->resolveOrphanSignups($userEmail, $userId);
+        }
 
         // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
         // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
