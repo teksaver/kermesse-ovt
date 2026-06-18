@@ -152,7 +152,9 @@ class PublicVolunteerPageService
         if ($userId !== null && !empty($allSlots)) {
             $signups = model(SignupModel::class)
                 ->where('user_id', $userId)
-                ->where('status', \App\Models\SignupModel::STATUS_ACTIVE)
+                ->where('canceled_at', null)
+                ->where('rejected_at', null)
+                ->where('deleted_at', null)
                 ->findAll();
             
             $userSignups = array_flip(array_column($signups, 'slot_id'));

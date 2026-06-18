@@ -68,7 +68,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             ->getRowArray();
 
         $this->assertNotNull($row);
-        $this->assertSame(SignupModel::STATUS_REMOVED, $row['status']);
+        $this->assertSame('removed', SignupModel::getStatus($row));
     }
 
     public function testAdminCancelRedirectsToInscritsTab(): void
@@ -402,10 +402,8 @@ final class AdminSignupActionsTest extends CIUnitTestCase
         $this->slotId = (int) $db->insertID();
 
         $db->table('signups')->insert([
-            'slot_id'    => $this->slotId,
-            'user_id'    => $this->volunteerId,
-            'status'     => 'active',
-            'deleted_at' => null,
+            'slot_id' => $this->slotId,
+            'user_id' => $this->volunteerId,
         ]);
         $this->signupId = (int) $db->insertID();
     }
@@ -489,7 +487,6 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,

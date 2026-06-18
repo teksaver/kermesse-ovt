@@ -75,7 +75,6 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
@@ -141,12 +140,25 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, string $name = '', string $status = 'active', ?string $deletedAt = null): int
+    private function insertSignup(int $slotId, string $name = '', string $state = 'active', ?string $deletedAt = null): int
     {
-        $db = db_connect();
-        $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, 0, '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db   = db_connect();
+        $cols = 'slot_id, user_id, created_at, updated_at';
+        $vals = "{$slotId}, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP";
+
+        if ($state === 'cancelled') {
+            $cols .= ', canceled_at, canceled_by';
+            $vals .= ", CURRENT_TIMESTAMP, 0";
+        } elseif ($state === 'refused') {
+            $cols .= ', rejected_at';
+            $vals .= ', CURRENT_TIMESTAMP';
+        } elseif ($deletedAt !== null || in_array($state, ['deactivated', 'deleted'], true)) {
+            $ts    = $deletedAt ?? date('Y-m-d H:i:s');
+            $cols .= ', deleted_at';
+            $vals .= ", '" . addslashes($ts) . "'";
+        }
+
+        $db->query("INSERT INTO db_signups ({$cols}, first_name, last_name) VALUES ({$vals}, '" . addslashes($name) . "', '')");
         return (int) $db->insertID();
     }
 

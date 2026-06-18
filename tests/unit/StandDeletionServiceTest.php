@@ -50,7 +50,6 @@ final class StandDeletionServiceTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT "active",
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
@@ -109,13 +108,17 @@ final class StandDeletionServiceTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function makeSignup(int $slotId, string $status = 'active'): void
+    private function makeSignup(int $slotId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id' => $slotId,
-            'user_id' => $this->otherUser,
-            'status'  => $status,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $this->otherUser];
+        $row += match ($state) {
+            'cancelled'            => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $this->otherUser],
+            'removed'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'              => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                => [],
+        };
+        db_connect()->table('signups')->insert($row);
     }
 
     private function standStatus(int $standId): ?string

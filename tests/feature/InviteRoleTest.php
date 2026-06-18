@@ -501,7 +501,6 @@ final class InviteRoleTest extends CIUnitTestCase
         $db->table('signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
-            'status'  => 'active',
         ]);
     }
 

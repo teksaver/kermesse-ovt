@@ -1072,20 +1072,43 @@
         <ul class="my-signups-list">
             <?php foreach ($myParticipations as $participation): ?>
             <li class="my-signups-list__item">
-                <span class="my-signups-list__stand"><strong><?= esc($participation['stand_name']) ?></strong></span>
-                <span class="my-signups-list__when">
-                    <span aria-hidden="true">📅</span> <?= esc($participation['date']) ?>
-                    · <span aria-hidden="true">🕐</span> <?= esc($participation['start_time']) ?> – <?= esc($participation['end_time']) ?>
-                </span>
-                <?php if ($signupsOpen): ?>
-                <form method="post"
-                      action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
-                      class="my-signups-list__cancel"
-                      onsubmit="if (!confirm('Voulez-vous vraiment annuler cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
-                    <?= csrf_field() ?>
-                    <button type="submit" class="btn btn--danger btn--sm">Annuler ma participation</button>
-                </form>
-                <?php endif; ?>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span class="my-signups-list__stand"><strong><?= esc($participation['stand_name']) ?></strong></span>
+                        <span class="my-signups-list__when" style="display:block; margin-top:2px;">
+                            <span aria-hidden="true">📅</span> <?= esc($participation['date']) ?>
+                            · <span aria-hidden="true">🕐</span> <?= esc($participation['start_time']) ?> – <?= esc($participation['end_time']) ?>
+                        </span>
+                        <?php if (! empty($participation['needs_confirmation'])): ?>
+                        <span class="badge badge--warning" style="margin-top:4px; display:inline-block;" aria-label="En attente de confirmation">En attente de confirmation</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <?php if (! empty($participation['needs_confirmation'])): ?>
+                        <!-- Boutons Accepter / Refuser (Story 5.14 AC2/3/4) -->
+                        <form method="post"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/accept") ?>"
+                              onsubmit="this.querySelector('button[type=submit]').disabled = true;">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn--primary btn--sm">Accepter</button>
+                        </form>
+                        <form method="post"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/reject") ?>"
+                              onsubmit="if (!confirm('Voulez-vous vraiment refuser cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn--danger btn--sm">Refuser</button>
+                        </form>
+                        <?php elseif ($signupsOpen || ! empty($participation['is_confirmed'])): ?>
+                        <form method="post"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
+                              class="my-signups-list__cancel"
+                              onsubmit="if (!confirm('Voulez-vous vraiment annuler cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn--danger btn--sm">Annuler ma participation</button>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                </div>
             </li>
             <?php endforeach; ?>
         </ul>

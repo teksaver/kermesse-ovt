@@ -309,7 +309,7 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $this->assertSame(3,  $capturedSignup['slot_id'] ?? null);
         $this->assertSame(55, $capturedSignup['user_id'] ?? null);
-        $this->assertSame('active', $capturedSignup['status'] ?? null);
+        $this->assertArrayNotHasKey('status', $capturedSignup);
     }
 
     // ------------------------------------------------------------------

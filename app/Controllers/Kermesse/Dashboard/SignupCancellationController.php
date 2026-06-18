@@ -11,12 +11,11 @@ use App\Models\UserModel;
 use App\Services\SignupService;
 
 /**
- * Lets a volunteer cancel (withdraw from) their OWN signup from the dashboard's
- * "Mes participations" section (Story 4.3).
+ * Lets a volunteer manage their OWN signups from the dashboard's "Mes participations"
+ * section (Stories 4.3, 5.14).
  *
- * Single responsibility: translate the POST into a SignupService::cancelSignup()
- * call and PRG-redirect with a French flash message. All invariants (ownership,
- * kermesse-open, slot recovery) live in the service — never here.
+ * Single responsibility: translate the POST into SignupService calls and
+ * PRG-redirect with a French flash message. All invariants live in the service.
  */
 class SignupCancellationController extends BaseController
 {
@@ -42,6 +41,52 @@ class SignupCancellationController extends BaseController
             session()->setFlashdata('participation_error', "Cette participation n'a pas pu être annulée.");
         }
 
-        return redirect()->to(site_url("kermesse/{$id}"));
+        return redirect()->to(site_url("kermesse/{$id}#participations"));
+    }
+
+    /** POST /kermesse/{kermesseId}/signups/{signupId}/accept — Story 5.14 AC3 */
+    public function accept(string $kermesseId, string $signupId): mixed
+    {
+        $id     = (int) $kermesseId;
+        $userId = (int) session()->get('user_id');
+
+        $service = new SignupService(
+            model(UserModel::class),
+            model(SignupModel::class),
+            model(KermesseModel::class),
+        );
+
+        $result = $service->acceptSignup((int) $signupId, $userId, $id);
+
+        if ($result->success) {
+            session()->setFlashdata('participation_notice', 'Votre participation a été confirmée.');
+        } else {
+            session()->setFlashdata('participation_error', "La confirmation n'a pas pu être enregistrée.");
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}#participations"));
+    }
+
+    /** POST /kermesse/{kermesseId}/signups/{signupId}/reject — Story 5.14 AC4 */
+    public function reject(string $kermesseId, string $signupId): mixed
+    {
+        $id     = (int) $kermesseId;
+        $userId = (int) session()->get('user_id');
+
+        $service = new SignupService(
+            model(UserModel::class),
+            model(SignupModel::class),
+            model(KermesseModel::class),
+        );
+
+        $result = $service->rejectSignup((int) $signupId, $userId, $id);
+
+        if ($result->success) {
+            session()->setFlashdata('participation_notice', 'Votre refus a été enregistré. La place a été libérée.');
+        } else {
+            session()->setFlashdata('participation_error', "Le refus n'a pas pu être enregistré.");
+        }
+
+        return redirect()->to(site_url("kermesse/{$id}#participations"));
     }
 }

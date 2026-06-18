@@ -197,11 +197,13 @@ final class RoleServiceLeaveKermesseTest extends CIUnitTestCase
         ]);
         $slotId = (int) $db->insertID();
 
-        $db->table('signups')->insert([
-            'slot_id' => $slotId,
-            'user_id' => $userId,
-            'status'  => $status,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $userId];
+        $row += match ($status) {
+            'cancelled' => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'   => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            default     => [],
+        };
+        $db->table('signups')->insert($row);
     }
 
     private function roleForUser(int $kermesseId, int $userId): ?string
@@ -291,7 +293,6 @@ final class RoleServiceLeaveKermesseTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT "active",
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,

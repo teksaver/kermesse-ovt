@@ -9,18 +9,19 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
 /**
- * Story 4.3 — Annuler une inscription (se désister).
+ * Story 5.14 — Flux de confirmation d'identité (AC2/AC3/AC4).
  *
- * AC1 : depuis « Mes participations », un bénévole annule son inscription active ;
- *       la place redevient immédiatement disponible et le message
- *       « La place est de nouveau disponible. » s'affiche (UX-DR23).
- * AC2 : kermesse fermée → l'action est indisponible et rejetée côté serveur
- *       (« Les inscriptions sont fermées. », signups_not_open).
- * Sécurité : un bénévole ne peut annuler que sa propre inscription (ownership).
+ * AC2 : dans « Mes participations », une inscription non confirmée (accepted_at IS NULL,
+ *       created_by != user_id ou NULL) affiche les boutons « Accepter » et « Refuser ».
+ *       Une inscription auto-créée (certified) ne les affiche pas.
+ * AC3 : POST /accept → accepted_at renseigné (statut calculé = certified), flash notice.
+ * AC4 : POST /reject → rejected_at renseigné (statut calculé = refused), place libérée,
+ *       flash notice.
+ * Sécurité : un bénévole ne peut accepter/refuser que sa propre inscription.
  *
  * @internal
  */
-final class CancelSignupTest extends CIUnitTestCase
+final class ConfirmSignupTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
@@ -28,14 +29,21 @@ final class CancelSignupTest extends CIUnitTestCase
     protected $migrateOnce = true;
     protected $refresh     = true;
 
-    private int $ownerId        = 0;
-    private int $benevoleId     = 0;
+    private int $ownerId         = 0;
+    private int $benevoleId      = 0;
     private int $autreBenevoleId = 0;
-    private int $kermesseId     = 0;
-    private int $slotId         = 0;
-    private int $signupId       = 0;
+    private int $kermesseId      = 0;
+    private int $slotId          = 0;
 
-    private const STAND = 'Stand Buvette 4.3';
+    /** Signup created by an admin (created_by = ownerId ≠ benevoleId) → unconfirmed */
+    private int $unconfirmedSignupId = 0;
+
+    /** Signup created by the volunteer themselves (created_by = benevoleId) → certified */
+    private int $certifiedSignupId = 0;
+
+    private int $slot2Id            = 0;
+
+    private const STAND = 'Stand Buvette 5.14';
 
     protected function setUp(): void
     {
@@ -57,102 +65,111 @@ final class CancelSignupTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
-    // AC1 — Bouton visible quand ouvert / caché quand fermé
+    // AC2 — Badges de confirmation dans « Mes participations »
     // ------------------------------------------------------------------
 
-    public function testBenevoleSeesCancelButtonWhenOpen(): void
+    public function testUnconfirmedSignupShowsConfirmationButtons(): void
     {
+        $result = $this->getDashboard($this->benevoleId);
+
+        $result->assertStatus(200);
+        $result->assertSee('En attente de confirmation');
+        $result->assertSee('Accepter');
+        $result->assertSee('Refuser');
+    }
+
+    public function testSelfCreatedSignupDoesNotShowConfirmationButtons(): void
+    {
+        // The certified signup (created_by = benevoleId) must NOT show the confirmation UI.
+        // The cancel button should appear instead (kermesse is open).
         $result = $this->getDashboard($this->benevoleId);
 
         $result->assertStatus(200);
         $result->assertSee('Annuler ma participation');
-    }
-
-    public function testCancelButtonHiddenWhenKermesseClosed(): void
-    {
-        $this->setKermesseStatus('closed');
-
-        $result = $this->getDashboard($this->benevoleId);
-
-        $result->assertStatus(200);
-        // L'inscription reste listée, mais l'action d'annulation est indisponible (AC2).
-        $result->assertSee(self::STAND);
-        $result->assertDontSee('Annuler ma participation');
+        // Only ONE badge must appear (for the unconfirmed signup). The aria-label attribute
+        // is unique per badge, so counting it gives the exact badge count.
+        $this->assertSame(
+            1,
+            substr_count((string) $result->getBody(), 'aria-label="En attente de confirmation"'),
+        );
     }
 
     // ------------------------------------------------------------------
-    // AC1 — Annulation : place libérée + message
+    // AC3 — Accepter une inscription non confirmée
     // ------------------------------------------------------------------
 
-    public function testBenevoleCancelsOwnSignupFreesSlotAndShowsMessage(): void
+    public function testBenevoleAcceptsUnconfirmedSignupSetsAcceptedAt(): void
     {
-        // Pré-condition : la place est occupée.
-        $this->assertSame(1, $this->activeCount());
-
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
-        // L'inscription est annulée et la place est immédiatement libérée.
-        $this->assertSame('cancelled', $this->signupStatus());
-        $this->assertSame(0, $this->activeCount());
-
-        // Message de confirmation (UX-DR23).
+        $this->assertSame('certified', $this->signupStatus($this->unconfirmedSignupId));
         $this->assertSame(
-            'La place est de nouveau disponible.',
+            'Votre participation a été confirmée.',
             (string) session()->getFlashdata('participation_notice'),
         );
     }
 
-    public function testMessageIsRenderedOnDashboardAfterCancel(): void
+    public function testAcceptedSignupCountsTowardCapacity(): void
     {
-        $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+        // Before accept: unconfirmed is still counted (orphan policy).
+        $before = $this->activeCount($this->slotId);
 
-        // La participation annulée disparaît de la liste active.
-        $result = $this->getDashboard($this->benevoleId);
-        $result->assertStatus(200);
-        $result->assertSee('aucune inscription active');
+        $this->withSession($this->session($this->benevoleId))
+            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
+
+        // After accept: still counted (certified is active).
+        $this->assertSame($before, $this->activeCount($this->slotId));
     }
 
     // ------------------------------------------------------------------
-    // AC2 — Kermesse fermée : annulation rejetée côté serveur
+    // AC4 — Refuser une inscription non confirmée
     // ------------------------------------------------------------------
 
-    public function testCancelRejectedWhenKermesseClosed(): void
+    public function testBenevoleRejectsUnconfirmedSignupFreesSlot(): void
     {
-        $this->setKermesseStatus('closed');
+        $before = $this->activeCount($this->slotId);
 
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/reject");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
-        // L'inscription reste active : aucune mutation quand les inscriptions sont fermées.
-        $this->assertSame('active', $this->signupStatus());
-        $this->assertSame(1, $this->activeCount());
-
+        $this->assertSame('refused', $this->signupStatus($this->unconfirmedSignupId));
+        $this->assertSame($before - 1, $this->activeCount($this->slotId));
         $this->assertSame(
-            'Les inscriptions sont fermées.',
-            (string) session()->getFlashdata('participation_error'),
+            'Votre refus a été enregistré. La place a été libérée.',
+            (string) session()->getFlashdata('participation_notice'),
         );
     }
 
     // ------------------------------------------------------------------
-    // Sécurité — un bénévole ne peut annuler que sa propre inscription
+    // Sécurité — un bénévole ne peut pas toucher la participation d'autrui
     // ------------------------------------------------------------------
 
-    public function testBenevoleCannotCancelAnotherVolunteersSignup(): void
+    public function testAnotherBenevoleCannotAcceptSomeoneElsesSignup(): void
     {
         $result = $this->withSession($this->session($this->autreBenevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
-        // L'inscription de l'autre bénévole n'est pas touchée.
-        $this->assertSame('active', $this->signupStatus());
-        $this->assertSame(1, $this->activeCount());
+        // Signup unchanged.
+        $this->assertSame('unconfirmed', $this->signupStatus($this->unconfirmedSignupId));
+        $this->assertNotEmpty((string) session()->getFlashdata('participation_error'));
+    }
+
+    public function testAnotherBenevoleCannotRejectSomeoneElsesSignup(): void
+    {
+        $result = $this->withSession($this->session($this->autreBenevoleId))
+            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/reject");
+
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
+
+        $this->assertSame('unconfirmed', $this->signupStatus($this->unconfirmedSignupId));
+        $this->assertNotEmpty((string) session()->getFlashdata('participation_error'));
     }
 
     // ------------------------------------------------------------------
@@ -164,16 +181,16 @@ final class CancelSignupTest extends CIUnitTestCase
         $db = db_connect();
 
         foreach ([
-            ['owner@cancel.test', 'Owner', 'Test'],
-            ['benevole@cancel.test', 'Benevole', 'Test'],
-            ['autre@cancel.test', 'Autre', 'Test'],
+            ['owner@confirm514.test', 'Owner', 'Test'],
+            ['benevole@confirm514.test', 'Benevole', 'Test'],
+            ['autre@confirm514.test', 'Autre', 'Test'],
         ] as [$email, $first, $last]) {
             $db->table('users')->insert([
                 'email'      => $email,
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => '', 
+                'phone'      => '',
             ]);
         }
 
@@ -184,8 +201,8 @@ final class CancelSignupTest extends CIUnitTestCase
 
         $db->table('kermesses')->insert([
             'created_by'  => $this->ownerId,
-            'public_slug' => 'cancel-43',
-            'name'        => 'Kermesse Annulation 4.3',
+            'public_slug' => 'confirm-514',
+            'name'        => 'Kermesse Confirmation 5.14',
             'location'    => 'Salle de test',
             'status'      => 'open',
         ]);
@@ -205,39 +222,54 @@ final class CancelSignupTest extends CIUnitTestCase
         ]);
         $standId = (int) $db->insertID();
 
-        // Capacité 1 : une seule annulation doit suffire à rouvrir la place.
+        // Slot 1 : inscription non confirmée (admin a créé pour le bénévole).
         $db->table('slots')->insert([
             'stand_id'  => $standId,
             'starts_at' => '2026-10-10 09:00:00',
             'ends_at'   => '2026-10-10 12:00:00',
-            'capacity'  => 1,
+            'capacity'  => 2,
             'status'    => 'active',
         ]);
         $this->slotId = (int) $db->insertID();
 
+        // Signup créé par l'admin (created_by = ownerId ≠ benevoleId) → statut unconfirmed.
         $db->table('signups')->insert([
             'slot_id'    => $this->slotId,
             'user_id'    => $this->benevoleId,
-            'created_by' => $this->benevoleId,
+            'created_by' => $this->ownerId,
         ]);
-        $this->signupId = (int) $db->insertID();
+        $this->unconfirmedSignupId = (int) $db->insertID();
+
+        // Slot 2 : inscription auto-créée (certified) — contrôle pour AC2.
+        $db->table('slots')->insert([
+            'stand_id'  => $standId,
+            'starts_at' => '2026-10-10 14:00:00',
+            'ends_at'   => '2026-10-10 16:00:00',
+            'capacity'  => 2,
+            'status'    => 'active',
+        ]);
+        $this->slot2Id = (int) $db->insertID();
+
+        // Signup créé par le bénévole lui-même → accepted_at renseigné d'office (certified).
+        $db->table('signups')->insert([
+            'slot_id'    => $this->slot2Id,
+            'user_id'    => $this->benevoleId,
+            'created_by' => $this->benevoleId,
+            'accepted_at' => date('Y-m-d H:i:s'),
+        ]);
+        $this->certifiedSignupId = (int) $db->insertID();
     }
 
-    private function setKermesseStatus(string $status): void
+    private function signupStatus(int $signupId): string
     {
-        db_connect()->table('kermesses')->where('id', $this->kermesseId)->update(['status' => $status]);
+        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+
+        return $row !== null ? SignupModel::getStatus($row) : '';
     }
 
-    private function activeCount(): int
+    private function activeCount(int $slotId): int
     {
-        return model(SignupModel::class)->countActiveBySlotIds([$this->slotId])[$this->slotId] ?? 0;
-    }
-
-    private function signupStatus(): string
-    {
-        $row = db_connect()->table('signups')->where('id', $this->signupId)->get()->getRowArray();
-
-        return $row !== null ? \App\Models\SignupModel::getStatus($row) : '';
+        return model(SignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
     }
 
     private function session(int $userId): array

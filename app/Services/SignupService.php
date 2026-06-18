@@ -132,11 +132,14 @@ class SignupService
             return SignupResult::failure('not_found');
         }
 
-        // Lifecycle invariant: withdrawal is only allowed while signups are open
-        // (AC2). Defence in depth — the dashboard hides the button when closed.
-        $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
-        if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
-            return SignupResult::failure('signups_not_open');
+        // Confirmed signups (accepted_at set) can always be cancelled — it is a defensive
+        // action, not a new booking. Non-confirmed signups still require the kermesse to be
+        // open. Defence in depth — the dashboard mirrors this rule in the view (P2).
+        if (empty($signup['accepted_at'])) {
+            $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
+            if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
+                return SignupResult::failure('signups_not_open');
+            }
         }
 
         if (! $this->signupModel->markCancelled($signupId, $userId)) {
@@ -727,6 +730,11 @@ class SignupService
     {
         $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
         if ($signup === null) {
+            // Idempotent: if the signup was already rejected (double-click / two tabs),
+            // the slot is already freed — return success instead of a confusing error.
+            if ($this->signupModel->findRejectedOwnedInKermesse($signupId, $userId, $kermesseId) !== null) {
+                return SignupResult::success($signupId, $userId);
+            }
             return SignupResult::failure('not_found');
         }
 

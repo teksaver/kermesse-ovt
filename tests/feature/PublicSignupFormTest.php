@@ -1282,8 +1282,8 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$aliceId}, 'cancelled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, CURRENT_TIMESTAMP, {$aliceId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->csrfPost("k/ecole-cancelled-cap/slots/{$slotId}/signup", [
             'first_name' => 'Bob',
@@ -1309,8 +1309,8 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$aliceId}, 'cancelled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, CURRENT_TIMESTAMP, {$aliceId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Alice soumet à nouveau le formulaire pour le même créneau.
         $result = $this->csrfPost("k/ecole-resignup/slots/{$slotId}/signup", [

@@ -287,7 +287,6 @@ final class LeaveKermesseTest extends CIUnitTestCase
         db_connect()->table('signups')->insert([
             'slot_id' => $this->slotId,
             'user_id' => $userId,
-            'status'  => 'active',
         ]);
     }
 

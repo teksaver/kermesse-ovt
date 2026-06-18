@@ -160,14 +160,17 @@ final class MyParticipationsTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, int $userId, string $status): void
+    private function insertSignup(int $slotId, int $userId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => null,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $userId];
+        $row += match ($state) {
+            'cancelled'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'                => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'                => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                  => [],
+        };
+        db_connect()->table('signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -255,7 +258,6 @@ final class MyParticipationsTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,

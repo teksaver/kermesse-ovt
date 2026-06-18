@@ -53,6 +53,10 @@ $routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\D
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
 $routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
+// Story 5.14 — accepter / refuser une inscription non confirmée (bénévole).
+$routes->post('kermesse/(:num)/signups/(:num)/accept', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::accept/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/signups/(:num)/reject', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::reject/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+
 // Story 5.10 — annulation et correction admin (Owner/Admin/Gestionnaire).
 $routes->post('kermesse/(:num)/signups/(:num)/admin-cancel', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminCancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
 $routes->post('kermesse/(:num)/signups/(:num)/admin-edit', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminEdit/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);

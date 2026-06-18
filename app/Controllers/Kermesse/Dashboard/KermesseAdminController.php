@@ -94,16 +94,18 @@ class KermesseAdminController extends BaseController
         // formatage (NFR). Date/heures interprétées dans le fuseau de la kermesse,
         // symétriquement à la création du créneau (SlotController, Time::parse).
         $myParticipations = array_map(
-            static function (array $p) use ($timezone): array {
+            static function (array $p) use ($timezone, $userId): array {
                 $start = Time::parse((string) $p['starts_at'], $timezone);
                 $end   = Time::parse((string) $p['ends_at'], $timezone);
 
                 return [
-                    'signup_id'  => (int) $p['signup_id'],
-                    'stand_name' => $p['stand_name'],
-                    'date'       => $start->format('d/m/Y'),
-                    'start_time' => $start->format('H:i'),
-                    'end_time'   => $end->format('H:i'),
+                    'signup_id'          => (int) $p['signup_id'],
+                    'stand_name'         => $p['stand_name'],
+                    'date'               => $start->format('d/m/Y'),
+                    'start_time'         => $start->format('H:i'),
+                    'end_time'           => $end->format('H:i'),
+                    'needs_confirmation' => SignupModel::needsConfirmation($p, $userId),
+                    'is_confirmed'       => ! empty($p['accepted_at']),
                 ];
             },
             model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
@@ -189,32 +191,43 @@ class KermesseAdminController extends BaseController
                 }
             }
 
-            // Story 5.10 display rule: use signup's own copy when an admin has written it
-            // (null = never touched; '' = admin explicitly cleared). Empty-string values
-            // are intentional overrides and must NOT fall back to the global profile.
-            $displayFirstName = $p['signup_first_name'] !== null
-                ? (string) $p['signup_first_name']
-                : (string) $p['first_name'];
-            $displayLastName  = $p['signup_last_name'] !== null
-                ? (string) $p['signup_last_name']
-                : (string) $p['last_name'];
-            $displayEmail     = $p['signup_email'] !== null
-                ? (string) $p['signup_email']
-                : (string) $p['email'];
-            $displayPhone     = $p['signup_phone'] !== null
-                ? (string) $p['signup_phone']
-                : (string) $p['phone'];
+            // Story 5.14 display rule (AC8): for unconfirmed/orphan signups (user_id IS NULL
+            // or status is unconfirmed), use the signup snapshot fields. For certified signups
+            // with a linked user, apply the Story 5.10 lock logic.
+            $computedStatus = \App\Models\SignupModel::getStatus($p);
+            $isOrphan       = ($p['user_id'] === null);
 
-            // Story 5.10 (Stateless): if the user has a verified identity (accessed platform or kermesse),
-            // we display their global users profile instead of the signup snapshot.
-            $locked = $p['first_access_at'] !== null || $p['last_login_at'] !== null;
+            if ($isOrphan || $computedStatus === 'unconfirmed') {
+                // Orphan or unconfirmed: rely solely on signup snapshot
+                $displayFirstName = (string) ($p['signup_first_name'] ?? $p['first_name'] ?? '');
+                $displayLastName  = (string) ($p['signup_last_name']  ?? $p['last_name']  ?? '');
+                $displayEmail     = (string) ($p['signup_email']      ?? $p['email']      ?? '');
+                $displayPhone     = (string) ($p['signup_phone']      ?? $p['phone']      ?? '');
+                $locked           = false;
+            } else {
+                // Story 5.10 display rule: use signup's own copy when an admin has written it
+                // (null = never touched). When the user has verified their identity, show global profile.
+                $displayFirstName = $p['signup_first_name'] !== null
+                    ? (string) $p['signup_first_name']
+                    : (string) $p['first_name'];
+                $displayLastName  = $p['signup_last_name'] !== null
+                    ? (string) $p['signup_last_name']
+                    : (string) $p['last_name'];
+                $displayEmail     = $p['signup_email'] !== null
+                    ? (string) $p['signup_email']
+                    : (string) $p['email'];
+                $displayPhone     = $p['signup_phone'] !== null
+                    ? (string) $p['signup_phone']
+                    : (string) $p['phone'];
 
-            // When locked, always show the verified profile (users table), not the signup copy.
-            if ($locked) {
-                $displayFirstName = (string) $p['first_name'];
-                $displayLastName  = (string) $p['last_name'];
-                $displayEmail     = (string) $p['email'];
-                $displayPhone     = (string) $p['phone'];
+                $locked = $p['first_access_at'] !== null || $p['last_login_at'] !== null;
+
+                if ($locked) {
+                    $displayFirstName = (string) $p['first_name'];
+                    $displayLastName  = (string) $p['last_name'];
+                    $displayEmail     = (string) $p['email'];
+                    $displayPhone     = (string) $p['phone'];
+                }
             }
 
             $participantsBySlot[(int) $p['slot_id']][] = [

@@ -36,41 +36,25 @@ class SignupModel extends Model
     ];
 
     /**
-     * Compute the status of a signup row from its timestamps.
-     *
-     * Priority (highest to lowest):
-     *   soft-deleted       → 'deactivated' (system removal via stand/slot deletion)
-     *   canceled_at set    → 'cancelled' (by volunteer) or 'removed' (by admin)
-     *   rejected_at set    → 'refused'
-     *   accepted_at set    → 'certified'
-     *   unconfirmed cond.  → 'unconfirmed'  (visitor signup or created by someone else)
-     *   default            → 'active'
+     * Delegates to Signup::computeStatus() — logic lives in the entity.
+     * Kept as a static wrapper for callers that work with raw row arrays.
      */
     public static function getStatus(array $row): string
     {
-        if (! empty($row['deleted_at'])) {
-            return 'deactivated';
-        }
-        if (! empty($row['canceled_at'])) {
-            $canceledBy = isset($row['canceled_by']) ? (int) $row['canceled_by'] : null;
-            $userId     = isset($row['user_id'])     ? (int) $row['user_id']     : null;
-            return ($canceledBy !== null && $userId !== null && $canceledBy === $userId)
-                ? 'cancelled'
-                : 'removed';
-        }
-        if (! empty($row['rejected_at'])) {
-            return 'refused';
-        }
-        if (! empty($row['accepted_at'])) {
-            return 'certified';
-        }
-        $createdBy = isset($row['created_by']) ? (int) $row['created_by'] : null;
-        $userId    = isset($row['user_id'])    ? (int) $row['user_id']    : null;
-        // Visitor signup (created_by IS NULL) or created by someone else (admin/other)
-        if ($createdBy === null || ($userId !== null && $createdBy !== $userId)) {
-            return 'unconfirmed';
-        }
-        return 'active';
+        return \App\Entities\Signup::computeStatus($row);
+    }
+
+    /**
+     * Returns true when the signup requires the volunteer's explicit confirmation:
+     * created by someone else (admin) and not yet accepted.
+     * Used to decide whether to show Accept/Refuse buttons vs the Cancel button.
+     */
+    public static function needsConfirmation(array $row, int $userId): bool
+    {
+        $confirmedAt = $row['accepted_at'] ?? null;
+        $createdBy   = isset($row['created_by']) ? (int) $row['created_by'] : null;
+        return $confirmedAt === null
+            && ($createdBy === null || $createdBy !== $userId);
     }
 
     /**
@@ -98,7 +82,7 @@ class SignupModel extends Model
 
         $result = $db->query(
             "SELECT COUNT(*) AS cnt FROM {$table}
-             WHERE slot_id = ? AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL" . $this->forUpdateSuffix($db),
+             WHERE slot_id = ? AND " . self::ACTIVE_CONDITION . $this->forUpdateSuffix($db),
             [$slotId],
         );
 
@@ -128,7 +112,7 @@ class SignupModel extends Model
         $result = $conn->query(
             "SELECT id FROM {$table}
              WHERE slot_id = ? AND (email = ? {$userCond})
-               AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL
+               AND " . self::ACTIVE_CONDITION . "
              LIMIT 1" . $this->forUpdateSuffix($conn),
             $params,
         );
@@ -165,7 +149,7 @@ class SignupModel extends Model
         $signups = $conn->query(
             "SELECT id, slot_id FROM {$tSign}
              WHERE slot_id != ? AND (email = ? {$userCond})
-               AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL" . $this->forUpdateSuffix($conn),
+               AND " . self::ACTIVE_CONDITION . $this->forUpdateSuffix($conn),
             $params
         )->getResultArray();
 
@@ -426,7 +410,7 @@ class SignupModel extends Model
         $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
 
         $builder = $this->db->table($this->table . ' si')
-            ->select('si.id, si.user_id, si.slot_id')
+            ->select('si.id, si.user_id, si.slot_id, si.accepted_at')
             ->join('slots sl', 'sl.id = si.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('si.id', $signupId)
@@ -446,6 +430,36 @@ class SignupModel extends Model
 
         $row = $builder->get()->getRowArray();
 
+        return $row ?: null;
+    }
+
+    /**
+     * Find a signup that is already rejected and owned by the given user in the given kermesse.
+     * Used for idempotency in rejectSignup(): a second POST after the slot was already freed
+     * should return success rather than a confusing "not_found" error.
+     */
+    public function findRejectedOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
+    {
+        $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
+
+        $builder = $this->db->table($this->table . ' si')
+            ->select('si.id')
+            ->join('slots sl', 'sl.id = si.slot_id')
+            ->join('stands st', 'st.id = sl.stand_id')
+            ->where('si.id', $signupId)
+            ->where('st.kermesse_id', $kermesseId)
+            ->where('si.rejected_at IS NOT NULL', null, false);
+
+        if ($userRow !== null && $userRow->email !== '') {
+            $builder->groupStart()
+                ->where('si.user_id', $userId)
+                ->orWhere('si.email', $userRow->email)
+                ->groupEnd();
+        } else {
+            $builder->where('si.user_id', $userId);
+        }
+
+        $row = $builder->get()->getRowArray();
         return $row ?: null;
     }
 
@@ -519,12 +533,17 @@ class SignupModel extends Model
             'updated_at'  => $now,
         ]);
 
-        return $this->db->affectedRows() === 1;
+        // 0 rows = signup was already accepted (idempotent). Ownership was validated
+        // upstream by findActiveOwnedInKermesse(), so 0 here means accepted_at was
+        // already set — the action succeeded previously.
+        $affected = $this->db->affectedRows();
+        return $affected === 1 || $affected === 0;
     }
 
     /**
      * Mark a signup as rejected by the volunteer (Story 5.14 AC4).
      * Sets rejected_at, which frees the slot capacity.
+     * Requires accepted_at IS NULL — a certified signup cannot be rejected (P3).
      */
     public function markRejected(int $signupId, int $userId): bool
     {
@@ -532,6 +551,7 @@ class SignupModel extends Model
 
         $builder = $this->builder()
             ->where('id', $signupId)
+            ->where('accepted_at', null) // P3: a certified signup cannot be rejected
             ->where('rejected_at', null)
             ->where('canceled_at', null)
             ->where('deleted_at', null);

@@ -236,7 +236,6 @@ final class ManageStandsTest extends CIUnitTestCase
         $db->table('signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
-            'status'  => 'active',
         ]);
 
         return (int) $db->insertID();

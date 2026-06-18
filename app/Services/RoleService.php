@@ -372,7 +372,8 @@ class RoleService
             ->join('stands', 'stands.id = slots.stand_id')
             ->where('stands.kermesse_id', $kermesseId)
             ->where('signups.user_id', $userId)
-            ->whereNotIn('signups.status', SignupModel::INACTIVE_STATUSES)
+            ->where('signups.canceled_at', null)
+            ->where('signups.rejected_at', null)
             ->where($db->DBPrefix . 'signups.deleted_at IS NULL', null, false)
             ->countAllResults() > 0;
     }

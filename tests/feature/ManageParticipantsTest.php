@@ -135,10 +135,10 @@ final class ManageParticipantsTest extends CIUnitTestCase
 
     public function testHistoricalSectionShowsRemovedVolunteerWithAdminBadge(): void
     {
-        // Override Lefebvre's status to 'removed' (admin suppression).
+        // Override Lefebvre's signup to 'removed' (admin suppression via canceled_by != user_id).
         db_connect()->table('signups')
             ->where('user_id', $this->annuleId)
-            ->update(['status' => 'removed']);
+            ->update(['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999]);
 
         $result = $this->getDashboard($this->adminId);
 
@@ -335,14 +335,17 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $this->insertSignup($this->buvetteSlot, $this->annuleId, 'cancelled');
     }
 
-    private function insertSignup(int $slotId, int $userId, string $status): void
+    private function insertSignup(int $slotId, int $userId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => null,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $userId];
+        $row += match ($state) {
+            'cancelled'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'                => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'                => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                  => [],
+        };
+        db_connect()->table('signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -430,7 +433,6 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,

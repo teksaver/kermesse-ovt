@@ -51,7 +51,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testReturnsActiveSignupJoinedWithStandAndSlot(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->userId, 'active');
 
         $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
@@ -70,13 +70,13 @@ final class SignupModelTest extends CIUnitTestCase
         $softDeleted = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
         $removed     = $this->insertSlot($this->standId, '2026-10-10 14:00:00', '2026-10-10 15:00:00');
 
-        $this->insertSignup($active, $this->userId, SignupModel::STATUS_ACTIVE);
-        $this->insertSignup($cancelled, $this->userId, SignupModel::STATUS_CANCELLED);
-        $this->insertSignup($deactivated, $this->userId, SignupModel::STATUS_DEACTIVATED);
-        $this->insertSignup($deleted, $this->userId, SignupModel::STATUS_DELETED);
-        $this->insertSignup($removed, $this->userId, SignupModel::STATUS_REMOVED);
-        // Statut 'active' mais soft-deleted : doit aussi être exclu (deleted_at IS NULL).
-        $this->insertSignup($softDeleted, $this->userId, SignupModel::STATUS_ACTIVE, '2026-01-01 00:00:00');
+        $this->insertSignup($active, $this->userId, 'active');
+        $this->insertSignup($cancelled, $this->userId, 'cancelled');
+        $this->insertSignup($deactivated, $this->userId, 'deactivated');
+        $this->insertSignup($deleted, $this->userId, 'deleted');
+        $this->insertSignup($removed, $this->userId, 'removed');
+        // Active mais soft-deleted : doit aussi être exclu (deleted_at IS NOT NULL).
+        $this->insertSignup($softDeleted, $this->userId, 'active', '2026-01-01 00:00:00');
 
         $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
@@ -89,12 +89,12 @@ final class SignupModelTest extends CIUnitTestCase
         $slotKermesse = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
 
         // Inscription active d'un AUTRE utilisateur sur la même kermesse.
-        $this->insertSignup($slotKermesse, $this->otherUserId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotKermesse, $this->otherUserId, 'active');
 
         // Inscription active de l'utilisateur, mais sur une AUTRE kermesse.
         $otherStandId = $this->insertStand($this->otherKermesseId, 'Stand Ailleurs');
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $this->insertSignup($otherSlot, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($otherSlot, $this->userId, 'active');
 
         $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
@@ -107,8 +107,8 @@ final class SignupModelTest extends CIUnitTestCase
         $early = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
 
         // Insérées dans le désordre : le tri doit être chronologique.
-        $this->insertSignup($late, $this->userId, SignupModel::STATUS_ACTIVE);
-        $this->insertSignup($early, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($late, $this->userId, 'active');
+        $this->insertSignup($early, $this->userId, 'active');
 
         $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
@@ -133,7 +133,6 @@ final class SignupModelTest extends CIUnitTestCase
             'slot_id'    => $slotId,
             'user_id'    => 0,
             'email'      => 'benevole@signupmodel.test', // Correspond à l'email de $this->userId
-            'status'     => SignupModel::STATUS_ACTIVE,
             'deleted_at' => null,
         ]);
 
@@ -151,7 +150,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveOwnedInKermesseScopesToOwnerKermesseAndActive(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         $model = model(SignupModel::class);
 
@@ -170,7 +169,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveOwnedInKermesseExcludesCancelled(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_CANCELLED);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'cancelled');
 
         $this->assertNull(
             model(SignupModel::class)->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId)
@@ -184,7 +183,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testMarkCancelledFreesTheSlotForOwnerOnly(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         $model = model(SignupModel::class);
 
@@ -201,7 +200,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testMarkCancelledIsIdempotentOnAlreadyCancelled(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_CANCELLED);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'cancelled');
 
         // Already cancelled → no active row to transition → false (no double-free).
         $this->assertFalse(model(SignupModel::class)->markCancelled($signupId, $this->userId));
@@ -214,7 +213,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsReturnsVolunteerIdentityAndContact(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->userId, 'active');
         $this->setPhone($this->userId, '0612345678');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
@@ -237,12 +236,12 @@ final class SignupModelTest extends CIUnitTestCase
         $removed     = $this->insertSlot($this->standId, '2026-10-10 13:00:00', '2026-10-10 14:00:00');
         $softDeleted = $this->insertSlot($this->standId, '2026-10-10 14:00:00', '2026-10-10 15:00:00');
 
-        $this->insertSignup($active, $this->userId, SignupModel::STATUS_ACTIVE);
-        $this->insertSignup($cancelled, $this->userId, SignupModel::STATUS_CANCELLED);
-        $this->insertSignup($deactivated, $this->userId, SignupModel::STATUS_DEACTIVATED);
-        $this->insertSignup($deleted, $this->userId, SignupModel::STATUS_DELETED);
-        $this->insertSignup($removed, $this->userId, SignupModel::STATUS_REMOVED);
-        $this->insertSignup($softDeleted, $this->userId, SignupModel::STATUS_ACTIVE, '2026-01-01 00:00:00');
+        $this->insertSignup($active, $this->userId, 'active');
+        $this->insertSignup($cancelled, $this->userId, 'cancelled');
+        $this->insertSignup($deactivated, $this->userId, 'deactivated');
+        $this->insertSignup($deleted, $this->userId, 'deleted');
+        $this->insertSignup($removed, $this->userId, 'removed');
+        $this->insertSignup($softDeleted, $this->userId, 'active', '2026-01-01 00:00:00');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
@@ -255,12 +254,12 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsScopedToKermesse(): void
     {
         $slotHere = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $this->insertSignup($slotHere, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotHere, $this->userId, 'active');
 
         // Inscription active dans une AUTRE kermesse : ne doit pas fuiter ici.
         $otherStandId = $this->insertStand($this->otherKermesseId, 'Stand Ailleurs');
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $this->insertSignup($otherSlot, $this->otherUserId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($otherSlot, $this->otherUserId, 'active');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
@@ -271,8 +270,8 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsListsEveryVolunteerOnASlot(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
-        $this->insertSignup($slotId, $this->otherUserId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->userId, 'active');
+        $this->insertSignup($slotId, $this->otherUserId, 'active');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
@@ -289,7 +288,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsIncludesModifierNameWhenSet(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         db_connect()->table('signups')->where('id', $signupId)->update([
             'last_modified_by_user_id' => $this->otherUserId,
@@ -306,7 +305,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsHasNullModifierWhenNotModified(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->userId, 'active');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
@@ -322,7 +321,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testStampAdminModificationSetsFieldsAndReturnsTrue(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         $result = model(SignupModel::class)->stampAdminModification($signupId, $this->otherUserId);
 
@@ -343,7 +342,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testModificationTrackingFieldsAreNullByDefault(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $this->insertSignup($slotId, $this->userId, 'active');
 
         $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
 
@@ -358,7 +357,6 @@ final class SignupModelTest extends CIUnitTestCase
         model(SignupModel::class)->skipValidation(true)->insert([
             'slot_id'                  => $slotId,
             'user_id'                  => $this->userId,
-            'status'                   => SignupModel::STATUS_ACTIVE,
             'last_modified_by_user_id' => $this->userId,
             'last_modified_at'         => '2026-10-11 10:00:00',
         ]);
@@ -375,20 +373,23 @@ final class SignupModelTest extends CIUnitTestCase
     public function testMarkCancelledByAdminSetsRemovedStatus(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         $model = model(SignupModel::class);
 
         $this->assertTrue($model->markCancelledByAdmin($signupId, $this->otherUserId));
 
+        // Story 5.14: status is computed from canceled_at/canceled_by timestamps
         $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
-        $this->assertSame(SignupModel::STATUS_REMOVED, $row['status']);
+        $this->assertNotNull($row['canceled_at']);
+        $this->assertSame($this->otherUserId, (int) $row['canceled_by']);
+        $this->assertSame('removed', \App\Models\SignupModel::getStatus($row));
     }
 
     public function testMarkCancelledByAdminFreesSlotCapacity(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_ACTIVE);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
         $model = model(SignupModel::class);
         $this->assertSame(1, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
@@ -400,7 +401,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testMarkCancelledByAdminIsIdempotentOnAlreadyRemoved(): void
     {
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $signupId = $this->insertSignupReturningId($slotId, $this->userId, SignupModel::STATUS_REMOVED);
+        $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'removed');
 
         $this->assertFalse(model(SignupModel::class)->markCancelledByAdmin($signupId, $this->otherUserId));
     }
@@ -408,7 +409,7 @@ final class SignupModelTest extends CIUnitTestCase
     public function testFindActiveParticipantsExcludesRemovedStatus(): void
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_REMOVED);
+        $this->insertSignup($slotId, $this->userId, 'removed');
 
         $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
         $this->assertSame([], $rows);
@@ -423,8 +424,8 @@ final class SignupModelTest extends CIUnitTestCase
         $slot1 = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
         $slot2 = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
 
-        $this->insertSignup($slot1, $this->userId, SignupModel::STATUS_CANCELLED);
-        $this->insertSignup($slot2, $this->otherUserId, SignupModel::STATUS_REMOVED);
+        $this->insertSignup($slot1, $this->userId, 'cancelled');
+        $this->insertSignup($slot2, $this->otherUserId, 'removed');
 
         $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
@@ -440,9 +441,9 @@ final class SignupModelTest extends CIUnitTestCase
         $slot2 = $this->insertSlot($this->standId, '2026-10-10 10:00:00', '2026-10-10 11:00:00');
         $slot3 = $this->insertSlot($this->standId, '2026-10-10 11:00:00', '2026-10-10 12:00:00');
 
-        $this->insertSignup($slot1, $this->userId, SignupModel::STATUS_ACTIVE);
-        $this->insertSignup($slot2, $this->userId, SignupModel::STATUS_DEACTIVATED);
-        $this->insertSignup($slot3, $this->otherUserId, SignupModel::STATUS_DELETED);
+        $this->insertSignup($slot1, $this->userId, 'active');
+        $this->insertSignup($slot2, $this->userId, 'deactivated');
+        $this->insertSignup($slot3, $this->otherUserId, 'deleted');
 
         $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
@@ -452,11 +453,11 @@ final class SignupModelTest extends CIUnitTestCase
     public function testHistoricalQueryScopedToKermesse(): void
     {
         $slotHere = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $this->insertSignup($slotHere, $this->userId, SignupModel::STATUS_CANCELLED);
+        $this->insertSignup($slotHere, $this->userId, 'cancelled');
 
         $otherStandId = $this->insertStand($this->otherKermesseId, 'Stand Autre');
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
-        $this->insertSignup($otherSlot, $this->otherUserId, SignupModel::STATUS_REMOVED);
+        $this->insertSignup($otherSlot, $this->otherUserId, 'removed');
 
         $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
@@ -468,7 +469,7 @@ final class SignupModelTest extends CIUnitTestCase
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
         // status = cancelled but soft-deleted — must not appear.
-        $this->insertSignup($slotId, $this->userId, SignupModel::STATUS_CANCELLED, '2026-01-01 00:00:00');
+        $this->insertSignup($slotId, $this->userId, 'cancelled', '2026-01-01 00:00:00');
 
         $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
         $this->assertSame([], $rows);
@@ -483,15 +484,10 @@ final class SignupModelTest extends CIUnitTestCase
         db_connect()->table('users')->where('id', $userId)->update(['phone' => $phone]);
     }
 
-    private function insertSignupReturningId(int $slotId, int $userId, string $status): int
+    private function insertSignupReturningId(int $slotId, int $userId, string $state = 'active'): int
     {
         $db = db_connect();
-        $db->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => null,
-        ]);
+        $db->table('signups')->insert($this->buildSignupRow($slotId, $userId, $state));
 
         return (int) $db->insertID();
     }
@@ -563,14 +559,32 @@ final class SignupModelTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, int $userId, string $status, ?string $deletedAt = null): void
+    private function insertSignup(int $slotId, int $userId, string $state = 'active', ?string $deletedAt = null): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => $deletedAt,
-        ]);
+        $row = $this->buildSignupRow($slotId, $userId, $state);
+        if ($deletedAt !== null) {
+            $row['deleted_at'] = $deletedAt;
+        }
+        db_connect()->table('signups')->insert($row);
+    }
+
+    /**
+     * Maps a logical state name to the appropriate timestamp columns.
+     * Replaces the old `status` TEXT column approach.
+     */
+    private function buildSignupRow(int $slotId, int $userId, string $state): array
+    {
+        $base = ['slot_id' => $slotId, 'user_id' => $userId];
+
+        return match ($state) {
+            'cancelled'   => $base + ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'     => $base + ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'     => $base + ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated',
+            'deleted'     => $base + ['deleted_at' => '2026-01-01 00:00:00'],
+            'certified'   => $base + ['accepted_at' => '2026-01-01 00:00:00'],
+            default       => $base,  // 'active'
+        };
     }
 
     private function setUpTables(): void
@@ -633,7 +647,6 @@ final class SignupModelTest extends CIUnitTestCase
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT "active",
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
