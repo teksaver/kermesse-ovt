@@ -49,7 +49,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
     {
         [$kermesseId, $userId] = $this->fixture(pendingInvite: true);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertNull($this->roleForUser($kermesseId, $userId),
             'Une invitation en attente sans inscriptions doit être supprimée (annulation de l\'invitation).');
@@ -64,7 +64,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
         [$kermesseId, $userId] = $this->fixture(pendingInvite: true);
         $this->insertActiveSignup($kermesseId, $userId);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Une invitation en attente avec des inscriptions actives doit être rétrogradée en bénévole.');
@@ -78,7 +78,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
     {
         [$kermesseId, $userId] = $this->fixture(pendingInvite: false);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Un membre actif sans inscriptions doit être rétrogradé en bénévole (pas supprimé).');
@@ -93,7 +93,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
         [$kermesseId, $userId] = $this->fixture(pendingInvite: false);
         $this->insertActiveSignup($kermesseId, $userId);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Un membre actif avec des inscriptions actives doit être rétrogradé en bénévole.');
@@ -107,7 +107,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
     {
         [$kermesseId, $userId] = $this->fixture(pendingInvite: false, role: 'owner');
 
-        $result = $this->makeService()->removeRole($kermesseId, $userId);
+        $result = $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertFalse($result, 'removeRole() doit retourner false pour un Owner (no-op).');
         $this->assertSame('owner', $this->roleForUser($kermesseId, $userId),
@@ -134,7 +134,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
                 'first_access_at' => null,
             ]);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Un utilisateur en cours de confirmation (accepted_at IS NOT NULL) doit être rétrogradé, pas supprimé.');
@@ -157,7 +157,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
                 'first_access_at' => '2026-01-02 10:00:00',
             ]);
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Un membre invité ayant accédé au dashboard doit être rétrogradé en bénévole.');
@@ -175,7 +175,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
         [$kermesseId, $userId] = $this->fixture(pendingInvite: true);
         $this->insertSignup($kermesseId, $userId, 'cancelled');
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertNull($this->roleForUser($kermesseId, $userId),
             'Une inscription inactive (cancelled) ne doit pas être comptée comme active : la ligne doit être supprimée.');
@@ -195,7 +195,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
         // actif-ish pour verrouiller la définition partagée (NOT IN INACTIVE_STATUSES).
         $this->insertSignup($kermesseId, $userId, 'confirmed');
 
-        $this->makeService()->removeRole($kermesseId, $userId);
+        $this->makeService()->removeRole($kermesseId, $userId, 0);
 
         $this->assertSame('benevole', $this->roleForUser($kermesseId, $userId),
             'Tout statut hors INACTIVE_STATUSES doit compter comme actif : rétrogradation, pas suppression.');

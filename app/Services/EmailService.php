@@ -178,6 +178,56 @@ class EmailService
         );
     }
 
+    /**
+     * Notify the Owner of a kermesse of any team membership change.
+     *
+     * Covers four actions triggered by RoleService and KermesseAdminController:
+     *   - 'joined'       : a new Admin/Gestionnaire accepted their invitation
+     *   - 'left'         : a member left voluntarily (Story 5.9)
+     *   - 'removed'      : a member was revoked by an Admin/Owner
+     *   - 'role_changed' : an existing member's role was updated
+     *
+     * The notification is sent even when the actor is the Owner themselves — this
+     * guarantees every team change produces both a confirmation and an email_events trace.
+     *
+     * @param string $action       One of: joined | left | removed | role_changed
+     * @param string $oldRoleLabel Only meaningful for role_changed; empty otherwise
+     */
+    public function sendTeamChangeNotificationEmail(
+        string $ownerEmail,
+        string $ownerFirstName,
+        string $kermesseName,
+        string $memberName,
+        string $action,
+        string $actorName,
+        string $roleLabel,
+        string $oldRoleLabel = '',
+    ): EmailDeliveryResult {
+        return $this->deliver(
+            recipientEmail: $ownerEmail,
+            subject: 'Changement dans l\'équipe de « ' . $this->safeSubjectPart($kermesseName) . ' »',
+            viewPath: 'emails/team_change_notification',
+            viewData: [
+                'ownerFirstName' => $ownerFirstName,
+                'kermesseName'   => $kermesseName,
+                'memberName'     => $memberName,
+                'action'         => $action,
+                'actorName'      => $actorName,
+                'roleLabel'      => $roleLabel,
+                'oldRoleLabel'   => $oldRoleLabel,
+            ],
+            eventType: 'team_change_notification',
+            metadata: [
+                'action'         => $action,
+                'member_name'    => $memberName,
+                'actor_name'     => $actorName,
+                'role'           => $roleLabel,
+                'old_role'       => $oldRoleLabel,
+                'kermesse_name'  => $kermesseName,
+            ],
+        );
+    }
+
     public function hasRecentSuccessfulOwnerValidationEmail(string $recipientEmail, int $cooldownSeconds): bool
     {
         $recipientHash = hash('sha256', strtolower(trim($recipientEmail)));

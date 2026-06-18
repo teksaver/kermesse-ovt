@@ -857,11 +857,22 @@
                                     <div style="display:flex; align-items:center; gap:8px;">
                                         <!-- Actions -->
                                         <?php if ($member['role'] !== 'owner'): ?>
-                                            <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
-                                            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment révoquer le rôle de ce membre ?');">
-                                                <?= csrf_field() ?>
-                                                <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Révoquer" aria-label="Révoquer le rôle">🗑️</button>
-                                            </form>
+                                            <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
+                                            <?php if ($isSelf): ?>
+                                                <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                            <?php endif; ?>
+                                            <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>" aria-label="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>">✏️</button>
+                                            <?php if ($isSelf && $canLeave): ?>
+                                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/leave") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment quitter cette organisation ? Le propriétaire sera notifié.');">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#6c757d;" title="Quitter l'organisation" aria-label="Quitter l'organisation">↪️ Quitter</button>
+                                                </form>
+                                            <?php elseif (!$isSelf): ?>
+                                                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment révoquer le rôle de ce membre ?');">
+                                                    <?= csrf_field() ?>
+                                                    <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Révoquer" aria-label="Révoquer le rôle">🗑️</button>
+                                                </form>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </li>
@@ -896,15 +907,21 @@
                                 <!-- Defense in depth: an Owner is never "pending" (no invited_at), but the
                                      management actions stay gated on role exactly like the active section. -->
                                 <?php if ($member['role'] !== 'owner'): ?>
+                                <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
+                                <?php if ($isSelf): ?>
+                                    <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                <?php endif; ?>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" title="Relancer l'invitation" aria-label="Relancer l'invitation" style="font-size:1rem; padding:4px 8px;">🔄</button>
                                 </form>
                                 <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="Éditer le membre" aria-label="Éditer le membre">✏️</button>
+                                <?php if (!$isSelf): ?>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/delete") ?>" style="margin:0;" onsubmit="return confirm('Voulez-vous vraiment révoquer ce membre ?');">
                                     <?= csrf_field() ?>
                                     <button type="submit" class="btn btn--secondary btn--sm" style="color:#dc3545;" title="Révoquer" aria-label="Révoquer le membre">🗑️</button>
                                 </form>
+                                <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                         </li>

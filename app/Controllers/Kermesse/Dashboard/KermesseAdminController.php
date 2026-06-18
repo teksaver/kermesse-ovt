@@ -153,6 +153,8 @@ class KermesseAdminController extends BaseController
             'myParticipations'      => $myParticipations,
             'teamMembers'           => $teamMembers,
             'tabs'                  => $tabs,
+            // Passed to the team view so the UI can detect "c'est moi" and show badge/leave button.
+            'currentUserId'         => $userId,
             // Décision métier préparée pour la vue : l'annulation d'une participation
             // n'est proposée que lorsque les inscriptions sont ouvertes (Story 4.3, AC2).
             'signupsOpen'           => $kermesse['status'] === KermesseModel::STATUS_OPEN,
@@ -581,6 +583,7 @@ class KermesseAdminController extends BaseController
         $roleRow       = $userRoleModel->findByKermesseAndUser($kermesseId, $userId);
 
         if ($roleRow && (string) $roleRow['role'] !== UserRoleModel::ROLE_OWNER) {
+            $oldRole = (string) $roleRow['role'];
             $userRoleModel->update((int) $roleRow['id'], ['role' => $roleInput]);
 
             // For pending invitations (not yet accepted), the admin can also correct
@@ -594,6 +597,24 @@ class KermesseAdminController extends BaseController
                     'email'      => $normalizedEmail,
                     'email_hash' => $userModel->hashEmail($normalizedEmail),
                 ]);
+            }
+
+            // Notify the Owner of the role change (always, even if the Owner is the actor).
+            if ($oldRole !== $roleInput) {
+                $actorId     = (int) session()->get('user_id');
+                $memberUser  = model(UserModel::class)->find($userId);
+                $memberName  = $memberUser !== null
+                    ? trim((string) $memberUser['first_name'] . ' ' . (string) $memberUser['last_name'])
+                    : '';
+                $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
+                $roleService->notifyRoleChanged(
+                    kermesseId:   $kermesseId,
+                    kermesseName: (string) $kermesse['name'],
+                    memberName:   $memberName,
+                    actorId:      $actorId,
+                    newRoleLabel: $roleInput === UserRoleModel::ROLE_ADMIN ? 'administrateur' : 'gestionnaire',
+                    oldRoleLabel: $oldRole === UserRoleModel::ROLE_ADMIN   ? 'administrateur' : 'gestionnaire',
+                );
             }
         }
 
@@ -626,8 +647,16 @@ class KermesseAdminController extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
+        // Guard: an admin cannot revoke themselves via this route.
+        // They must use the "Quitter l'organisation" flow (LeaveKermesseController),
+        // which applies the same invariants and notifies the Owner.
+        $currentUserId = (int) session()->get('user_id');
+        if ($userId === $currentUserId) {
+            return redirect()->back()->with('invite_error', 'Pour quitter l\'organisation, utilisez le bouton \'Quitter l\'organisation\'.');
+        }
+
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
-        $revoked     = $roleService->removeRole($kermesseId, $userId);
+        $revoked     = $roleService->removeRole($kermesseId, $userId, $currentUserId);
 
         if ($revoked) {
             session()->setFlashdata('invite_success', 'Membre révoqué avec succès.');

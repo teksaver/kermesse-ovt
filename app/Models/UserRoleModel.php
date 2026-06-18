@@ -65,6 +65,24 @@ class UserRoleModel extends Model
     }
 
     /**
+     * Returns the Owner's user row (with email, first_name, last_name) for a given kermesse.
+     * Used by RoleService to address team-change notification emails.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findOwner(int $kermesseId): ?array
+    {
+        return $this->db
+            ->table('kermesse_user_roles kur')
+            ->select('u.id as user_id, u.email, u.first_name, u.last_name')
+            ->join('users u', 'u.id = kur.user_id')
+            ->where('kur.kermesse_id', $kermesseId)
+            ->where('kur.role', self::ROLE_OWNER)
+            ->get()
+            ->getRowArray();
+    }
+
+    /**
      * Returns the organization team members for a given kermesse.
      * Includes owner, admin, and gestionnaire. Excludes benevole.
      *

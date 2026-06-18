@@ -194,6 +194,17 @@ class RoleService
             site_url('auth/magic-link/' . $issued->rawToken),
         );
 
+        // Notify the Owner that a new member joined the team (who invited whom, which role).
+        // Non-blocking: a delivery failure is traced in email_events but never aborts the result.
+        $this->notifyOwnerTeamChange(
+            kermesseId: $kermesseId,
+            kermesseName: (string) $kermesse['name'],
+            memberName: trim($firstName . ' ' . $lastName),
+            action: 'joined',
+            actorId: $invitedBy,
+            roleLabel: $this->roleLabel($role),
+        );
+
         return InvitationResult::success($userId, $role, $delivery->sent);
     }
 
@@ -321,6 +332,9 @@ class RoleService
      * Revokes the elevated role (Admin/Gestionnaire) for a given user on a given kermesse.
      * Returns false when no operation was performed (Owner target, or row not found).
      *
+     * $actorId identifies who performed the action (Owner or Admin) so the Owner notification
+     * can name the actor — even when the Owner removes someone themselves.
+     *
      * Logic (Story 5.8):
      *   - Pending invite (invited_at IS NOT NULL AND accepted_at IS NULL AND first_access_at IS NULL):
      *       - no active slot signups → row is deleted (invitation cancelled)
@@ -329,12 +343,19 @@ class RoleService
      *       - always downgraded to bénévole, regardless of slot signups, so they keep
      *         the kermesse visible in "Mes participations" and can leave via Story 5.9.
      */
-    public function removeRole(int $kermesseId, int $userId): bool
+    public function removeRole(int $kermesseId, int $userId, int $actorId): bool
     {
         $existing = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
         if ($existing === null || (string) $existing['role'] === UserRoleModel::ROLE_OWNER) {
             return false;
         }
+
+        $removedRoleLabel = $this->roleLabel((string) $existing['role']);
+
+        $member = $this->userModel->find($userId);
+        $memberName = $member !== null
+            ? trim((string) $member['first_name'] . ' ' . (string) $member['last_name'])
+            : '';
 
         // accepted_at is set when the invitee clicks the magic link, before first_access_at is
         // recorded on dashboard load. A mid-confirmation user (accepted_at IS NOT NULL,
@@ -347,6 +368,19 @@ class RoleService
             $this->userRoleModel->delete((int) $existing['id']);
         } else {
             $this->userRoleModel->update((int) $existing['id'], ['role' => UserRoleModel::ROLE_BENEVOLE]);
+        }
+
+        // Notify the Owner that a member was removed (who did it, whom, which role).
+        $kermesse = $this->kermesseModel->find($kermesseId);
+        if ($kermesse !== null && $memberName !== '') {
+            $this->notifyOwnerTeamChange(
+                kermesseId: $kermesseId,
+                kermesseName: (string) $kermesse['name'],
+                memberName: $memberName,
+                action: 'removed',
+                actorId: $actorId,
+                roleLabel: $removedRoleLabel,
+            );
         }
 
         return true;
@@ -388,6 +422,9 @@ class RoleService
      *   3. Active slot signups      → failure('has_active_signups'), row preserved.
      *   4. Otherwise                → DELETE the kermesse_user_roles row, success().
      *
+     * The Owner is notified after the DELETE so they always know when a member leaves
+     * voluntarily (actor = member themselves).
+     *
      * Stable error codes: `unauthorized_role` (pre-existing) and `has_active_signups` (new).
      */
     public function leaveKermesse(int $kermesseId, int $userId): LeaveKermesseResult
@@ -402,7 +439,27 @@ class RoleService
             return LeaveKermesseResult::failure('has_active_signups');
         }
 
+        $leavingRoleLabel = $this->roleLabel((string) $existing['role']);
+
+        $leavingUser = $this->userModel->find($userId);
+        $memberName  = $leavingUser !== null
+            ? trim((string) $leavingUser['first_name'] . ' ' . (string) $leavingUser['last_name'])
+            : '';
+
         $this->userRoleModel->delete((int) $existing['id']);
+
+        // Notify the Owner that a member left voluntarily (actor = member themselves).
+        $kermesse = $this->kermesseModel->find($kermesseId);
+        if ($kermesse !== null && $memberName !== '') {
+            $this->notifyOwnerTeamChange(
+                kermesseId: $kermesseId,
+                kermesseName: (string) $kermesse['name'],
+                memberName: $memberName,
+                action: 'left',
+                actorId: $userId,
+                roleLabel: $leavingRoleLabel,
+            );
+        }
 
         return LeaveKermesseResult::success();
     }
@@ -468,5 +525,73 @@ class RoleService
             'active'  => $active,
             'pending' => $pending,
         ];
+    }
+
+    /**
+     * Public entry point for controllers that need to notify the Owner of a role change.
+     * Called by KermesseAdminController::updateTeamMember() after a successful role update.
+     */
+    public function notifyRoleChanged(
+        int $kermesseId,
+        string $kermesseName,
+        string $memberName,
+        int $actorId,
+        string $newRoleLabel,
+        string $oldRoleLabel,
+    ): void {
+        $this->notifyOwnerTeamChange(
+            kermesseId:   $kermesseId,
+            kermesseName: $kermesseName,
+            memberName:   $memberName,
+            action:       'role_changed',
+            actorId:      $actorId,
+            roleLabel:    $newRoleLabel,
+            oldRoleLabel: $oldRoleLabel,
+        );
+    }
+
+    /**
+     * Send a team-change notification to the kermesse Owner.
+     *
+     * Resolves actor name from UserModel so callers only pass an int (no PII leakage
+     * through parameter chains). Non-blocking: a send or trace failure is logged but
+     * never propagated — team mutations must not be rolled back because of an email.
+     *
+     * @param string $action    One of: joined | left | removed | role_changed
+     * @param string $oldRoleLabel Only for role_changed; empty string otherwise
+     */
+    private function notifyOwnerTeamChange(
+        int $kermesseId,
+        string $kermesseName,
+        string $memberName,
+        string $action,
+        int $actorId,
+        string $roleLabel,
+        string $oldRoleLabel = '',
+    ): void {
+        $owner = $this->userRoleModel->findOwner($kermesseId);
+        if ($owner === null) {
+            return;
+        }
+
+        $actor     = $this->userModel->find($actorId);
+        $actorName = $actor !== null
+            ? trim((string) $actor['first_name'] . ' ' . (string) $actor['last_name'])
+            : 'un administrateur';
+
+        if ($actorName === '') {
+            $actorName = 'un administrateur';
+        }
+
+        $this->emailService->sendTeamChangeNotificationEmail(
+            ownerEmail:     (string) $owner['email'],
+            ownerFirstName: (string) $owner['first_name'],
+            kermesseName:   $kermesseName,
+            memberName:     $memberName,
+            action:         $action,
+            actorName:      $actorName,
+            roleLabel:      $roleLabel,
+            oldRoleLabel:   $oldRoleLabel,
+        );
     }
 }
