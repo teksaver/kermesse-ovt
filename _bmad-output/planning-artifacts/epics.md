@@ -43,6 +43,7 @@ NFR2: Fluidité (Frictionless) — l'inscription publique ne doit pas obliger la
 NFR3: Robustesse — prévention stricte des surcapacités côté serveur et des chevauchements horaires par Utilisateur.
 NFR4: Sécurité — les Magic Links expirent après une durée courte (ex. 15 minutes) et sont à usage unique ; les routes de modification vérifient le rôle en base côté serveur.
 NFR5: Confidentialité — la page publique de la kermesse n'expose aucune donnée personnelle des bénévoles (les noms sont visibles uniquement dans l'espace Admin/Gestionnaire connecté).
+NFR6: Préparation à la production — chaque parcours critique P0/P1 doit disposer d'une preuve automatisée reproductible sur la couche pertinente (PHPUnit, MariaDB ou navigateur), et la release candidate doit être qualifiée à partir de l'artefact immuable réellement destiné au déploiement.
 
 ### Additional Requirements
 
@@ -54,11 +55,19 @@ NFR5: Confidentialité — la page publique de la kermesse n'expose aucune donn�
 - **Identité** : l'Utilisateur est unique sur toute la plateforme et s'authentifie via email (Magic Link) ; session PHP globale côté serveur ; pas de JWT.
 - **Déconnexion** : route `POST /auth/logout` pour détruire la session globale.
 - **RBAC** : contrôle d'accès basé sur des rôles par kermesse (Owner, Admin, Gestionnaire, Bénévole), vérifiés en base côté serveur via filtres (`AuthFilter` session + `RoleFilter` rôle).
-- **Schéma initial** : tables `users`, `access_tokens`, `kermesses`, `kermesse_user_roles`, `stands`, `slots`, `signups`, `profile_divergences`, `email_events`, `schema_versions`.
+- **Schéma initial** : tables `users`, `access_tokens`, `kermesses`, `kermesse_user_roles`, `stands`, `slots`, `signups`, `email_events`, `schema_versions`. *(Note : `profile_divergences` n'est **pas** créée — la réconciliation de profil est stateless, voir Story 5.4.)*
 - **Invariants service-owned** : `SignupService` (capacité/doublon/chevauchement/annulation, transactionnel), `TokenService` (Magic Links hachés, usage unique, expiration), `EmailService` (+ `email_events`), `RoleService` (rôles + invitations), `KermesseLifecycleService` (préparation/ouvert/fermé).
 - **Sécurité formulaires** : CSRF actif sur tous les formulaires modifiant l'état.
 - **Codes d'erreur stables** : `slot_full`, `duplicate_signup`, `overlap_conflict`, `signups_not_open`, `invalid_token`, `expired_token`, `unauthorized_admin`, `unauthorized_role`.
 - **RGPD** : suppression/archivage des comptes inactifs en post-MVP (le compte persiste par défaut).
+- **Stabilisation avant production (décision 2026-06-18)** : gel fonctionnel pendant une Epic dédiée ; aucune nouvelle fonctionnalité métier n'entre dans la release candidate.
+- **Régressions connues** : conserver un test automatisé permanent pour l'affichage des inscriptions du bénévole, la reconnaissance de l'utilisateur courant dans l'onglet Équipe et l'ajout d'un créneau à une kermesse ouverte.
+- **Cartographie des parcours** : maintenir une matrice `état × rôle × identité × action × résultat`, classée P0/P1/P2 ; toutes les cellules P0/P1 doivent être reliées à une preuve avant le Go production.
+- **Tests navigateur** : utiliser Playwright pour les parcours critiques dépendant du JavaScript et du rendu réel ; toute exception JavaScript, réponse HTTP inattendue ou perte de persistance après rechargement fait échouer le scénario.
+- **Parité base de données** : valider sous MariaDB les migrations, contraintes, transactions, autorisations et transitions d'état sensibles ; SQLite reste la boucle rapide mais ne constitue pas seul une preuve de production.
+- **Gates CI** : rendre bloquants PHPUnit, les scénarios MariaDB ciblés, les smoke tests Playwright critiques et la validation de l'artefact de déploiement.
+- **Qualification de release** : tester l'artefact immuable sur un environnement représentatif, répéter migration et restauration, exécuter les smoke tests post-déploiement et formaliser la décision Go/No-Go.
+- **Source de vérité signup** : le PRD mis à jour le 2026-06-17 (statut calculé depuis les timestamps) prévaut sur les passages historiques de l'architecture décrivant encore un statut stocké.
 
 ### UX Design Requirements
 
@@ -114,6 +123,7 @@ FR15: Epic 5 - Gestion des inscriptions par l'admin (ajouter/corriger/annuler/d�
 FR16: Epic 5 - Révoquer un rôle — Story 5.8
 FR17: Epic 5 - Quitter une kermesse — Story 5.9
 FR18: Epic 5 - Gérer son profil (page /profile) — Story 5.7
+NFR6: Epic 6 - Stabilisation et préparation à la production — preuves automatisées P0/P1, parité MariaDB, tests navigateur, gates CI et qualification de la release candidate
 
 ## Epic List
 
@@ -136,6 +146,14 @@ Les bénévoles libèrent leur place depuis leur espace connecté, les administr
 ### Epic 5 : Post-MVP — Identité avancée, gestion des inscriptions et délégation
 Vague d'évolutions post-livraison : confirmation d'identité à la 1ʳᵉ connexion, navigation 4 onglets, gestion des inscriptions par l'admin (ajouter/corriger/annuler/déplacer), révocation, départ autonome, page profil, duplication de stand, renommage `signup`→`SlotSignup`.
 **FRs covered:** FR10 (extension 4 onglets), FR13 (extension confirmation), FR15, FR16, FR17, FR18
+
+### Epic 6 : Stabilisation et préparation à la production
+Les organisateurs et bénévoles peuvent utiliser les parcours critiques de Kermesse sans régression connue ; l'équipe dispose de preuves automatisées reproductibles sur PHPUnit, MariaDB et navigateur réel, puis qualifie l'artefact immuable destiné à Ouvaton par une décision Go/No-Go fondée sur des preuves.
+**Requirements covered:** NFR6 ; validation transversale des FR1 à FR18
+
+### Epic 7 : Post-MVP — Système d'Invités (Guests)
+Les bénévoles pourront inscrire des tiers depuis leur compte afin de gérer les participations d'une famille partageant une même adresse email. Cette Epic reste gelée jusqu'à la qualification de production issue de l'Epic 6.
+**FRs covered:** exigences post-MVP à formaliser avant développement
 
 ## Epic 1 : Identité Unifiée et Tableau de Bord Global
 
@@ -376,7 +394,7 @@ So that ma réservation soit fluide et automatiquement rattachée à mon email.
 
 **Given** la soumission d'une inscription valide sur un créneau disponible,
 **When** `SignupService.createSignup()` la traite dans une transaction,
-**Then** la table `signups` (colonnes : id, slot_id, user_id, **first_name, last_name, email, phone** [snapshot coordonnées soumises], **status** [valeur initiale : `unconfirmed` si visiteur non connecté, `certified` si utilisateur connecté], created_at) étant disponible, un compte Utilisateur est créé si l'email est inconnu et l'inscription est rattachée à cet email,
+**Then** la table `signups` (colonnes : id, slot_id, user_id, **first_name, last_name, email, phone** [snapshot coordonnées soumises], created_at — **pas de champ `status` stocké** : le statut est calculé à la volée depuis les timestamps `accepted_at`, `rejected_at`, `canceled_at`) étant disponible, un compte Utilisateur est créé si l'email est inconnu et l'inscription est rattachée à cet email,
 **And** la capacité restante est vérifiée de façon transactionnelle (rejet `slot_full` si pleine — NFR3),
 **And** si les informations soumises diffèrent du profil existant, le **snapshot** est conservé tel quel dans les colonnes `signups.first_name/last_name/email/phone` ; aucune table `profile_divergences` n'est créée — la réconciliation est stateless et sera effectuée à la première connexion du bénévole (Story 5.4) (FR8/FR13),
 **And** `RoleService` crée ou confirme une entrée `Bénévole` dans `kermesse_user_roles` pour cet utilisateur et cette kermesse (permettant à la kermesse d'apparaître dans l'accueil connecté de l'utilisateur).
@@ -837,9 +855,9 @@ So que je gère les ajustements de planning sans annuler et recréer manuellemen
 **And** l'admin se voit proposer une case "Notifier [email]" ; si cochée, un email de déplacement est envoyé,
 **And** `signups.last_modified_by_user_id` et `last_modified_at` sont renseignés sur la nouvelle inscription.
 
-### Story 5.13 : Renommer le concept `signup` → `SlotSignup` (Ubiquitous Language) `[DÉFÉRÉ — Candidat Epic 6 Tech-Debt]`
+### Story 5.13 : Renommer le concept `signup` → `SlotSignup` (Ubiquitous Language) `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
 
-> **Décision (2026-06-17)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour un Epic 6 "Tech-Debt & Nettoyage".
+> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
 
 As a développeur,
 I want que l'entité « inscription à un créneau » soit nommée sans ambiguïté dans le code,
@@ -873,11 +891,11 @@ So that je garantis la fiabilité des inscriptions tout en évitant la création
 
 **Given** l'inscription publique d'un bénévole à un créneau,
 **When** le visiteur n'est pas connecté (email inconnu ou connu),
-**Then** l'inscription est insérée avec `status = 'unconfirmed'` et `created_by = NULL` (pas de création de compte silencieuse).
+**Then** l'inscription est insérée avec `user_id = NULL` et `created_by = NULL` (pas de création de compte silencieuse) — **aucun champ `status` n'est inséré en base** ; le statut `unconfirmed` est calculé à la volée : `canceled_at IS NULL AND rejected_at IS NULL AND accepted_at IS NULL`.
 **And** le champ `created_by` est présent dans `SignupModel.$allowedFields` et inclus dans chaque appel INSERT de `signupWithinTransaction()`.
 
 **When** l'utilisateur est connecté (bénévole ou admin via `createSignupByAdmin`),
-**Then** l'inscription est insérée avec `status = 'certified'` et `created_by = user_id_de_la_session`.
+**Then** l'inscription est insérée avec `created_by = user_id_de_la_session` et `accepted_at = now()` — le statut `certified` est calculé à la volée : `accepted_at IS NOT NULL`.
 
 **And** dans tous les cas, `RoleService` ne crée une entrée `Bénévole` dans `kermesse_user_roles` **que si** `user_id` est non nul ; si `user_id = NULL`, cette entrée sera créée lors de `resolveOrphanSignups` à la première connexion.
 
@@ -950,9 +968,9 @@ Ces deux timestamps doivent être inclus dans le `update()` de leurs méthodes r
 
 > **Note d'implémentation — couche de données** : les colonnes `created_by`, `viewed_at`, `accepted_at`, `rejected_at`, `canceled_at`, `canceled_by` doivent toutes être présentes dans `SignupModel.$allowedFields`. La migration ajoutant ces colonnes à la table `signups` est le prérequis de cette story.
 
-### Story 5.15 : Nettoyage du code zombie de résolution de profil `[DÉFÉRÉ — Candidat Epic 6 Tech-Debt]`
+### Story 5.15 : Nettoyage du code zombie de résolution de profil `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
 
-> **Décision (2026-06-17)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour un Epic 6 "Tech-Debt & Nettoyage".
+> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
 
 As a développeur,
 I want supprimer le code mort résiduel issu de l'ancienne résolution de profil (pré-stateless),
@@ -968,11 +986,491 @@ So that la base de code ne contienne plus de chemins non utilisés qui créent d
 
 ---
 
-## Epic 6 : Post-MVP — Système d'Invités (Guests)
+## Epic 6 : Stabilisation et préparation à la production
+
+Les organisateurs et bénévoles peuvent utiliser les parcours critiques de Kermesse sans régression connue ; l'équipe dispose de preuves automatisées reproductibles sur PHPUnit, MariaDB et navigateur réel, puis qualifie l'artefact immuable destiné à Ouvaton par une décision Go/No-Go fondée sur des preuves.
+
+### Story 6.1 : Corriger l'ajout d'un créneau sur une kermesse ouverte
+
+As an Owner ou Admin,
+I want ajouter un créneau pendant que ma kermesse est ouverte,
+So that je puisse adapter le planning sans interrompre les inscriptions.
+
+**Acceptance Criteria:**
+
+**Given** une kermesse au statut `open`, contenant un stand actif,
+**When** un Owner soumet un créneau valide,
+**Then** la requête suit le pattern PRG et redirige vers le stand concerné,
+**And** le créneau est persisté avec les horaires, la capacité et le statut attendus,
+**And** il apparaît après rechargement du dashboard et sur la page publique.
+
+**Given** le même contexte,
+**When** un Admin soumet le formulaire,
+**Then** il obtient le même résultat que le Owner.
+
+**Given** une soumission valide sur une kermesse ouverte,
+**When** le test de non-régression est exécuté avant correction,
+**Then** il reproduit la cause réelle de l'erreur observée,
+**And** la correction n'est appliquée qu'après obtention de ce test rouge.
+
+**Given** une saisie invalide,
+**When** le formulaire est soumis,
+**Then** aucun créneau n'est créé,
+**And** les valeurs saisies sont conservées,
+**And** une erreur explicite est affichée sans exception non gérée.
+
+**Given** un Gestionnaire, un Bénévole ou un utilisateur non authentifié,
+**When** il tente directement le POST,
+**Then** l'accès est refusé côté serveur,
+**And** aucune écriture n'est effectuée.
+
+**Given** un stand appartenant à une autre kermesse ou désactivé,
+**When** l'ajout est tenté,
+**Then** la requête est refusée sans écriture inter-kermesse.
+
+**Given** la correction implémentée,
+**When** les tests sont exécutés sous SQLite et MariaDB,
+**Then** le scénario d'ajout sur une kermesse ouverte passe dans les deux environnements.
+
+**Given** les contraintes architecturales du projet,
+**When** le flux d'écriture est corrigé,
+**Then** l'écriture passe par un Service et un DTO `readonly`,
+**And** le contrôleur reste limité à la validation et à l'orchestration HTTP.
+
+### Story 6.2 : Cartographier les parcours critiques et leur couverture
+
+As an équipe de livraison,
+I want disposer d'un contrat de couverture fondé sur les risques,
+So that aucun parcours critique ne soit oublié avant la mise en production.
+
+**Acceptance Criteria:**
+
+**Given** les FR1 à FR18, les routes, rôles et états métier existants,
+**When** la cartographie est réalisée,
+**Then** chaque parcours est décrit selon `surface × état × rôle × identité × action × résultat`,
+**And** les états réels sont `preparation`, `open` et `closed`,
+**And** les rôles réels sont Anonyme, Bénévole, Gestionnaire, Admin et Owner.
+
+**Given** les parcours inventoriés,
+**When** leur risque est évalué,
+**Then** chacun est classé P0 (sécurité, autorisation, perte ou corruption de données), P1 (parcours métier indispensable ou régression visible) ou P2 (variante secondaire ou cosmétique).
+
+**Given** une cellule de la matrice,
+**When** sa couverture est analysée,
+**Then** elle référence précisément un test PHPUnit, MariaDB ou navigateur existant,
+**Or** elle est marquée `manquante`, `manuelle justifiée` ou `non applicable`, avec justification.
+
+**Given** les fonctionnalités livrées jusqu'à l'Epic 5,
+**When** la matrice est complète,
+**Then** elle couvre au minimum l'authentification et les Magic Links, la création et le cycle de vie d'une kermesse, les stands et créneaux, l'inscription publique, les participations du bénévole, la gestion administrative des inscriptions, l'équipe et les rôles, le profil et l'identité, la confidentialité des vues publiques, ainsi que les migrations et le déploiement.
+
+**Given** les trois régressions connues,
+**When** elles sont reportées dans la matrice,
+**Then** elles sont classées P1 au minimum,
+**And** leur mécanisme — JavaScript, identité courante ou état `open` — est explicitement identifié.
+
+**Given** les cellules P0/P1,
+**When** le document est finalisé,
+**Then** chacune possède un niveau de test cible et un propriétaire,
+**And** les lacunes sont reliées aux Stories 6.3 à 6.7 sans attendre leur implémentation.
+
+**Given** le document de cartographie,
+**When** une nouvelle régression est découverte,
+**Then** elle peut être ajoutée avec son test de non-régression et sa classification sans restructurer l'ensemble.
+
+La Story produit un artefact versionné dans le dépôt et utilisable comme checklist de Go/No-Go.
+
+### Story 6.3 : Automatiser les trois régressions connues avec Playwright
+
+As an équipe de livraison,
+I want exécuter les parcours critiques dans un vrai navigateur,
+So that les régressions JavaScript et d'intégration soient détectées avant fusion.
+
+**Acceptance Criteria:**
+
+**Given** le dépôt Kermesse,
+**When** l'environnement E2E est installé,
+**Then** Playwright est une dépendance de développement uniquement,
+**And** aucun build JavaScript n'est requis en production,
+**And** les fichiers Playwright et Node sont exclus de l'archive Ouvaton.
+
+**Given** la configuration Playwright,
+**When** les tests sont exécutés,
+**Then** deux profils Chromium sont disponibles : mobile et desktop,
+**And** les sélecteurs utilisent prioritairement les rôles accessibles, libellés ou `data-testid` stables.
+
+**Given** une machine de développement ou un runner CI disposant de Docker,
+**When** la suite Playwright est lancée,
+**Then** elle s'exécute dans un service Docker dédié basé sur une image Playwright officielle dont la version est épinglée et alignée avec la dépendance du projet,
+**And** aucun runtime Node, navigateur ou dépendance Playwright n'est requis sur la machine hôte,
+**And** la même image et la même commande sont utilisées localement et en CI.
+
+**Given** l'environnement Docker E2E,
+**When** les scénarios démarrent,
+**Then** l'application et MariaDB sont accessibles via le réseau interne Docker,
+**And** des contrôles de santé empêchent le lancement des tests avant leur disponibilité,
+**And** les traces, captures d'écran et rapports sont écrits dans un volume récupérable depuis l'hôte ou la CI.
+
+**Given** les données nécessaires aux scénarios,
+**When** les fixtures sont préparées,
+**Then** elles utilisent des données fictives et reproductibles,
+**And** elles ne dépendent jamais de la production,
+**And** aucun endpoint de préparation de test n'est accessible hors environnement `testing`.
+
+**Given** un bénévole possédant une ou plusieurs inscriptions actives,
+**When** il ouvre « Mes participations »,
+**Then** toutes ses inscriptions sont visibles après l'initialisation JavaScript,
+**And** elles restent visibles après rechargement complet.
+
+**Given** un Admin connecté et un autre membre de l'équipe,
+**When** l'onglet Équipe est affiché,
+**Then** la ligne de l'utilisateur courant porte l'indication « Vous »,
+**And** les actions interdites sur lui-même sont absentes,
+**And** l'autre membre conserve les actions autorisées.
+
+**Given** une kermesse ouverte et un stand actif,
+**When** un Owner ou Admin ajoute un créneau depuis l'interface,
+**Then** le succès est visible,
+**And** le créneau apparaît dans le dashboard,
+**And** il persiste après rechargement,
+**And** il apparaît sur la page publique.
+
+**Given** l'exécution d'un scénario E2E,
+**When** une exception JavaScript, une réponse HTTP inattendue ou une erreur console non autorisée survient,
+**Then** le test échoue.
+
+**Given** un échec Playwright en CI,
+**When** les artefacts sont collectés,
+**Then** la trace, la capture d'écran et les journaux navigateur sont conservés pour diagnostic.
+
+**Given** les trois scénarios,
+**When** la suite smoke est exécutée plusieurs fois,
+**Then** aucun test flaky n'est toléré avant son passage en gate bloquant.
+
+### Story 6.4 : Automatiser les parcours critiques du bénévole
+
+As a bénévole,
+I want que mes parcours publics et connectés soient validés de bout en bout,
+So that je puisse m'inscrire et gérer mes participations sans régression.
+
+**Acceptance Criteria:**
+
+**Given** une kermesse dans chacun des états `preparation`, `open` et `closed`,
+**When** un visiteur ouvre sa page publique,
+**Then** les informations et actions correspondent à l'état,
+**And** aucune donnée personnelle de bénévole, d'admin ou Magic Link n'est exposée.
+
+**Given** une kermesse ouverte avec un créneau disponible,
+**When** un visiteur réalise une inscription valide,
+**Then** la confirmation visible contient le stand et le créneau,
+**And** la place restante est mise à jour après rechargement.
+
+**Given** un créneau complet, un doublon ou un chevauchement,
+**When** une inscription est tentée,
+**Then** le message métier attendu est visible,
+**And** aucune inscription supplémentaire n'est créée.
+
+**Given** un email associé à une inscription orpheline,
+**When** l'utilisateur demande puis utilise un Magic Link,
+**Then** le compte est créé ou retrouvé selon le contrat FR2,
+**And** les inscriptions sont rattachées,
+**And** elles apparaissent dans « Mes participations ».
+
+**Given** une inscription non encore confirmée par son titulaire,
+**When** le bénévole la consulte,
+**Then** les actions « Confirmer » et « Refuser » apparaissent conformément à FR13,
+**And** chacune produit le statut calculé et l'affichage attendus après rechargement.
+
+**Given** une inscription active et une kermesse ouverte,
+**When** le bénévole l'annule,
+**Then** elle disparaît de la liste active,
+**And** la place redevient disponible sur la page publique,
+**And** `canceled_at` et `canceled_by` sont renseignés.
+
+**Given** une kermesse fermée,
+**When** le bénévole consulte ses participations,
+**Then** les actions interdites sont absentes,
+**And** une explication compréhensible est affichée.
+
+**Given** un utilisateur connecté,
+**When** il consulte puis modifie son profil,
+**Then** ses informations sont persistées,
+**And** les validations et erreurs conservent les valeurs saisies.
+
+**Given** les scénarios bénévoles P0/P1 de la matrice,
+**When** la Story est terminée,
+**Then** chaque scénario nécessitant un navigateur possède un test Playwright,
+**And** les règles mieux couvertes au niveau PHPUnit y restent référencées sans duplication E2E inutile.
+
+**Given** les contraintes mobile-first,
+**When** la suite est exécutée avec le profil mobile,
+**Then** les actions principales restent accessibles à 320 px,
+**And** aucun contenu critique ne nécessite de défilement horizontal.
+
+### Story 6.5 : Automatiser les parcours critiques des organisateurs
+
+As an Owner, Admin ou Gestionnaire,
+I want que mes opérations de gestion soient validées selon mon rôle,
+So that je puisse piloter la kermesse sans erreur de permission ni corruption du planning.
+
+**Acceptance Criteria:**
+
+**Given** un Owner configurant une nouvelle kermesse,
+**When** il crée les stands et créneaux puis ouvre les inscriptions,
+**Then** chaque transition réussit,
+**And** les données configurées restent visibles et cohérentes après rechargement.
+
+**Given** une kermesse ouverte puis fermée,
+**When** l'Owner ou l'Admin change son état,
+**Then** les actions publiques et administratives autorisées correspondent immédiatement au nouvel état,
+**And** les données existantes sont conservées.
+
+**Given** un Gestionnaire connecté,
+**When** il ouvre le dashboard,
+**Then** il accède à « Gestion des inscrits » et « Mes participations »,
+**And** les onglets Modification et Équipe sont absents,
+**And** les accès directs correspondants sont refusés côté serveur.
+
+**Given** un Owner, Admin ou Gestionnaire autorisé,
+**When** il ajoute, corrige, déplace ou annule une inscription,
+**Then** l'opération respecte les invariants de capacité, doublon et chevauchement,
+**And** son résultat persiste après rechargement,
+**And** les historiques et traces d'acteur sont corrects.
+
+**Given** un Owner ou Admin dans l'onglet Équipe,
+**When** il invite, réinvite ou révoque un membre,
+**Then** le rôle et l'état d'invitation affichés sont corrects,
+**And** les permissions du membre changent conformément à FR14 et FR16.
+
+**Given** l'utilisateur courant affiché dans l'équipe,
+**When** il consulte sa propre ligne,
+**Then** elle est identifiée par « Vous »,
+**And** l'auto-révocation est impossible côté interface et serveur,
+**And** le flux « Quitter » n'apparaît que lorsqu'il est autorisé.
+
+**Given** un Owner,
+**When** une tentative de révocation ou de départ le cible,
+**Then** l'action est refusée,
+**And** la propriété de la kermesse est préservée.
+
+**Given** deux kermesses distinctes,
+**When** un utilisateur tente d'agir sur une ressource appartenant à l'autre kermesse,
+**Then** l'accès est refusé,
+**And** aucune donnée inter-kermesse n'est lue ou modifiée.
+
+**Given** les scénarios organisateurs P0/P1 de la matrice,
+**When** la Story est terminée,
+**Then** chaque interaction dépendant du rendu ou du JavaScript possède un test Playwright,
+**And** chaque règle serveur reste également protégée au niveau PHPUnit approprié.
+
+### Story 6.6 : Fiabiliser les preuves MariaDB des parcours critiques
+
+As an équipe de livraison,
+I want valider les invariants critiques sur le moteur réellement utilisé en production,
+So that les tests SQLite ne masquent plus les divergences MariaDB.
+
+**Acceptance Criteria:**
+
+**Given** la suite MariaDB,
+**When** sa base est initialisée,
+**Then** elle utilise les migrations SQL applicatives réelles,
+**And** les scénarios P0/P1 concernés ne recréent pas un schéma simplifié dans les tests.
+
+**Given** les fixtures MariaDB,
+**When** les scénarios sont préparés,
+**Then** elles utilisent des données fictives reproductibles via les mécanismes de test du projet,
+**And** elles respectent réellement les contraintes et clés étrangères de production.
+
+**Given** une base vierge,
+**When** toutes les migrations sont appliquées,
+**Then** leur ordre, leur checksum et le schéma final sont validés,
+**And** aucune table attendue ou migration ne peut être oubliée par une liste de nettoyage maintenue manuellement.
+
+**Given** les invariants d'inscription,
+**When** des opérations concurrentes ciblent la dernière place, un doublon ou un chevauchement,
+**Then** la capacité n'est jamais dépassée,
+**And** une seule opération compatible est validée,
+**And** les transactions en échec ne laissent aucun état partiel.
+
+**Given** un déplacement ou une annulation administrative,
+**When** une contrainte ou une concurrence provoque un échec,
+**Then** l'opération est atomique,
+**And** l'inscription source et la capacité restent cohérentes.
+
+**Given** les opérations sensibles de rôle,
+**When** deux mutations concurrentes sont exécutées,
+**Then** les protections contre l'auto-révocation, la perte du rôle Owner et les incohérences de rôle sont démontrées.
+
+**Given** le scénario de la Story 6.1,
+**When** un créneau est ajouté à une kermesse `open`,
+**Then** le scénario passe également sur MariaDB avec les migrations réelles.
+
+**Given** un comportement testé sous SQLite et MariaDB,
+**When** les résultats divergent,
+**Then** la CI échoue,
+**And** la divergence doit être résolue ou explicitement documentée avant fusion.
+
+**Given** l'environnement CI,
+**When** le job MariaDB est exécuté,
+**Then** l'absence ou l'échec du service MariaDB ne peut pas être traité comme un succès,
+**And** les journaux nécessaires au diagnostic sont conservés.
+
+Le remplacement de tous les anciens schémas de tests du projet reste hors périmètre : cette Story migre obligatoirement les fixtures des parcours P0/P1.
+
+### Story 6.7 : Installer les gates CI de préparation à la production
+
+As an équipe de livraison,
+I want que les preuves de qualité bloquent automatiquement les régressions,
+So that une release défectueuse ne puisse pas atteindre `main` ou la production.
+
+**Acceptance Criteria:**
+
+**Given** les outils de validation du projet,
+**When** un développeur travaille localement,
+**Then** des commandes Composer explicites existent pour PHPUnit, PHPStan, MariaDB et les tests E2E,
+**And** une commande unique permet d'exécuter les contrôles requis avant PR.
+
+**Given** l'analyse statique exigée par `project-context.md`,
+**When** PHPStan est configuré,
+**Then** son niveau et son périmètre sont versionnés,
+**And** toute nouvelle erreur bloque la CI,
+**And** une éventuelle baseline est explicite et ne peut pas masquer de nouvelles erreurs.
+
+**Given** une Pull Request,
+**When** la CI s'exécute,
+**Then** PHPUnit SQLite, PHPStan, les scénarios MariaDB P0/P1 et les trois smoke tests Playwright de la Story 6.3 sont obligatoires,
+**And** aucun job critique n'utilise `continue-on-error`.
+
+**Given** une modification touchant les rôles, inscriptions, états, migrations ou workflows de déploiement,
+**When** la CI s'exécute,
+**Then** la suite critique étendue correspondante est exécutée sur MariaDB et dans Playwright.
+
+**Given** la branche principale ou une release candidate,
+**When** le pipeline complet s'exécute,
+**Then** tous les parcours P0/P1 automatisés sont exécutés,
+**And** l'artefact de déploiement n'est construit qu'après leur succès.
+
+**Given** une suite Playwright instable,
+**When** un test ne passe qu'après relance,
+**Then** l'instabilité reste visible et bloque sa promotion en gate,
+**And** les relances ne transforment pas silencieusement un échec en succès.
+
+**Given** un échec PHPUnit, PHPStan, MariaDB, Playwright ou packaging,
+**When** le workflow se termine,
+**Then** aucune étape de déploiement ne peut démarrer.
+
+**Given** l'archive Ouvaton,
+**When** elle est construite,
+**Then** elle contient le runtime PHP autonome et les assets statiques,
+**And** elle exclut Node, Playwright, les tests, traces et dépendances de développement.
+
+**Given** une exécution réussie,
+**When** les preuves sont publiées,
+**Then** elles sont rattachées au commit exact et au checksum de l'artefact,
+**And** les noms des checks obligatoires sont documentés pour la protection de branche.
+
+### Story 6.8 : Qualifier et déployer la release candidate
+
+As an organisateur responsable de la mise en production,
+I want disposer d'une release candidate éprouvée et récupérable,
+So that la mise en production puisse être décidée et exécutée avec un risque maîtrisé.
+
+**Acceptance Criteria:**
+
+**Given** un commit candidat,
+**When** la release candidate est créée,
+**Then** son commit, son archive et son checksum sont immuables et enregistrés,
+**And** aucun rebuild n'est effectué entre qualification et production.
+
+**Given** un environnement de répétition représentatif d'Ouvaton,
+**When** l'archive candidate est déployée,
+**Then** aucun Composer, Node, build d'assets ou CLI de migration n'est requis sur la cible,
+**And** les migrations passent exclusivement par le webhook HTTPS HMAC prévu.
+
+**Given** un schéma et des données représentatifs de l'état précédant la release,
+**When** la migration est répétée,
+**Then** elle réussit sans perte de données,
+**And** sa réexécution respecte le contrat d'idempotence,
+**And** un échec partiel produit un état observable et récupérable.
+
+**Given** une sauvegarde réalisée avant déploiement,
+**When** la procédure de restauration est répétée,
+**Then** le schéma, les données et l'application reviennent dans un état cohérent,
+**And** la durée mesurée respecte le seuil accepté avant le Go.
+
+**Given** l'archive déployée en répétition,
+**When** les smoke tests post-déploiement sont exécutés,
+**Then** ils couvrent au minimum la page publique et sa confidentialité, le Magic Link via le fournisseur de test, le dashboard par rôle, l'inscription et la participation bénévole, la gestion des membres, l'ajout d'un créneau sur une kermesse ouverte, ainsi que l'annulation et la libération de capacité.
+
+**Given** la matrice de couverture,
+**When** la revue Go/No-Go est tenue,
+**Then** 100 % des cellules P0/P1 possèdent une preuve verte,
+**And** aucune anomalie critique ou majeure ne reste ouverte sans arbitrage explicite,
+**And** chaque risque résiduel possède un propriétaire.
+
+**Given** la fenêtre de production,
+**When** le Go est prononcé,
+**Then** un responsable du déploiement et un décideur de rollback sont nommés,
+**And** les seuils déclenchant l'arrêt ou la restauration sont écrits avant le lancement.
+
+**Given** le déploiement autorisé,
+**When** le workflow de production est exécuté,
+**Then** il déploie exactement l'archive qualifiée,
+**And** préserve le `.env` de production,
+**And** n'effectue aucune manipulation manuelle hors pipeline.
+
+**Given** le déploiement terminé,
+**When** les smoke tests et contrôles de santé sont exécutés,
+**Then** leur succès permet de confirmer la release,
+**Or** leur échec déclenche la procédure d'arrêt ou de restauration définie.
+
+**Given** la production confirmée,
+**When** l'Epic 6 est clôturée,
+**Then** les résultats, durées, décisions et risques résiduels sont archivés,
+**And** l'Epic 7 peut quitter son état gelé.
+
+### Story 6.9 : Gérer l'expiration de session avec redirection gracieuse
+
+As un utilisateur connecté (bénévole, gestionnaire, admin ou owner),
+I want que l'expiration de ma session ne produise jamais une page d'erreur PHP CodeIgniter,
+So that je sois redirigé vers la connexion Magic Link et ramené à ma page une fois authentifié.
+
+**Acceptance Criteria:**
+
+**Given** un utilisateur dont la session a expiré,
+**When** il accède à une route GET authentifiée (ex. tableau de bord, profil),
+**Then** le filtre d'authentification le redirige vers `/auth/request?redirect=<url_courante>`,
+**And** après connexion Magic Link réussie, `MagicLinkController` le renvoie sur l'URL d'origine,
+**And** aucune page d'erreur PHP n'est affichée.
+
+**Given** un utilisateur dont la session a expiré,
+**When** il soumet un formulaire POST (ex. inviter un admin, accepter/refuser/annuler une inscription),
+**Then** CodeIgniter lève une `SecurityException` (le hash CSRF stocké en session est perdu avec la session elle-même, avant même l'exécution du filtre d'auth),
+**And** le gestionnaire d'exceptions de l'application intercepte cette `SecurityException`, détecte l'absence de session utilisateur, et redirige vers `/auth/request` avec un message flash "Votre session a expiré — reconnectez-vous pour continuer.",
+**And** après reconnexion, l'utilisateur atterrit sur le tableau de bord de la kermesse concernée (pas une page d'erreur 403 CodeIgniter),
+**And** aucune page d'erreur PHP brute n'est affichée.
+
+**Given** la configuration du gestionnaire d'exceptions,
+**When** une `SecurityException` est levée avec une session active (CSRF genuinement invalide, pas une session expirée),
+**Then** la réponse 403 habituelle est retournée sans redirection silencieuse vers le login.
+
+**Given** le paramètre `redirect` transmis après reconnexion,
+**When** sa valeur est validée,
+**Then** seules les URLs de même origine (même domaine) sont acceptées,
+**And** toute URL externe est rejetée et l'utilisateur atterrit sur l'accueil connecté (protection open redirect).
+
+**Given** les tests de la Story 6.9,
+**When** la suite PHPUnit est exécutée,
+**Then** les scénarios GET expiré, POST expiré et open redirect sont couverts en feature tests,
+**And** les tests s'exécutent sous SQLite sans dépendance à Ouvaton.
+
+---
+
+## Epic 7 : Post-MVP — Système d'Invités (Guests)
 
 _Note : Cette Epic est prévue pour gérer les cas de comptes partagés au sein d'une même famille (parents partageant une adresse email)._
 
-### Story 6.1 : Inscription de tiers (Guests)
+### Story 7.1 : Inscription de tiers (Guests)
 As un bénévole connecté,
 I want pouvoir inscrire mon conjoint ou mes enfants à des créneaux depuis mon propre compte,
 So that toute la famille puisse participer sans avoir à créer plusieurs adresses email fictives.
