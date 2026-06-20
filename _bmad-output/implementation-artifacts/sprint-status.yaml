@@ -1,5 +1,5 @@
 # generated: 2026-06-19T18:32:48+0200
-# last_updated: 2026-06-19T22:07:36+0200
+# last_updated: 2026-06-20T14:45:00+0200
 # project: Kermesse
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-19T22:07:36+0200
+last_updated: 2026-06-20T18:43:50+0200
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
@@ -84,21 +84,22 @@ development_status:
   5-10-onglet-gestion-des-inscrits-gerer-annuler-et-corriger-une-inscription: done
   5-11-onglet-gestion-des-inscrits-ajouter-une-inscription-manuellement: done
   5-12-onglet-gestion-des-inscrits-deplacer-une-inscription: done
-  5-13-renommer-le-concept-signup-slotsignup-ubiquitous-language-defere-candidat-epic-7-tech-debt: ready-for-dev
+  5-13-renommer-le-concept-signup-slotsignup-ubiquitous-language-defere-candidat-epic-7-tech-debt: done
   5-14-tracabilite-et-validation-des-inscriptions-stateless: done
-  5-15-nettoyage-du-code-zombie-de-resolution-de-profil-defere-candidat-epic-7-tech-debt: ready-for-dev
   epic-5-retrospective: optional
   epic-6: in-progress
   6-1-corriger-l-ajout-d-un-creneau-sur-une-kermesse-ouverte: done
   6-2-cartographier-les-parcours-critiques-et-leur-couverture: done
   6-3-automatiser-les-trois-regressions-connues-avec-playwright: done
   6-4-automatiser-les-parcours-critiques-du-benevole: done
-  6-5-automatiser-les-parcours-critiques-des-organisateurs: backlog
-  6-6-fiabiliser-les-preuves-mariadb-des-parcours-critiques: backlog
+  6-5-automatiser-les-parcours-critiques-des-organisateurs: review
+  6-6-fiabiliser-les-preuves-mariadb-des-parcours-critiques: ready-for-dev
   6-7-installer-les-gates-ci-de-preparation-a-la-production: backlog
-  6-8-qualifier-et-deployer-la-release-candidate: backlog
-  6-9-gerer-l-expiration-de-session-avec-redirection-gracieuse: backlog
+  6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: backlog
+  6-9-qualifier-et-deployer-la-release-candidate: backlog
+  6-10-securiser-le-deploiement-des-migrations-incompatibles: backlog
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog
+  7-2-nettoyage-du-code-zombie-de-resolution-de-profil-defere-candidat-epic-7-tech-debt: backlog
   epic-7-retrospective: optional

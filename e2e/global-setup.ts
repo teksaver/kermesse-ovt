@@ -79,5 +79,6 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
   await authenticate(baseURL, 'e2e-magic-owner-01',    path.join(AUTH_DIR, 'owner.json'));
   await authenticate(baseURL, 'e2e-magic-admin-01',    path.join(AUTH_DIR, 'admin.json'));
+  await authenticate(baseURL, 'e2e-magic-gestion-01',  path.join(AUTH_DIR, 'gestionnaire.json'));
   await authenticate(baseURL, 'e2e-magic-benevole-01', path.join(AUTH_DIR, 'benevole.json'));
 }

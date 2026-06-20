@@ -32,7 +32,7 @@ export const test = base.extend({
 });
 
 /** Loads a saved session state for the given role. */
-export function storageStateFor(role: 'owner' | 'admin' | 'benevole'): string {
+export function storageStateFor(role: 'owner' | 'admin' | 'gestionnaire' | 'benevole'): string {
   return path.join(AUTH_DIR, `${role}.json`);
 }
 

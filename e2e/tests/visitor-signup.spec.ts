@@ -55,7 +55,7 @@ test.describe('Inscription visiteur — parcours valide', () => {
     });
 
     /* PRG → confirmation page */
-    await expect(page).toHaveURL(/\/signup\/confirmation/);
+    await expect(page).toHaveURL(/\/slot-signup\/confirmation/);
 
     /* Scope to the confirmation panel to avoid debug-bar strict-mode violations */
     const panel = page.locator('.confirmation-panel');
@@ -101,7 +101,7 @@ test.describe('Inscription visiteur — parcours valide', () => {
       email:     `lucie-comptage-${suffix}@e2e.test`,
     });
 
-    await expect(page).toHaveURL(/\/signup\/confirmation/);
+    await expect(page).toHaveURL(/\/slot-signup\/confirmation/);
 
     /* Navigate back and reload to confirm capacity was updated */
     await page.goto(`/k/${KERMESSE_SLUG}`);
@@ -196,7 +196,7 @@ test.describe('Inscription visiteur — doublon', () => {
 
     /* Must stay on the form with the duplicate error — scope to .form-service-error
      * to avoid strict-mode violations with the CI4 debug bar showing error text in DOM. */
-    await expect(page).not.toHaveURL(/\/signup\/confirmation/);
+    await expect(page).not.toHaveURL(/\/slot-signup\/confirmation/);
     await expect(page.locator('.form-service-error')).toContainText(/déjà une inscription active/i);
 
     /* Verify that no extra signup was created: capacity must be unchanged. */
@@ -228,7 +228,7 @@ test.describe('Inscription visiteur — chevauchement', () => {
     });
 
     /* Must stay on the form with the overlap error */
-    await expect(page).not.toHaveURL(/\/signup\/confirmation/);
+    await expect(page).not.toHaveURL(/\/slot-signup\/confirmation/);
     await expect(page.locator('.form-service-error')).toContainText(/créneau qui se chevauche/i);
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
