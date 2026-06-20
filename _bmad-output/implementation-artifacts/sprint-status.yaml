@@ -1,12 +1,5 @@
-# generated: 2026-06-11T13:33:05+0200
-# last_updated: 2026-06-17 (PRD FR-2 + Story 5.14 ACs réécrits machine à états)
-# story 5-11: done (2026-06-17)
-# story 3-5: in-progress (2026-06-12)
-# story 3-6: in-progress (2026-06-12)
-# story 4-1: done (2026-06-13)
-# story 4-2: done (2026-06-13)
-# story 4-3: done (2026-06-13)
-# story 4-4: done (2026-06-13)
+# generated: 2026-06-19T18:32:48+0200
+# last_updated: 2026-06-19T22:07:36+0200
 # project: Kermesse
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,11 +34,9 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-06-11T13:33:05+0200
-last_updated: "2026-06-19 (Story 6.3 done — 18/18 E2E smoke tests verts en Chromium desktop+mobile)"
+generated: 2026-06-19T18:32:48+0200
+last_updated: 2026-06-19T22:07:36+0200
 project: Kermesse
-# 4-4 status: ready-for-dev → in-progress → review → done (dev-story, 2026-06-13)
-# 4-2 / 4-3 status: in-progress → done (alignés sur dev-epic-4, 2026-06-13)
 project_key: NOKEY
 tracking_system: file-system
 story_location: /Users/sylvaintenier/Documents/Kermesse/_bmad-output/implementation-artifacts
@@ -71,7 +62,7 @@ development_status:
   3-3-s-inscrire-a-un-creneau-utilisateur-connecte: done
   3-4-garantir-doublon-chevauchement-et-course-a-la-capacite-transactionnel: done
   3-5-envoyer-l-email-de-confirmation-benevole: done
-  3-6-resoudre-les-divergences-de-profil-a-la-connexion: done
+  3-6-depreciee-resoudre-les-divergences-de-profil-a-la-connexion: done
   epic-3-retrospective: optional
   epic-4: done
   4-1-afficher-le-tableau-de-bord-interne-par-role: done
@@ -80,45 +71,34 @@ development_status:
   4-4-afficher-la-gestion-des-participants-admin-gestionnaire: done
   4-5-inviter-des-administrateurs-et-gestionnaires: done
   epic-4-retrospective: optional
-  # Epic 5 — Post-MVP (créé 2026-06-15) : wave d'évolutions conçue après le MVP.
-  # 5.1–5.5 = stories de MODIFICATION (deltas aux stories livrées 3.2/4.1/4.4/3.6/4.5,
-  # sans réécrire leur historique). 5.6–5.13 = nouvelles features + rename SlotSignup.
   epic-5: done
   5-1-modif-3-2-tracer-les-modifications-d-inscription: done
-  5-2-modif-4-1-navigation-par-4-onglets-et-suivi-d-acces-par-kermesse: done
-  5-3-modif-4-4-renommer-gestion-des-inscrits-et-badge-de-modification: done
-  5-4-modif-3-6-confirmation-1re-connexion-et-reconciliation-par-kermesse: done
-  5-5-modif-4-5-onglet-equipe-membres-invitation-et-reinvitation: done
+  5-2-modif-4-1-navigation-par-4-onglets-suivi-d-acces-par-kermesse: done
+  5-3-modif-4-4-renommer-gestion-des-inscrits-badge-de-modification: done
+  5-4-modif-3-6-confirmation-obligatoire-a-la-1re-connexion-reconciliation-par-kermesse: done
+  5-5-modif-4-5-onglet-equipe-vue-des-membres-etat-d-invitation-reinvitation: done
   5-6-dupliquer-un-stand: done
   5-7-gerer-ses-propres-coordonnees-page-profil: done
   5-8-onglet-equipe-revoquer-un-role: done
   5-9-quitter-une-kermesse: done
-  5-10-onglet-gestion-des-inscrits-annuler-et-corriger-une-inscription: done
+  5-10-onglet-gestion-des-inscrits-gerer-annuler-et-corriger-une-inscription: done
   5-11-onglet-gestion-des-inscrits-ajouter-une-inscription-manuellement: done
   5-12-onglet-gestion-des-inscrits-deplacer-une-inscription: done
-  # NEXT FUNCTIONAL STORY — à traiter en priorité
-  # Slug mis à jour 2026-06-17 pour correspondre au titre actuel dans epics.md
-  # (ancien slug: 5-14-flux-de-confirmation-d-identite — fichier story: 5-14-flux-de-confirmation-d-identite.md)
-  # ACs entièrement réécrits (machine à états, created_by, canceled_at/by, acceptSignup/rejectSignup, LEFT JOIN orphan-safe)
+  5-13-renommer-le-concept-signup-slotsignup-ubiquitous-language-defere-candidat-epic-7-tech-debt: ready-for-dev
   5-14-tracabilite-et-validation-des-inscriptions-stateless: done
-  # 2026-06-17 : stories de nettoyage/renommage déprioritisées — candidats Epic 7 Tech-Debt
+  5-15-nettoyage-du-code-zombie-de-resolution-de-profil-defere-candidat-epic-7-tech-debt: ready-for-dev
   epic-5-retrospective: optional
-  # Epic 6 — Stabilisation et préparation à la production (prioritaire avant toute nouvelle fonctionnalité)
   epic-6: in-progress
-  6-1-corriger-ajout-creneau-kermesse-ouverte: done
-  6-2-cartographier-parcours-critiques-et-couverture: done
-  6-3-automatiser-regressions-connues-playwright-docker: done
-  6-4-automatiser-parcours-critiques-benevole: backlog
-  6-5-automatiser-parcours-critiques-organisateurs: backlog
-  6-6-fiabiliser-preuves-mariadb-parcours-critiques: backlog
-  6-7-installer-gates-ci-preparation-production: backlog
-  6-8-qualifier-et-deployer-release-candidate: backlog
-  # Story 6.9 créée 2026-06-19 — bug découvert pendant le checkpoint 6.2 (session expirée → page d'erreur PHP sur routes POST dashboard)
+  6-1-corriger-l-ajout-d-un-creneau-sur-une-kermesse-ouverte: done
+  6-2-cartographier-les-parcours-critiques-et-leur-couverture: done
+  6-3-automatiser-les-trois-regressions-connues-avec-playwright: done
+  6-4-automatiser-les-parcours-critiques-du-benevole: done
+  6-5-automatiser-les-parcours-critiques-des-organisateurs: backlog
+  6-6-fiabiliser-les-preuves-mariadb-des-parcours-critiques: backlog
+  6-7-installer-les-gates-ci-de-preparation-a-la-production: backlog
+  6-8-qualifier-et-deployer-la-release-candidate: backlog
   6-9-gerer-l-expiration-de-session-avec-redirection-gracieuse: backlog
   epic-6-retrospective: optional
-  # Epic 7 — Post-MVP Guests & Nettoyage (ancienne Epic 6, gelée jusqu'au Go production)
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog
-  7-2-renommer-signup-en-slotsignup: backlog
-  7-3-nettoyage-du-code-zombie-de-resolution-de-profil: backlog
   epic-7-retrospective: optional

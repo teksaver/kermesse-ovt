@@ -56,7 +56,7 @@ test.describe('Mes participations — régression JS', () => {
   test('la liste reste visible après rechargement complet', async ({ page }) => {
     const errors = watchConsoleErrors(page);
 
-    const url = await goToDashboard(page);
+    await goToDashboard(page);
 
     await page.reload();
     await page.waitForLoadState('networkidle');
@@ -66,7 +66,9 @@ test.describe('Mes participations — régression JS', () => {
     const panel = page.locator('#tab-panel-participations');
     await expect(panel).toHaveClass(/is-open/);
 
+    /* Both active inscriptions must remain visible after a full reload. */
     await expect(page.getByText(STAND_MATIN).first()).toBeVisible();
+    await expect(page.getByText('14:00').first()).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });

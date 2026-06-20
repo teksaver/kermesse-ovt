@@ -9,6 +9,15 @@
             <p class="confirmation-message">
                 Votre inscription à <strong><?= esc($kermesseName) ?></strong> est bien enregistrée.
             </p>
+            <?php if ($standName !== '' || $displayTime !== ''): ?>
+            <p class="confirmation-slot">
+                <?php if ($standName !== ''): ?>
+                    <strong><?= esc($standName) ?></strong><?php if ($displayTime !== ''): ?> — <?= esc($displayTime) ?><?php endif; ?>
+                <?php elseif ($displayTime !== ''): ?>
+                    Créneau : <?= esc($displayTime) ?>
+                <?php endif; ?>
+            </p>
+            <?php endif; ?>
             <?php if (($emailSent ?? null) !== true): ?>
             <p class="confirmation-email-notice">
                 Votre inscription est bien enregistrée, mais l'email de confirmation

@@ -30,14 +30,18 @@ async function openModificationTab(page: Page): Promise<void> {
   await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
 }
 
-async function addSlotToJeux(page: Page): Promise<void> {
-  /* Find the stand section for Stand Jeux E2E. Stand sections have id="slots-stand-{id}". */
-  const jeuxSection = page.locator('[id^="slots-stand-"]').filter({
+/** Locator for the Jeux E2E stand section — re-evaluate after navigation. */
+function jeuxSection(page: Page) {
+  return page.locator('[id^="slots-stand-"]').filter({
     has: page.getByText(STAND_NAME),
   }).first();
+}
+
+async function addSlotToJeux(page: Page): Promise<void> {
+  const section = jeuxSection(page);
 
   /* Click "Ajouter un créneau" button inside that section */
-  const addBtn = jeuxSection.getByRole('button', { name: 'Ajouter un créneau' });
+  const addBtn = section.getByRole('button', { name: 'Ajouter un créneau' });
   await expect(addBtn).toBeVisible();
   await addBtn.click();
 
@@ -69,9 +73,13 @@ test.describe('Ajout de créneau sur kermesse ouverte', () => {
     /* After PRG, the modification tab is still active */
     await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
 
-    /* The new slot times appear in the stand section */
-    await expect(page.getByText(NEW_SLOT_START).first()).toBeVisible();
-    await expect(page.getByText(NEW_SLOT_END).first()).toBeVisible();
+    /* Flash success message confirms the PRG round-trip */
+    await expect(page.locator('.form-success')).toContainText('Créneau ajouté avec succès.');
+
+    /* The new slot times are visible inside the Jeux stand section (not page-wide) */
+    const section = jeuxSection(page);
+    await expect(section.getByText(NEW_SLOT_START).first()).toBeVisible();
+    await expect(section.getByText(NEW_SLOT_END).first()).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -88,8 +96,10 @@ test.describe('Ajout de créneau sur kermesse ouverte', () => {
 
     await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
 
-    await expect(page.getByText(NEW_SLOT_START).first()).toBeVisible();
-    await expect(page.getByText(NEW_SLOT_END).first()).toBeVisible();
+    /* Scope to the Jeux section to isolate from other stands' slots */
+    const section = jeuxSection(page);
+    await expect(section.getByText(NEW_SLOT_START).first()).toBeVisible();
+    await expect(section.getByText(NEW_SLOT_END).first()).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -106,8 +116,11 @@ test.describe('Ajout de créneau sur kermesse ouverte', () => {
 
     /* Stand name appears in public content (.stand-group__name) and also in Debug Bar
      * SQL output — scope to the semantic element to avoid strict-mode violations. */
-    await expect(page.locator('.stand-group__name').filter({ hasText: STAND_NAME })).toBeVisible();
-    await expect(page.getByText(NEW_SLOT_START).first()).toBeVisible();
+    const publicJeuxGroup = page.locator('.stand-group').filter({
+      has: page.locator('.stand-group__name', { hasText: STAND_NAME }),
+    });
+    await expect(publicJeuxGroup.locator('.stand-group__name')).toBeVisible();
+    await expect(publicJeuxGroup.getByText(NEW_SLOT_START).first()).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });

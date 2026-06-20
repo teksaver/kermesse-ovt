@@ -48,19 +48,37 @@ export async function openTab(page: Page, kermesseUrl: string, tabLabel: string)
   }
 }
 
-/** Collect all browser-level JS errors from a page; used in afterEach assertions. */
+/*
+ * Patterns of console messages that are known dev-tooling noise and must not trigger
+ * test failures. Each entry must be as precise as possible to avoid hiding real errors.
+ */
+const ALLOWED_CONSOLE_PATTERNS: RegExp[] = [
+  /* CI4 Debug Bar XHR to http://localhost:PORT/?debugbar_time=... fails with a CORS error
+   * when the request originates from inside the Playwright Docker container (localhost is
+   * not the app host). This is dev infrastructure noise, not an application error.
+   * Pattern is scoped to localhost + debugbar_time to avoid masking real app errors. */
+  /https?:\/\/localhost(:\d+)?\/.*debugbar_time=\d+/,
+];
+
+/** Collect browser-level JS errors and unexpected HTTP responses; used in afterEach assertions. */
 export function watchConsoleErrors(page: Page): string[] {
   const errors: string[] = [];
-  page.on('pageerror', (err) => errors.push(err.message));
+
+  page.on('pageerror', (err) => errors.push(`[pageerror] ${err.message}`));
+
   page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      const text = msg.text();
-      /* CI4 Debug Bar makes XHR to http://localhost:PORT/?debugbar_time=... from inside
-       * Docker, which fails with a CORS error before the route handler can intercept it.
-       * This is dev tooling noise, not an application error — filter it out. */
-      if (text.includes('debugbar_time')) return;
-      errors.push(text);
-    }
+    if (msg.type() !== 'error') return;
+    const text = msg.text();
+    if (ALLOWED_CONSOLE_PATTERNS.some((p) => p.test(text))) return;
+    errors.push(`[console.error] ${text}`);
   });
+
+  /* Fail on unexpected HTTP 4xx/5xx responses. 3xx redirects are expected (PRG flow). */
+  page.on('response', (response) => {
+    const status = response.status();
+    if (status < 400) return;
+    errors.push(`[http ${status}] ${response.url()}`);
+  });
+
   return errors;
 }

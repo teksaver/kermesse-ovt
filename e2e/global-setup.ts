@@ -24,45 +24,52 @@ async function authenticate(
   stateFile: string,
 ): Promise<void> {
   const browser = await chromium.launch({ args: LAUNCH_ARGS });
-  const context = await browser.newContext();
-  const page    = await context.newPage();
-
-  /*
-   * Navigate to the magic-link URL. The app validates the token, sets the session cookie
-   * in the 302 response, then redirects to http://localhost:8080/ (inaccessible inside
-   * Docker). We swallow ERR_CONNECTION_REFUSED / ERR_FAILED — the cookie is already set.
-   *
-   * Important: after the failed redirect Chromium is still navigating to chrome-error://.
-   * Open a NEW page from the same context (cookies are shared) to avoid "interrupted by
-   * another navigation" when we verify the session.
-   */
   try {
-    await page.goto(`${baseURL}/auth/magic-link/${rawToken}`);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!msg.includes('ERR_CONNECTION_REFUSED') && !msg.includes('ERR_FAILED') && !msg.includes('net::ERR_')) {
-      throw e;
+    const context = await browser.newContext();
+    const page    = await context.newPage();
+
+    /*
+     * Navigate to the magic-link URL. The app validates the token, sets the session cookie
+     * in the 302 response, then redirects to http://localhost:8080/ (inaccessible inside
+     * Docker). We swallow ERR_CONNECTION_REFUSED / ERR_FAILED — the cookie is already set.
+     *
+     * Important: after the failed redirect Chromium is still navigating to chrome-error://.
+     * Open a NEW page from the same context (cookies are shared) to avoid "interrupted by
+     * another navigation" when we verify the session.
+     */
+    try {
+      await page.goto(`${baseURL}/auth/magic-link/${rawToken}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes('ERR_CONNECTION_REFUSED') && !msg.includes('ERR_FAILED') && !msg.includes('net::ERR_')) {
+        throw e;
+      }
+      /* redirect to localhost failed — expected inside Docker, session cookie already set */
     }
-    /* redirect to localhost failed — expected inside Docker, session cookie already set */
+
+    /*
+     * Use a fresh page so we avoid racing with the chrome-error:// navigation that Chromium
+     * initiates after the failed redirect. Cookies are shared within the context.
+     */
+    const verifyPage = await context.newPage();
+    await verifyPage.goto(baseURL, { waitUntil: 'networkidle' });
+
+    const url = verifyPage.url();
+    if (url.includes('magic_link_invalid') || url.includes('auth/login') || url.includes('auth/magic-link')) {
+      throw new Error(
+        `Authentication failed for token ${rawToken} — landed on ${url}. ` +
+        'Re-run e2e.sh to reseed the fixtures.',
+      );
+    }
+
+    await context.storageState({ path: stateFile });
+  } finally {
+    try {
+      await browser.close();
+    } catch {
+      /* Swallow browser.close() errors to preserve the original auth error above. */
+    }
   }
-
-  /*
-   * Use a fresh page so we avoid racing with the chrome-error:// navigation that Chromium
-   * initiates after the failed redirect. Cookies are shared within the context.
-   */
-  const verifyPage = await context.newPage();
-  await verifyPage.goto(baseURL, { waitUntil: 'networkidle' });
-
-  const url = verifyPage.url();
-  if (url.includes('magic_link_invalid') || url.includes('auth/login') || url.includes('auth/magic-link')) {
-    throw new Error(
-      `Authentication failed for token ${rawToken} — landed on ${url}. ` +
-      'Re-run e2e.sh to reseed the fixtures.',
-    );
-  }
-
-  await context.storageState({ path: stateFile });
-  await browser.close();
 }
 
 export default async function globalSetup(config: FullConfig): Promise<void> {

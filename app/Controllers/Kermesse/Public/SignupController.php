@@ -193,6 +193,8 @@ class SignupController extends BaseController
             'slug'         => $publicSlug,
             'slotId'       => (int) $slotId,
             'kermesseName' => (string) $summary['kermesseName'],
+            'standName'    => (string) $summary['standName'],
+            'displayTime'  => (string) $summary['displayTime'],
             'emailSent'    => $result->emailSent,
         ]);
 
@@ -214,6 +216,8 @@ class SignupController extends BaseController
 
         return view('kermesse/public/signup_confirmation', [
             'kermesseName'    => (string) ($flash['kermesseName'] ?? ''),
+            'standName'       => (string) ($flash['standName'] ?? ''),
+            'displayTime'     => (string) ($flash['displayTime'] ?? ''),
             'publicSlug'      => $publicSlug,
             'emailSent'       => $flash['emailSent'] ?? null,
             'isAuthenticated' => $isAuthenticated,

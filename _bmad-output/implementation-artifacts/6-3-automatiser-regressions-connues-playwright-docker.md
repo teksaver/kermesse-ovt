@@ -4,7 +4,7 @@
 baseline_commit: 743ce563f95c6561cafbf5ca45460b7e008855df
 ---
 
-Status: review
+Status: done
 
 ## Story
 
@@ -65,6 +65,25 @@ so that les régressions JavaScript et d’intégration soient détectées avant
   - [x] Passer les trois régressions smoke concernées et G09 au statut couvert avec les chemins exacts des specs.
   - [x] Ne pas déclarer couverts les parcours étendus réservés aux Stories 6.4/6.5 ni les gates CI de la Story 6.7.
 
+### Review Findings
+
+- [x] [Review][Patch] Migrer une base MariaDB vierge avant d'injecter les fixtures E2E (AC3–AC5) [`scripts/e2e.sh:29`]
+- [x] [Review][Patch] Produire une trace sur échec malgré `retries: 0` (AC4, AC10) [`playwright.config.ts:24`]
+- [x] [Review][Patch] Faire échouer les tests sur les réponses HTTP inattendues (AC9) [`e2e/helpers/fixtures.ts:51`]
+- [x] [Review][Patch] Isoler l'état mutable des tests d'ajout de créneau et scoper les assertions au créneau créé (AC11) [`e2e/tests/add-slot.spec.ts:62`]
+- [x] [Review][Patch] Vérifier les deux inscriptions après rechargement complet (AC6) [`e2e/tests/participations.spec.ts:56`]
+- [x] [Review][Patch] Transmettre les arguments Playwright sans interpolation dans `bash -c` [`scripts/e2e.sh:74`]
+- [x] [Review][Patch] Capturer le code d'échec Playwright malgré `set -e` [`scripts/e2e.sh:74`]
+- [x] [Review][Patch] Borner l'attente des services même sans `timeout` ou `gtimeout` [`scripts/e2e.sh:35`]
+- [x] [Review][Patch] Vérifier explicitement le message de succès après le PRG (AC8) [`e2e/tests/add-slot.spec.ts:56`]
+- [x] [Review][Patch] Persister les journaux navigateur dans les artefacts même lors d'un échec précoce (AC4, AC10) [`e2e/helpers/fixtures.ts:51`]
+- [x] [Review][Patch] Remplacer l'expiration fixe 2030 des magic links par une date relative [`e2e/fixtures/e2e-setup.sql:112`]
+- [x] [Review][Patch] Tester réellement l'archive produite plutôt que la seule présence de chaînes dans le packager (AC1) [`tests/shell/package-deploy-artifact.test.sh:24`]
+- [x] [Review][Patch] Restreindre précisément l'allowlist console de la Debug Bar [`e2e/helpers/fixtures.ts:58`]
+- [x] [Review][Patch] Nettoyer les services et données E2E après exécution tout en conservant les artefacts (AC4) [`scripts/e2e.sh:29`]
+- [x] [Review][Patch] Fermer Chromium avec `finally` si l'authentification globale échoue [`e2e/global-setup.ts:26`]
+- [x] [Review][Patch] Consigner plusieurs exécutions réussies pour prouver l'absence de flakiness (AC11)
+
 ## Dev Notes
 
 ### Contrat et limites de périmètre
@@ -72,6 +91,14 @@ so that les régressions JavaScript et d’intégration soient détectées avant
 - Cette story livre l’infrastructure Docker Playwright et exactement trois smoke tests de non-régression. Les parcours bénévoles et organisateurs exhaustifs restent en 6.4/6.5. La promotion en check PR obligatoire et les gates complètes restent en 6.7.
 - La commande doit être utilisable par un poste ou un runner qui ne possède que Docker. Ne pas demander `npm`, Node ou Chromium sur l’hôte.
 - Le frontend reste constitué d’assets statiques locaux. `package.json` sert uniquement aux tests; aucun bundler, transpileur ou étape de build frontend ne doit apparaître dans le runtime ou le packaging.
+
+### Note pour Story 6.7 — Coexistence stack dev / runner E2E
+
+Aujourd’hui `scripts/e2e.sh` recrée le conteneur `app` avec `database.default.database: kermesse_e2e` (via `docker-compose.e2e.yml`), ce qui redirige `localhost:8080` vers la base E2E pendant tout le run. Le cleanup final (`down --remove-orphans`) démonte aussi `app` et `db`, laissant la stack dev à l’arrêt.
+
+**Conséquence** : impossible d’utiliser le staging local pendant un run E2E.
+
+**Piste pour 6.7** : faire tourner le runner E2E sur une stack `app` isolée (profil dédié, port distinct, réseau distinct) de sorte que le conteneur dev ne soit jamais recréé ni arrêté par le runner. Évaluer si c’est pertinent compte tenu du contexte CI (où il n’y a pas de stack dev parallèle).
 
 ### État actuel à préserver
 
@@ -132,13 +159,29 @@ so that les régressions JavaScript et d’intégration soient détectées avant
 
 ### Agent Model Used
 
-À renseigner par l’agent de développement.
+claude-sonnet-4-6 (Quick Dev — application des 16 patches de review)
 
 ### Debug Log References
 
+- Patch 12 validé : `bash tests/shell/package-deploy-artifact.test.sh` → 13/13 OK, détection de 11 artefacts E2E interdits dans archive synthétique
+- Run 1 (2026-06-19) : 18 tests verts — desktop + mobile — 0 flaky — 45.5s
+- Run 2 (2026-06-19) : 18 tests verts — desktop + mobile — 0 flaky
+- Run 3 (2026-06-19) : 18 tests verts — desktop + mobile — 0 flaky
+
 ### Completion Notes List
 
-- Ultimate context engine analysis completed - comprehensive developer guide created
+- 16/16 patches de review appliqués
+- Stabilité prouvée sur 3 runs consécutifs sans flakiness (AC11)
+- Base E2E isolée (`kermesse_e2e`) — base de dev locale jamais touchée
+- `scripts/e2e-report.sh` ajouté pour consulter le rapport HTML sans Node sur l'hôte
 
 ### File List
 
+- `playwright.config.ts` — trace `retain-on-failure` (P2)
+- `scripts/e2e.sh` — migrations avant fixtures, fallback timeout, args sûrs, capture EXIT_CODE, cleanup trap (P1, P6, P7, P8, P14)
+- `e2e/fixtures/e2e-setup.sql` — expiration relative `DATE_ADD(NOW(), INTERVAL 1 YEAR)` (P11)
+- `e2e/global-setup.ts` — try/finally sur browser.close() (P15)
+- `e2e/helpers/fixtures.ts` — allowlist pattern-based, surveillance HTTP 4xx/5xx (P3, P10, P13)
+- `e2e/tests/participations.spec.ts` — assertion 2e inscription après reload (P5)
+- `e2e/tests/add-slot.spec.ts` — scope jeuxSection, message succès PRG (P4, P9)
+- `tests/shell/package-deploy-artifact.test.sh` — validation d’archive synthétique réelle (P12)

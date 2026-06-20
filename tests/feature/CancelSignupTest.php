@@ -98,6 +98,11 @@ final class CancelSignupTest extends CIUnitTestCase
         $this->assertSame('cancelled', $this->signupStatus());
         $this->assertSame(0, $this->activeCount());
 
+        // canceled_at et canceled_by sont renseignés (AC post-review).
+        $row = db_connect()->table('signups')->where('id', $this->signupId)->get()->getRowArray();
+        $this->assertNotNull($row['canceled_at'], 'canceled_at doit être renseigné après annulation');
+        $this->assertSame($this->benevoleId, (int) $row['canceled_by'], 'canceled_by doit correspondre à l\'annulateur');
+
         // Message de confirmation (UX-DR23).
         $this->assertSame(
             'La place est de nouveau disponible.',
