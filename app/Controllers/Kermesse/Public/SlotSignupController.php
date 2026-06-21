@@ -1,27 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers\Kermesse\Public;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\SlotModel;
 use App\Models\UserModel;
 use App\Services\PublicVolunteerPageService;
-use App\Services\SignupResult;
-use App\Services\SignupService;
+use App\Services\SlotSignupResult;
+use App\Services\SlotSignupService;
 
 /**
- * Public signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
+ * Public slot-signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
  *
  * Displays and validates the volunteer signup form, then delegates inscription
- * creation to SignupService (find-or-create user + transactional signup insert).
+ * creation to SlotSignupService (find-or-create user + transactional signup insert).
  * Returns neutral 404 for any slug/slot mismatch or non-open kermesse.
  *
  * PRIVACY: only slot summary data (kermesse name, stand name, time, availability) is
  * passed to views. No user data, admin fields, or management links.
  */
-class SignupController extends BaseController
+class SlotSignupController extends BaseController
 {
     public function show(string $publicSlug, string $slotId): mixed
     {
@@ -48,7 +50,7 @@ class SignupController extends BaseController
         if ($isAuthenticated) {
             $user = model(UserModel::class)->find($authUserId);
             if ($user !== null) {
-                return view('kermesse/public/signup_form', [
+                return view('kermesse/public/slot_signup_form', [
                     'summary'         => $summary,
                     'fields'          => [
                         'first_name' => (string) $user['first_name'],
@@ -78,7 +80,7 @@ class SignupController extends BaseController
         // on a shared device can wipe the previous person's name/email before signing up.
         $isPrefilled = is_array($identity) && (string) ($identity['email'] ?? '') !== '';
 
-        return view('kermesse/public/signup_form', [
+        return view('kermesse/public/slot_signup_form', [
             'summary'         => $summary,
             'fields'          => $fields,
             'errors'          => [],
@@ -155,7 +157,7 @@ class SignupController extends BaseController
 
             $validation = service('validation');
             if (! $validation->setRules($rules)->run($rawForView)) {
-                return view('kermesse/public/signup_form', [
+                return view('kermesse/public/slot_signup_form', [
                     'summary'         => $summary,
                     'fields'          => $rawForView,
                     'errors'          => $validation->getErrors(),
@@ -165,7 +167,7 @@ class SignupController extends BaseController
             $fields = $validation->getValidated();
         }
 
-        $result = $this->signupService()->signup(
+        $result = $this->slotSignupService()->signup(
             slotId:     (int) $slotId,
             kermesseId: (int) $summary['kermesseId'],
             fields:     $fields,
@@ -173,7 +175,7 @@ class SignupController extends BaseController
         );
 
         if (! $result->success) {
-            return view('kermesse/public/signup_form', [
+            return view('kermesse/public/slot_signup_form', [
                 'summary'         => $summary,
                 'fields'          => $rawForView,
                 'errors'          => ['_service' => $this->serviceErrorMessage($result)],
@@ -198,7 +200,7 @@ class SignupController extends BaseController
             'emailSent'    => $result->emailSent,
         ]);
 
-        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup/confirmation"));
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/slot-signup/confirmation"));
     }
 
     public function confirm(string $publicSlug, string $slotId): mixed
@@ -214,7 +216,7 @@ class SignupController extends BaseController
         $authUserId      = (int) session()->get('user_id');
         $isAuthenticated = session()->get('is_logged_in') === true && $authUserId > 0;
 
-        return view('kermesse/public/signup_confirmation', [
+        return view('kermesse/public/slot_signup_confirmation', [
             'kermesseName'    => (string) ($flash['kermesseName'] ?? ''),
             'standName'       => (string) ($flash['standName'] ?? ''),
             'displayTime'     => (string) ($flash['displayTime'] ?? ''),
@@ -225,20 +227,20 @@ class SignupController extends BaseController
     }
 
     /**
-     * Build the SignupService with shared model instances. Extracted to a seam so a
+     * Build the SlotSignupService with shared model instances. Extracted to a seam so a
      * test can subclass the controller and inject a mock service without touching HTTP.
      */
-    protected function signupService(): SignupService
+    protected function slotSignupService(): SlotSignupService
     {
-        return new SignupService(
-            userModel:              model(UserModel::class),
-            signupModel:            model(SignupModel::class),
-            kermesseModel:          model(KermesseModel::class),
-            slotModel:              model(SlotModel::class),
+        return new SlotSignupService(
+            userModel:        model(UserModel::class),
+            slotSignupModel:  model(SlotSignupModel::class),
+            kermesseModel:    model(KermesseModel::class),
+            slotModel:        model(SlotModel::class),
         );
     }
 
-    private function serviceErrorMessage(SignupResult $result): string
+    private function serviceErrorMessage(SlotSignupResult $result): string
     {
         if ($result->errorCode === 'slot_full') {
             return 'Ce créneau vient d\'être rempli. Choisissez un autre créneau.';

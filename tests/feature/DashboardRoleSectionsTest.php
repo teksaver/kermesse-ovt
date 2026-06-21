@@ -146,7 +146,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

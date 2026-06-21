@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -12,11 +12,11 @@ use CodeIgniter\Test\FeatureTestTrait;
  * Feature tests for admin signup actions — Story 5.10.
  *
  * adminCancel: sets signup status to 'removed', volunteer appears in history section.
- * adminEdit:   updates only the signups table contact fields, never the users table.
+ * adminEdit:   updates only the slot_signups table contact fields, never the users table.
  *
  * @internal
  */
-final class AdminSignupActionsTest extends CIUnitTestCase
+final class AdminSlotSignupActionsTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
@@ -41,7 +41,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -57,24 +57,24 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminCancelSetsStatusToRemoved(): void
     {
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-cancel", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-cancel", [
                 csrf_token() => csrf_hash(),
             ]);
 
         $row = db_connect()
-            ->table('signups')
+            ->table('slot_signups')
             ->where('id', $this->signupId)
             ->get()
             ->getRowArray();
 
         $this->assertNotNull($row);
-        $this->assertSame('removed', SignupModel::getStatus($row));
+        $this->assertSame('removed', SlotSignupModel::getStatus($row));
     }
 
     public function testAdminCancelRedirectsToInscritsTab(): void
     {
         $result = $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-cancel", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-cancel", [
                 csrf_token() => csrf_hash(),
             ]);
 
@@ -89,7 +89,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     {
         // Cancel the signup.
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-cancel", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-cancel", [
                 csrf_token() => csrf_hash(),
             ]);
 
@@ -106,12 +106,12 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminCancelStampsLastModifiedByUserId(): void
     {
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-cancel", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-cancel", [
                 csrf_token() => csrf_hash(),
             ]);
 
         $row = db_connect()
-            ->table('signups')
+            ->table('slot_signups')
             ->where('id', $this->signupId)
             ->get()
             ->getRowArray();
@@ -128,7 +128,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminEditUpdatesSignupContactFields(): void
     {
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-edit", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-edit", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'AliceModif',
                 'last_name'   => 'MartinModif',
@@ -138,7 +138,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             ]);
 
         $signup = db_connect()
-            ->table('signups')
+            ->table('slot_signups')
             ->where('id', $this->signupId)
             ->get()
             ->getRowArray();
@@ -159,7 +159,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             ->getRowArray();
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/signups/{$this->signupId}/admin-edit", [
+            ->post("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/admin-edit", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'NouveauPrenom',
                 'last_name'   => 'NouveauNom',
@@ -188,10 +188,10 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminAddSignupCreatesSignupWithBasicFields(): void
     {
         $db       = db_connect();
-        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countBefore = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Nouveau',
                 'last_name'   => 'Bénévole',
@@ -199,7 +199,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 'phone'       => '',
             ]);
 
-        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countAfter = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
         $this->assertSame($countBefore + 1, $countAfter);
     }
 
@@ -211,10 +211,10 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             ->update(['status' => 'closed']);
 
         $db          = db_connect();
-        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countBefore = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Fermé',
                 'last_name'   => 'Override',
@@ -222,14 +222,14 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 'phone'       => '',
             ]);
 
-        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countAfter = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
         $this->assertSame($countBefore + 1, $countAfter);
     }
 
     public function testAdminAddSignupStampsLastModifiedByUserId(): void
     {
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Tampon',
                 'last_name'   => 'Admin',
@@ -238,7 +238,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             ]);
 
         $row = db_connect()
-            ->table('signups')
+            ->table('slot_signups')
             ->where('slot_id', $this->slotId)
             ->orderBy('id', 'DESC')
             ->limit(1)
@@ -253,7 +253,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminAddSignupRedirectsToInscritsTab(): void
     {
         $result = $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Redirect',
                 'last_name'   => 'Test',
@@ -271,34 +271,34 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     public function testAdminAddSignupRequiresEmail(): void
     {
         $db          = db_connect();
-        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countBefore = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Sans',
                 'last_name'   => 'Email',
                 'email'       => '',
             ]);
 
-        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countAfter = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
         $this->assertSame($countBefore, $countAfter, 'Signup should not be created when email is missing.');
     }
 
     public function testAdminAddSignupRequiresFirstName(): void
     {
         $db          = db_connect();
-        $countBefore = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countBefore = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => '',
                 'last_name'   => 'SansPrenom',
                 'email'       => 'sans.prenom@test-5-11.com',
             ]);
 
-        $countAfter = (int) $db->table('signups')->where('slot_id', $this->slotId)->countAllResults();
+        $countAfter = (int) $db->table('slot_signups')->where('slot_id', $this->slotId)->countAllResults();
         $this->assertSame($countBefore, $countAfter, 'Signup should not be created when first name is missing.');
     }
 
@@ -306,7 +306,6 @@ final class AdminSignupActionsTest extends CIUnitTestCase
     {
         // Fill slot to capacity (3 places) — 1 signup already exists from fixture.
         $db = db_connect();
-        $existingUserId = $this->volunteerId;
 
         // Create 2 more volunteers and fill the slot.
         foreach (['fill1@test-5-11.com', 'fill2@test-5-11.com'] as $e) {
@@ -315,19 +314,21 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 'first_name' => 'Fill', 'last_name' => 'Slot', 'phone' => '',
             ]);
             $uid = (int) $db->insertID();
-            $db->table('signups')->insert([
-                'slot_id' => $this->slotId, 'user_id' => $uid, 'status' => 'active',
+            $db->table('slot_signups')->insert([
+                'slot_id' => $this->slotId, 'user_id' => $uid,
             ]);
         }
 
-        $countBefore = (int) $db->table('signups')
+        $countBefore = (int) $db->table('slot_signups')
             ->where('slot_id', $this->slotId)
-            ->whereNotIn('status', ['cancelled', 'removed', 'deactivated', 'deleted', 'refused'])
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
+            ->where('deleted_at', null)
             ->countAllResults();
         $this->assertSame(3, $countBefore, 'Slot should be full before the test.');
 
         $this->withSession($this->session($this->adminId))
-            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-signup", [
+            ->post("kermesse/{$this->kermesseId}/slots/{$this->slotId}/admin-add-slot-signup", [
                 csrf_token()  => csrf_hash(),
                 'first_name'  => 'Trop',
                 'last_name'   => 'Tard',
@@ -335,9 +336,11 @@ final class AdminSignupActionsTest extends CIUnitTestCase
                 'phone'       => '',
             ]);
 
-        $countAfter = (int) $db->table('signups')
+        $countAfter = (int) $db->table('slot_signups')
             ->where('slot_id', $this->slotId)
-            ->whereNotIn('status', ['cancelled', 'removed', 'deactivated', 'deleted', 'refused'])
+            ->where('canceled_at', null)
+            ->where('rejected_at', null)
+            ->where('deleted_at', null)
             ->countAllResults();
         $this->assertSame(3, $countAfter, 'Signup count should remain 3 when slot is full.');
     }
@@ -401,7 +404,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
         ]);
         $this->slotId = (int) $db->insertID();
 
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id' => $this->slotId,
             'user_id' => $this->volunteerId,
         ]);
@@ -483,7 +486,7 @@ final class AdminSignupActionsTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

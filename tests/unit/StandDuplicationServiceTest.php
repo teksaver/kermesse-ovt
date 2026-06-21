@@ -46,8 +46,8 @@ final class StandDuplicationServiceTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            DROP TABLE IF EXISTS db_signups;
-            CREATE TABLE IF NOT EXISTS db_signups (
+            DROP TABLE IF EXISTS db_slot_signups;
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
@@ -75,7 +75,7 @@ final class StandDuplicationServiceTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         parent::tearDown();
@@ -114,7 +114,7 @@ final class StandDuplicationServiceTest extends CIUnitTestCase
 
     private function makeSignup(int $slotId): void
     {
-        db_connect()->table('signups')->insert([
+        db_connect()->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $this->userId,
             'status'  => 'active',
@@ -168,11 +168,11 @@ final class StandDuplicationServiceTest extends CIUnitTestCase
         $newId = $this->newStandIdByName('Stand Vierge');
 
         $copiedSignups = (int) db_connect()
-            ->query("SELECT COUNT(*) AS cnt FROM db_signups s JOIN db_slots sl ON sl.id = s.slot_id WHERE sl.stand_id = {$newId}")
+            ->query("SELECT COUNT(*) AS cnt FROM db_slot_signups s JOIN db_slots sl ON sl.id = s.slot_id WHERE sl.stand_id = {$newId}")
             ->getRowArray()['cnt'];
         $this->assertSame(0, $copiedSignups);
 
-        $totalSignups = (int) db_connect()->query('SELECT COUNT(*) AS cnt FROM db_signups')->getRowArray()['cnt'];
+        $totalSignups = (int) db_connect()->query('SELECT COUNT(*) AS cnt FROM db_slot_signups')->getRowArray()['cnt'];
         $this->assertSame(1, $totalSignups);
     }
 

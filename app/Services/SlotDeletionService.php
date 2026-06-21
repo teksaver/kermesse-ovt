@@ -56,10 +56,10 @@ class SlotDeletionService
             return self::RESULT_FAILED;
         }
 
-        if ($db->tableExists('signups')) {
+        if ($db->tableExists('slot_signups')) {
             // Soft-delete active signups (Story 5.14: no more status column on signups)
             $now = date('Y-m-d H:i:s');
-            $builder = $db->table('signups')
+            $builder = $db->table('slot_signups')
                 ->where('slot_id', $slotId)
                 ->set('deleted_at', $now)
                 ->set('updated_at', $now);
@@ -75,11 +75,11 @@ class SlotDeletionService
 
     private function countActiveSignupsWithConnection(object $db, int $slotId): int
     {
-        if (! $db->tableExists('signups')) {
+        if (! $db->tableExists('slot_signups')) {
             return 0;
         }
 
-        $builder = $db->table('signups')->where('slot_id', $slotId);
+        $builder = $db->table('slot_signups')->where('slot_id', $slotId);
         $this->applyActiveSignupFilter($builder, $db);
 
         return (int) $builder->countAllResults();
@@ -88,11 +88,11 @@ class SlotDeletionService
     private function applyActiveSignupFilter(object $builder, object $db): void
     {
         // Story 5.14: active = no cancellation timestamp and not soft-deleted
-        $builder->where('signups.canceled_at', null)
-                ->where('signups.rejected_at', null);
+        $builder->where('slot_signups.canceled_at', null)
+                ->where('slot_signups.rejected_at', null);
 
-        if ($db->fieldExists('deleted_at', 'signups')) {
-            $builder->where('signups.deleted_at', null);
+        if ($db->fieldExists('deleted_at', 'slot_signups')) {
+            $builder->where('slot_signups.deleted_at', null);
         }
     }
 }

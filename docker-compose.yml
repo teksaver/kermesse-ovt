@@ -106,6 +106,7 @@ services:
   deploy-target:
     profiles: [rehearsal]
     image: atmoz/sftp:latest
+    platform: linux/amd64
     ports:
       - "127.0.0.1:${DEPLOY_TARGET_SFTP_PORT:-2222}:22"
     environment:

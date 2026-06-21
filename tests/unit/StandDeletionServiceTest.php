@@ -45,8 +45,8 @@ final class StandDeletionServiceTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            DROP TABLE IF EXISTS db_signups;
-            CREATE TABLE IF NOT EXISTS db_signups (
+            DROP TABLE IF EXISTS db_slot_signups;
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
@@ -73,7 +73,7 @@ final class StandDeletionServiceTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         parent::tearDown();
@@ -118,7 +118,7 @@ final class StandDeletionServiceTest extends CIUnitTestCase
             'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
             default                => [],
         };
-        db_connect()->table('signups')->insert($row);
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function standStatus(int $standId): ?string

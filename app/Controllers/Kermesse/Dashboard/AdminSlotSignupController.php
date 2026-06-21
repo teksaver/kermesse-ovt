@@ -6,28 +6,28 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
-use App\Services\AdminCreateSignupDTO;
-use App\Services\AdminMoveSignupDTO;
+use App\Services\AdminCreateSlotSignupDTO;
+use App\Services\AdminMoveSlotSignupDTO;
 use App\Services\EmailService;
-use App\Services\SignupService;
+use App\Services\SlotSignupService;
 
 /**
- * Admin-side signup operations — Story 5.10.
+ * Admin-side slot-signup operations — Story 5.10.
  *
  * adminCancel: Owner/Admin/Gestionnaire cancels any volunteer's signup,
  *   bypassing the kermesse lifecycle check, with an optional email notification.
  * adminEdit: Owner/Admin/Gestionnaire edits a signup's contact fields when the
  *   volunteer has not yet accessed this kermesse (first_access_at IS NULL).
  *
- * All invariants live in SignupService — never in this controller.
+ * All invariants live in SlotSignupService — never in this controller.
  */
-class AdminSignupController extends BaseController
+class AdminSlotSignupController extends BaseController
 {
-    /** POST /kermesse/{kermesseId}/slots/{slotId}/admin-add-signup — Story 5.11 */
-    public function adminAddSignup(string $kermesseId, string $slotId): mixed
+    /** POST /kermesse/{kermesseId}/slots/{slotId}/admin-add-slot-signup — Story 5.11 */
+    public function adminAddSlotSignup(string $kermesseId, string $slotId): mixed
     {
         $kermesseIntId = (int) $kermesseId;
         $slotIntId     = (int) $slotId;
@@ -67,7 +67,7 @@ class AdminSignupController extends BaseController
                 ->withInput();
         }
 
-        $dto = new AdminCreateSignupDTO(
+        $dto = new AdminCreateSlotSignupDTO(
             slotId:                $slotIntId,
             kermesseId:            $kermesseIntId,
             adminUserId:           $adminUserId,
@@ -78,15 +78,15 @@ class AdminSignupController extends BaseController
             sendConfirmationEmail: $sendEmail,
         );
 
-        $service = new SignupService(
-            userModel:     model(UserModel::class),
-            signupModel:   model(SignupModel::class),
-            kermesseModel: model(KermesseModel::class),
-            emailService:  new EmailService(),
-            userRoleModel: model(UserRoleModel::class),
+        $service = new SlotSignupService(
+            userModel:        model(UserModel::class),
+            slotSignupModel:  model(SlotSignupModel::class),
+            kermesseModel:    model(KermesseModel::class),
+            emailService:     new EmailService(),
+            userRoleModel:    model(UserRoleModel::class),
         );
 
-        $result = $service->createSignupByAdmin($dto);
+        $result = $service->createSlotSignupByAdmin($dto);
 
         if ($result->success) {
             $msg = sprintf(
@@ -123,17 +123,17 @@ class AdminSignupController extends BaseController
         return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
     }
 
-    /** POST /kermesse/{kermesseId}/signups/{signupId}/admin-move-signup — Story 5.12 */
-    public function adminMoveSignup(string $kermesseId, string $signupId): mixed
+    /** POST /kermesse/{kermesseId}/slot-signups/{slotSignupId}/admin-move-slot-signup — Story 5.12 */
+    public function adminMoveSlotSignup(string $kermesseId, string $slotSignupId): mixed
     {
-        $kermesseIntId = (int) $kermesseId;
-        $signupIntId   = (int) $signupId;
-        $adminUserId   = (int) session()->get('user_id');
+        $kermesseIntId    = (int) $kermesseId;
+        $slotSignupIntId  = (int) $slotSignupId;
+        $adminUserId      = (int) session()->get('user_id');
 
         $targetSlotRaw = $this->request->getPost('target_slot_id');
         $sendEmailRaw  = $this->request->getPost('send_notification_email');
 
-        $targetSlotId = (int) ($targetSlotRaw ?? 0);
+        $targetSlotId = is_array($targetSlotRaw) ? 0 : (int) ($targetSlotRaw ?? 0);
         $sendEmail    = ! empty($sendEmailRaw);
 
         if ($targetSlotId <= 0) {
@@ -142,23 +142,23 @@ class AdminSignupController extends BaseController
             return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
         }
 
-        $dto = new AdminMoveSignupDTO(
-            sourceSignupId:       $signupIntId,
+        $dto = new AdminMoveSlotSignupDTO(
+            sourceSlotSignupId:   $slotSignupIntId,
             targetSlotId:         $targetSlotId,
             kermesseId:           $kermesseIntId,
             adminUserId:          $adminUserId,
             sendNotificationEmail: $sendEmail,
         );
 
-        $service = new SignupService(
-            userModel:     model(UserModel::class),
-            signupModel:   model(SignupModel::class),
-            kermesseModel: model(KermesseModel::class),
-            emailService:  new EmailService(),
-            userRoleModel: model(UserRoleModel::class),
+        $service = new SlotSignupService(
+            userModel:        model(UserModel::class),
+            slotSignupModel:  model(SlotSignupModel::class),
+            kermesseModel:    model(KermesseModel::class),
+            emailService:     new EmailService(),
+            userRoleModel:    model(UserRoleModel::class),
         );
 
-        $result = $service->moveSignup($dto);
+        $result = $service->moveSlotSignup($dto);
 
         if ($result->success) {
             $volunteerName = (string) ($result->context['volunteer_name'] ?? '');
@@ -190,29 +190,29 @@ class AdminSignupController extends BaseController
         return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
     }
 
-    /** POST /kermesse/{kermesseId}/signups/{signupId}/admin-cancel */
-    public function adminCancel(string $kermesseId, string $signupId): mixed
+    /** POST /kermesse/{kermesseId}/slot-signups/{slotSignupId}/admin-cancel */
+    public function adminCancel(string $kermesseId, string $slotSignupId): mixed
     {
-        $kermesseIntId = (int) $kermesseId;
-        $signupIntId   = (int) $signupId;
-        $adminUserId   = (int) session()->get('user_id');
+        $kermesseIntId   = (int) $kermesseId;
+        $slotSignupIntId = (int) $slotSignupId;
+        $adminUserId     = (int) session()->get('user_id');
 
         $notifyRaw = $this->request->getPost('notify');
         $notify    = $notifyRaw === '1' || $notifyRaw === 'on' || $notifyRaw === true;
 
-        $service = new SignupService(
-            userModel:     model(UserModel::class),
-            signupModel:   model(SignupModel::class),
-            kermesseModel: model(KermesseModel::class),
-            emailService:  new EmailService(),
-            userRoleModel: model(UserRoleModel::class),
+        $service = new SlotSignupService(
+            userModel:        model(UserModel::class),
+            slotSignupModel:  model(SlotSignupModel::class),
+            kermesseModel:    model(KermesseModel::class),
+            emailService:     new EmailService(),
+            userRoleModel:    model(UserRoleModel::class),
         );
 
-        $result = $service->adminCancelSignup(
-            signupId:    $signupIntId,
-            adminUserId: $adminUserId,
-            kermesseId:  $kermesseIntId,
-            notify:      $notify,
+        $result = $service->adminCancelSlotSignup(
+            slotSignupId: $slotSignupIntId,
+            adminUserId:  $adminUserId,
+            kermesseId:   $kermesseIntId,
+            notify:       $notify,
         );
 
         if ($result->success) {
@@ -242,17 +242,17 @@ class AdminSignupController extends BaseController
         return redirect()->to(site_url("kermesse/{$kermesseIntId}#inscrits"));
     }
 
-    /** POST /kermesse/{kermesseId}/signups/{signupId}/admin-edit */
-    public function adminEdit(string $kermesseId, string $signupId): mixed
+    /** POST /kermesse/{kermesseId}/slot-signups/{slotSignupId}/admin-edit */
+    public function adminEdit(string $kermesseId, string $slotSignupId): mixed
     {
-        $kermesseIntId = (int) $kermesseId;
-        $signupIntId   = (int) $signupId;
-        $adminUserId   = (int) session()->get('user_id');
+        $kermesseIntId   = (int) $kermesseId;
+        $slotSignupIntId = (int) $slotSignupId;
+        $adminUserId     = (int) session()->get('user_id');
 
-        $firstNameRaw = $this->request->getPost('first_name');
-        $lastNameRaw  = $this->request->getPost('last_name');
-        $emailRaw     = $this->request->getPost('email');
-        $phoneRaw     = $this->request->getPost('phone');
+        $firstNameRaw  = $this->request->getPost('first_name');
+        $lastNameRaw   = $this->request->getPost('last_name');
+        $emailRaw      = $this->request->getPost('email');
+        $phoneRaw      = $this->request->getPost('phone');
         $adminNotesRaw = $this->request->getPost('admin_notes');
 
         // Trim only — email normalization (lowercase) is the service's responsibility.
@@ -285,18 +285,18 @@ class AdminSignupController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        $service = new SignupService(
-            userModel:     model(UserModel::class),
-            signupModel:   model(SignupModel::class),
-            kermesseModel: model(KermesseModel::class),
-            userRoleModel: model(UserRoleModel::class),
+        $service = new SlotSignupService(
+            userModel:        model(UserModel::class),
+            slotSignupModel:  model(SlotSignupModel::class),
+            kermesseModel:    model(KermesseModel::class),
+            userRoleModel:    model(UserRoleModel::class),
         );
 
-        $result = $service->adminEditSignup(
-            signupId:    $signupIntId,
-            adminUserId: $adminUserId,
-            kermesseId:  $kermesseIntId,
-            fields:      ['first_name' => $firstName, 'last_name' => $lastName, 'email' => $email, 'phone' => $phone, 'admin_notes' => $adminNotes],
+        $result = $service->adminEditSlotSignup(
+            slotSignupId: $slotSignupIntId,
+            adminUserId:  $adminUserId,
+            kermesseId:   $kermesseIntId,
+            fields:       ['first_name' => $firstName, 'last_name' => $lastName, 'email' => $email, 'phone' => $phone, 'admin_notes' => $adminNotes],
         );
 
         if ($result->success) {

@@ -51,21 +51,21 @@ $routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\D
 
 // Désistement bénévole : annuler sa propre inscription depuis « Mes participations »
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
-$routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
 // Story 5.14 — accepter / refuser une inscription non confirmée (bénévole).
-$routes->post('kermesse/(:num)/signups/(:num)/accept', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::accept/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
-$routes->post('kermesse/(:num)/signups/(:num)/reject', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::reject/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/accept', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::accept/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/reject', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::reject/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
 // Story 5.10 — annulation et correction admin (Owner/Admin/Gestionnaire).
-$routes->post('kermesse/(:num)/signups/(:num)/admin-cancel', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminCancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
-$routes->post('kermesse/(:num)/signups/(:num)/admin-edit', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminEdit/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-cancel', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminCancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-edit', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminEdit/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
 
 // Story 5.11 — ajout manuel d'une inscription (Owner/Admin/Gestionnaire).
-$routes->post('kermesse/(:num)/slots/(:num)/admin-add-signup', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminAddSignup/$1/$2', ['filter' => ['auth', 'role:owner,admin,gestionnaire']]);
+$routes->post('kermesse/(:num)/slots/(:num)/admin-add-slot-signup', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminAddSlotSignup/$1/$2', ['filter' => ['auth', 'role:owner,admin,gestionnaire']]);
 
 // Story 5.12 — déplacement admin d'une inscription (Owner/Admin/Gestionnaire).
-$routes->post('kermesse/(:num)/signups/(:num)/admin-move-signup', '\App\Controllers\Kermesse\Dashboard\AdminSignupController::adminMoveSignup/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-move-slot-signup', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminMoveSlotSignup/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
 
 // Quitter une kermesse (Story 5.9). Filtre inclut owner : le rejet Owner produit le
 // message FR spécifique côté service/flash plutôt qu'un 403 générique du RoleFilter.
@@ -96,10 +96,10 @@ $routes->post('kermesse/(:num)/slots/(:num)/delete', '\App\Controllers\Kermesse\
 // Public volunteer page & signup (Stories 3.1–3.5)
 // ---------------------------------------------------------------------------
 $routes->get('k/(:segment)', '\App\Controllers\Kermesse\Public\PublicController::index/$1');
-$routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::show/$1/$2');
-$routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::submit/$1/$2');
-$routes->post('k/(:segment)/slots/(:num)/signup/forget', '\App\Controllers\Kermesse\Public\SignupController::forget/$1/$2');
-$routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Kermesse\Public\SignupController::confirm/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/slot-signup', '\App\Controllers\Kermesse\Public\SlotSignupController::show/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/slot-signup', '\App\Controllers\Kermesse\Public\SlotSignupController::submit/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/slot-signup/forget', '\App\Controllers\Kermesse\Public\SlotSignupController::forget/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/slot-signup/confirmation', '\App\Controllers\Kermesse\Public\SlotSignupController::confirm/$1/$2');
 
 // ---------------------------------------------------------------------------
 // Ops endpoints — protected by HMAC authentication, CSRF excluded

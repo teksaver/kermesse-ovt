@@ -44,7 +44,7 @@ final class MyParticipationsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -170,7 +170,7 @@ final class MyParticipationsTest extends CIUnitTestCase
             'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
             default                  => [],
         };
-        db_connect()->table('signups')->insert($row);
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -254,7 +254,7 @@ final class MyParticipationsTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

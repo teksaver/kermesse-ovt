@@ -1,10 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Models\KermesseModel;
-
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
@@ -14,9 +15,9 @@ use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
- * Handles volunteer signup: validates kermesse state, slot state and capacity,
+ * Handles volunteer slot-signup: validates kermesse state, slot state and capacity,
  * duplicate and overlap constraints, then finds or creates the volunteer and
- * inserts the signup row. All constraint checks and writes run in one manual
+ * inserts the slot_signup row. All constraint checks and writes run in one manual
  * transaction on a single connection.
  *
  * INVARIANT: email is normalized (lowercase + trim) before any DB lookup or insert.
@@ -28,26 +29,25 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
  * stale snapshot. Cross-volunteer lock contention can surface as a deadlock victim:
  * MariaDB rolls one transaction back, which we map to transaction_failed (retryable).
  *
- * BOUNDARY: this service owns all signup state mutations and all business invariants.
- * Controllers must never call UserModel or SignupModel insert/update directly.
+ * BOUNDARY: this service owns all slot-signup state mutations and all business invariants.
+ * Controllers must never call UserModel or SlotSignupModel insert/update directly.
  */
-class SignupService
+class SlotSignupService
 {
     public function __construct(
         private readonly UserModel $userModel,
-        private readonly SignupModel $signupModel,
+        private readonly SlotSignupModel $slotSignupModel,
         private readonly ?KermesseModel $kermesseModel = null,
         private readonly ?SlotModel $slotModel = null,
         private readonly ?ConnectionInterface $db = null,
         private readonly ?EmailService $emailService = null,
         private readonly ?StandModel $standModel = null,
-
         private readonly ?TokenService $tokenService = null,
         private readonly ?UserRoleModel $userRoleModel = null,
     ) {}
 
     /**
-     * Validate all business invariants and, if satisfied, insert the signup.
+     * Validate all business invariants and, if satisfied, insert the slot-signup.
      *
      * Failure codes: signups_not_open | slot_full | slot_unavailable | duplicate_signup
      *                overlap_conflict | volunteer_insert_failed | signup_insert_failed
@@ -55,12 +55,12 @@ class SignupService
      *
      * @param array<string, mixed> $fields  Validated: first_name, last_name, email, phone
      */
-    public function signup(int $slotId, int $kermesseId, array $fields, ?int $createdBy = null): SignupResult
+    public function signup(int $slotId, int $kermesseId, array $fields, ?int $createdBy = null): SlotSignupResult
     {
         $email = strtolower(trim((string) ($fields['email'] ?? '')));
 
         if ($email === '') {
-            return SignupResult::failure('volunteer_insert_failed');
+            return SlotSignupResult::failure('volunteer_insert_failed');
         }
 
         // Pre-transaction: kermesse must be open (defense-in-depth; the form URL already
@@ -68,7 +68,7 @@ class SignupService
         // under lock, so an admin closing concurrently may race one last signup through)
         $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
         if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
-            return SignupResult::failure('signups_not_open');
+            return SlotSignupResult::failure('signups_not_open');
         }
 
         $db = $this->db ?? db_connect();
@@ -78,16 +78,16 @@ class SignupService
         // insert race must not doom the whole transaction, which transStart()'s automatic
         // status tracking would do.
         if (! $db->transBegin()) {
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         try {
             $result = $this->signupWithinTransaction($db, $slotId, $kermesseId, $email, $fields, $createdBy);
         } catch (DatabaseException $e) {
             $db->transRollback();
-            log_message('error', 'Signup transaction aborted: ' . $e->getMessage());
+            log_message('error', 'SlotSignup transaction aborted: ' . $e->getMessage());
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         if (! $result->success) {
@@ -99,7 +99,7 @@ class SignupService
         if (! $db->transCommit()) {
             $db->transRollback();
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         // Post-commit only: the signup is recorded no matter what happens to the
@@ -110,11 +110,11 @@ class SignupService
             ? $this->sendConfirmationEmailSafely($kermesse, $slot, $email, $fields)
             : false;
 
-        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
+        return SlotSignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
     }
 
     /**
-     * Cancel (withdraw from) a volunteer's own signup — Story 4.3.
+     * Cancel (withdraw from) a volunteer's own slot-signup — Story 4.3.
      *
      * Failure codes: not_found | signups_not_open | cancel_failed
      *
@@ -123,36 +123,36 @@ class SignupService
      * capacity check — freeing a place can never overbook — and the place is recovered
      * the instant the status becomes CANCELLED (every active count excludes it).
      */
-    public function cancelSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    public function cancelSlotSignup(int $slotSignupId, int $userId, int $kermesseId): SlotSignupResult
     {
         // Ownership + kermesse scope. A miss is reported neutrally so a volunteer
-        // cannot probe other users' or other kermesses' signup ids.
-        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
-        if ($signup === null) {
-            return SignupResult::failure('not_found');
+        // cannot probe other users' or other kermesses' slot-signup ids.
+        $slotSignup = $this->slotSignupModel->findActiveOwnedInKermesse($slotSignupId, $userId, $kermesseId);
+        if ($slotSignup === null) {
+            return SlotSignupResult::failure('not_found');
         }
 
-        // Confirmed signups (accepted_at set) can always be cancelled — it is a defensive
-        // action, not a new booking. Non-confirmed signups still require the kermesse to be
-        // open. Defence in depth — the dashboard mirrors this rule in the view (P2).
-        if (empty($signup['accepted_at'])) {
+        // Confirmed slot-signups (accepted_at set) can always be cancelled — it is a
+        // defensive action, not a new booking. Non-confirmed ones still require the
+        // kermesse to be open. Defence in depth — the dashboard mirrors this rule (P2).
+        if (empty($slotSignup['accepted_at'])) {
             $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
             if ($kermesse === null || $kermesse['status'] !== KermesseModel::STATUS_OPEN) {
-                return SignupResult::failure('signups_not_open');
+                return SlotSignupResult::failure('signups_not_open');
             }
         }
 
-        if (! $this->signupModel->markCancelled($signupId, $userId)) {
+        if (! $this->slotSignupModel->markCancelled($slotSignupId, $userId)) {
             // The active row vanished between the read and the write (concurrent
             // cancel / double submit). Treat as a no-op failure, not a crash.
-            return SignupResult::failure('cancel_failed');
+            return SlotSignupResult::failure('cancel_failed');
         }
 
-        return SignupResult::success($signupId, $userId);
+        return SlotSignupResult::success($slotSignupId, $userId);
     }
 
     /**
-     * Admin-initiated manual signup — Story 5.11.
+     * Admin-initiated manual slot-signup — Story 5.11.
      *
      * Identical invariants to signup() (capacity, duplicate, overlap, slot status) with
      * one deliberate override: the kermesse lifecycle check is skipped so admins can
@@ -169,24 +169,24 @@ class SignupService
      *   overlap_conflict | volunteer_insert_failed | signup_insert_failed
      *   transaction_failed
      */
-    public function createSignupByAdmin(AdminCreateSignupDTO $dto): SignupResult
+    public function createSlotSignupByAdmin(AdminCreateSlotSignupDTO $dto): SlotSignupResult
     {
         $email = strtolower(trim($dto->email));
         if ($email === '') {
-            return SignupResult::failure('volunteer_insert_failed');
+            return SlotSignupResult::failure('volunteer_insert_failed');
         }
 
         // Admin override: kermesse must exist, but does NOT need to be "open" (AC3).
         $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($dto->kermesseId);
         if ($kermesse === null) {
-            return SignupResult::failure('signups_not_open');
+            return SlotSignupResult::failure('signups_not_open');
         }
 
         $db = $this->db ?? db_connect();
         $this->assertSharedConnection($db);
 
         if (! $db->transBegin()) {
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         try {
@@ -203,18 +203,18 @@ class SignupService
             }
 
             // Stamp admin tracking inside the same transaction (AC3 — last_modified_by_user_id).
-            $this->signupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
+            $this->slotSignupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
         } catch (\Throwable $e) {
             $db->transRollback();
-            log_message('error', 'createSignupByAdmin transaction aborted: ' . $e->getMessage());
+            log_message('error', 'createSlotSignupByAdmin transaction aborted: ' . $e->getMessage());
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         if (! $db->transCommit()) {
             $db->transRollback();
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         // Post-commit: optional confirmation email. Failure is absorbed (story 3.5 AC4).
@@ -228,11 +228,11 @@ class SignupService
             ]);
         }
 
-        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
+        return SlotSignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent);
     }
 
     /**
-     * Stamp the modification-tracking columns on a signup row — Story 5.1.
+     * Stamp the modification-tracking columns on a slot-signup row — Story 5.1.
      *
      * Called by admin actions (Stories 5.3, 5.10, 5.11, 5.12) after any correction
      * to a signup. $modifiedByUserId must be the admin/gestionnaire performing the
@@ -247,78 +247,78 @@ class SignupService
      */
     public function stampAdminModification(int $signupId, int $modifiedByUserId): bool
     {
-        return $this->signupModel->stampAdminModification($signupId, $modifiedByUserId);
+        return $this->slotSignupModel->stampAdminModification($signupId, $modifiedByUserId);
     }
 
     /**
-     * Cancel a signup on behalf of an admin — Story 5.10 AC1.
+     * Cancel a slot-signup on behalf of an admin — Story 5.10 AC1.
      *
-     * Unlike the volunteer-facing cancelSignup(), this bypasses the kermesse lifecycle
-     * check: admins can cancel any active signup regardless of kermesse status.
+     * Unlike the volunteer-facing cancelSlotSignup(), this bypasses the kermesse lifecycle
+     * check: admins can cancel any active slot-signup regardless of kermesse status.
      * Failure codes: not_found | cancel_failed
      *
      * markCancelledByAdmin and stampAdminModification run in a single transaction so
      * both writes succeed or neither does (atomicity of the cancel + tracking stamp).
      *
      * If $notify is true and the cancellation succeeds, a cancellation email is sent
-     * to the admin-corrected email address on the signup if available, falling back to
-     * the volunteer's global profile address. Email failure is absorbed — it never rolls
-     * back the cancellation (same pattern as signup confirmation, story 3.5 AC4).
+     * to the admin-corrected email address on the slot-signup if available, falling back
+     * to the volunteer's global profile address. Email failure is absorbed — it never
+     * rolls back the cancellation (same pattern as slot-signup confirmation, story 3.5 AC4).
      */
-    public function adminCancelSignup(int $signupId, int $adminUserId, int $kermesseId, bool $notify = false): SignupResult
+    public function adminCancelSlotSignup(int $slotSignupId, int $adminUserId, int $kermesseId, bool $notify = false): SlotSignupResult
     {
-        $signup = $this->signupModel->findActiveInKermesse($signupId, $kermesseId);
-        if ($signup === null) {
-            return SignupResult::failure('not_found');
+        $slotSignup = $this->slotSignupModel->findActiveInKermesse($slotSignupId, $kermesseId);
+        if ($slotSignup === null) {
+            return SlotSignupResult::failure('not_found');
         }
 
         $db = $this->db ?? db_connect();
         if (! $db->transBegin()) {
-            return SignupResult::failure('cancel_failed');
+            return SlotSignupResult::failure('cancel_failed');
         }
 
         try {
-            if (! $this->signupModel->markCancelledByAdmin($signupId, $adminUserId)) {
+            if (! $this->slotSignupModel->markCancelledByAdmin($slotSignupId, $adminUserId)) {
                 $db->transRollback();
 
-                return SignupResult::failure('cancel_failed');
+                return SlotSignupResult::failure('cancel_failed');
             }
 
-            $this->signupModel->stampAdminModification($signupId, $adminUserId);
+            $this->slotSignupModel->stampAdminModification($slotSignupId, $adminUserId);
 
             if (! $db->transCommit()) {
                 $db->transRollback();
 
-                return SignupResult::failure('cancel_failed');
+                return SlotSignupResult::failure('cancel_failed');
             }
         } catch (\Throwable $e) {
             $db->transRollback();
-            log_message('error', 'adminCancelSignup transaction failed: ' . $e->getMessage());
+            log_message('error', 'adminCancelSlotSignup transaction failed: ' . $e->getMessage());
 
-            return SignupResult::failure('cancel_failed');
+            return SlotSignupResult::failure('cancel_failed');
         }
 
-        // Use the admin-corrected name/email on the signup if set; fall back to users table.
-        $notifyFirstName = ((string) ($signup['signup_first_name'] ?? '')) !== ''
-            ? (string) $signup['signup_first_name']
-            : (string) ($signup['first_name'] ?? '');
-        $notifyLastName  = (string) ($signup['last_name'] ?? '');
-        $notifyEmail     = ((string) ($signup['signup_email'] ?? '')) !== ''
-            ? (string) $signup['signup_email']
-            : (string) ($signup['email'] ?? '');
+        // Use the admin-corrected name/email on the slot-signup if set; fall back to users table.
+        $notifyFirstName = ((string) ($slotSignup['signup_first_name'] ?? '')) !== ''
+            ? (string) $slotSignup['signup_first_name']
+            : (string) ($slotSignup['first_name'] ?? '');
+        $notifyLastName  = (string) ($slotSignup['last_name'] ?? '');
+        $notifyEmail     = ((string) ($slotSignup['signup_email'] ?? '')) !== ''
+            ? (string) $slotSignup['signup_email']
+            : (string) ($slotSignup['email'] ?? '');
 
         $volunteerName = trim($notifyFirstName . ' ' . $notifyLastName) ?: $notifyEmail;
         $slotLabel     = $this->formatSlotLabel(
-            standName: (string) ($signup['stand_name'] ?? ''),
-            startsAt:  (string) ($signup['starts_at']  ?? ''),
-            endsAt:    (string) ($signup['ends_at']    ?? ''),
+            standName: (string) ($slotSignup['stand_name'] ?? ''),
+            startsAt:  (string) ($slotSignup['starts_at']  ?? ''),
+            endsAt:    (string) ($slotSignup['ends_at']    ?? ''),
         );
 
         $context     = ['volunteer_name' => $volunteerName, 'slot_label' => $slotLabel];
-        $volunteerId = ($signup['user_id'] !== null) ? (int) $signup['user_id'] : null;
+        $volunteerId = ($slotSignup['user_id'] !== null) ? (int) $slotSignup['user_id'] : null;
 
         if (! $notify) {
-            return SignupResult::success($signupId, $volunteerId, null, $context);
+            return SlotSignupResult::success($slotSignupId, $volunteerId, null, $context);
         }
 
         $kermesse  = ($this->kermesseModel ?? model(KermesseModel::class))->find($kermesseId);
@@ -329,13 +329,13 @@ class SignupService
             slotLabel:    $slotLabel,
         );
 
-        return SignupResult::success($signupId, $volunteerId, $emailSent, $context);
+        return SlotSignupResult::success($slotSignupId, $volunteerId, $emailSent, $context);
     }
 
     /**
-     * Edit a signup's contact fields on behalf of an admin — Story 5.10 AC2/AC3.
+     * Edit a slot-signup's contact fields on behalf of an admin — Story 5.10 AC2/AC3.
      *
-     * Writes only to signups.first_name/last_name/email/phone — NEVER to users.
+     * Writes only to slot_signups.first_name/last_name/email/phone — NEVER to users.
      * Only allowed when the volunteer has not yet accessed this kermesse
      * (kermesse_user_roles.first_access_at IS NULL). Once the volunteer has
      * confirmed their identity at first access (Story 5.4), the profile is locked
@@ -351,49 +351,53 @@ class SignupService
      *
      * @param array{first_name?: string, last_name?: string, email?: string, phone?: string} $fields
      */
-    public function adminEditSignup(int $signupId, int $adminUserId, int $kermesseId, array $fields): SignupResult
+    public function adminEditSlotSignup(int $slotSignupId, int $adminUserId, int $kermesseId, array $fields): SlotSignupResult
     {
-        $signup = $this->signupModel->findActiveInKermesse($signupId, $kermesseId);
-        if ($signup === null) {
-            return SignupResult::failure('not_found');
+        $slotSignup = $this->slotSignupModel->findActiveInKermesse($slotSignupId, $kermesseId);
+        if ($slotSignup === null) {
+            return SlotSignupResult::failure('not_found');
         }
 
-        // Normalize email in the service so callers don't need to know about it.
-        if (isset($fields['email']) && $fields['email'] !== '') {
-            $fields['email'] = mb_strtolower(trim($fields['email']));
+        // Normalize email in the service; unset if empty to avoid overwriting with blank.
+        if (isset($fields['email'])) {
+            if ($fields['email'] === '') {
+                unset($fields['email']);
+            } else {
+                $fields['email'] = mb_strtolower(trim($fields['email']));
+            }
         }
 
         $db = $this->db ?? db_connect();
         if (! $db->transBegin()) {
-            return SignupResult::failure('edit_failed');
+            return SlotSignupResult::failure('edit_failed');
         }
 
         try {
-            if (! $this->signupModel->updateContactFields($signupId, $fields)) {
+            if (! $this->slotSignupModel->updateContactFields($slotSignupId, $fields)) {
                 $db->transRollback();
 
-                return SignupResult::failure('edit_failed');
+                return SlotSignupResult::failure('edit_failed');
             }
 
-            $this->signupModel->stampAdminModification($signupId, $adminUserId);
+            $this->slotSignupModel->stampAdminModification($slotSignupId, $adminUserId);
 
             if (! $db->transCommit()) {
                 $db->transRollback();
 
-                return SignupResult::failure('edit_failed');
+                return SlotSignupResult::failure('edit_failed');
             }
         } catch (\Throwable $e) {
             $db->transRollback();
-            log_message('error', 'adminEditSignup transaction failed: ' . $e->getMessage());
+            log_message('error', 'adminEditSlotSignup transaction failed: ' . $e->getMessage());
 
-            return SignupResult::failure('edit_failed');
+            return SlotSignupResult::failure('edit_failed');
         }
 
-        return SignupResult::success($signupId, (int) $signup['user_id']);
+        return SlotSignupResult::success($slotSignupId, (int) $slotSignup['user_id']);
     }
 
     /**
-     * Move a volunteer's signup to a different slot — Story 5.12.
+     * Move a volunteer's slot-signup to a different slot — Story 5.12.
      *
      * Admin override: kermesse must exist but does NOT need to be "open".
      * All capacity, duplicate, and overlap invariants are enforced on the target slot.
@@ -406,47 +410,47 @@ class SignupService
      * Failure codes: not_found | same_slot | slot_full | slot_unavailable
      *                duplicate_signup | overlap_conflict | transaction_failed
      */
-    public function moveSignup(AdminMoveSignupDTO $dto): SignupResult
+    public function moveSlotSignup(AdminMoveSlotSignupDTO $dto): SlotSignupResult
     {
-        $signup = $this->signupModel->findActiveInKermesse($dto->sourceSignupId, $dto->kermesseId);
-        if ($signup === null) {
-            return SignupResult::failure('not_found');
+        $slotSignup = $this->slotSignupModel->findActiveInKermesse($dto->sourceSlotSignupId, $dto->kermesseId);
+        if ($slotSignup === null) {
+            return SlotSignupResult::failure('not_found');
         }
 
-        if ((int) $signup['slot_id'] === $dto->targetSlotId) {
-            return SignupResult::failure('same_slot');
+        if ((int) $slotSignup['slot_id'] === $dto->targetSlotId) {
+            return SlotSignupResult::failure('same_slot');
         }
 
         $kermesse = ($this->kermesseModel ?? model(KermesseModel::class))->find($dto->kermesseId);
         if ($kermesse === null) {
-            return SignupResult::failure('signups_not_open');
+            return SlotSignupResult::failure('signups_not_open');
         }
 
-        // Resolve contact info: admin-corrected signup copy takes precedence over users table.
+        // Resolve contact info: admin-corrected slot-signup copy takes precedence over users table.
         $email     = strtolower(trim(
-            ((string) ($signup['signup_email']      ?? '')) !== '' ? (string) $signup['signup_email']      : (string) ($signup['email']      ?? '')
+            ((string) ($slotSignup['signup_email']      ?? '')) !== '' ? (string) $slotSignup['signup_email']      : (string) ($slotSignup['email']      ?? '')
         ));
-        $firstName = trim(((string) ($signup['signup_first_name'] ?? '')) !== '' ? (string) $signup['signup_first_name'] : (string) ($signup['first_name'] ?? ''));
-        $lastName  = trim(((string) ($signup['signup_last_name']  ?? '')) !== '' ? (string) $signup['signup_last_name']  : (string) ($signup['last_name']  ?? ''));
-        $phone     = trim(((string) ($signup['signup_phone']      ?? '')) !== '' ? (string) $signup['signup_phone']      : (string) ($signup['phone']      ?? ''));
+        $firstName = trim(((string) ($slotSignup['signup_first_name'] ?? '')) !== '' ? (string) $slotSignup['signup_first_name'] : (string) ($slotSignup['first_name'] ?? ''));
+        $lastName  = trim(((string) ($slotSignup['signup_last_name']  ?? '')) !== '' ? (string) $slotSignup['signup_last_name']  : (string) ($slotSignup['last_name']  ?? ''));
+        $phone     = trim(((string) ($slotSignup['signup_phone']      ?? '')) !== '' ? (string) $slotSignup['signup_phone']      : (string) ($slotSignup['phone']      ?? ''));
 
         if ($email === '') {
-            return SignupResult::failure('volunteer_insert_failed');
+            return SlotSignupResult::failure('volunteer_insert_failed');
         }
 
         $db = $this->db ?? db_connect();
         $this->assertSharedConnection($db);
 
         if (! $db->transBegin()) {
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         try {
-            // Cancel the source signup first; now REMOVED → invisible to locking reads below.
-            if (! $this->signupModel->markCancelledByAdmin($dto->sourceSignupId, $dto->adminUserId)) {
+            // Cancel the source slot-signup first; now REMOVED → invisible to locking reads below.
+            if (! $this->slotSignupModel->markCancelledByAdmin($dto->sourceSlotSignupId, $dto->adminUserId)) {
                 $db->transRollback();
 
-                return SignupResult::failure('not_found');
+                return SlotSignupResult::failure('not_found');
             }
 
             $result = $this->signupWithinTransaction($db, $dto->targetSlotId, $dto->kermesseId, $email, [
@@ -461,18 +465,18 @@ class SignupService
                 return $result;
             }
 
-            $this->signupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
+            $this->slotSignupModel->stampAdminModification((int) $result->signupId, $dto->adminUserId);
         } catch (\Throwable $e) {
             $db->transRollback();
-            log_message('error', 'moveSignup transaction aborted: ' . $e->getMessage());
+            log_message('error', 'moveSlotSignup transaction aborted: ' . $e->getMessage());
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         if (! $db->transCommit()) {
             $db->transRollback();
 
-            return SignupResult::failure('transaction_failed');
+            return SlotSignupResult::failure('transaction_failed');
         }
 
         $slot      = $result->context['slot'] ?? null;
@@ -487,7 +491,7 @@ class SignupService
 
         $volunteerName = trim($firstName . ' ' . $lastName) ?: $email;
 
-        return SignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent, [
+        return SlotSignupResult::success((int) $result->signupId, $result->volunteerId, $emailSent, [
             'volunteer_name' => $volunteerName,
         ]);
     }
@@ -533,7 +537,7 @@ class SignupService
             return $delivery->sent;
         } catch (\Throwable $e) {
             log_message('error', sprintf(
-                'SignupService: cancellation email failed for %s (kermesse: %s): %s',
+                'SlotSignupService: cancellation email failed for %s (kermesse: %s): %s',
                 $email,
                 $kermesseName,
                 $e->getMessage(),
@@ -554,13 +558,13 @@ class SignupService
         string $email,
         array $fields,
         ?int $createdBy = null,
-    ): SignupResult {
+    ): SlotSignupResult {
         // Lock the slot row so concurrent transactions serialize on the capacity check;
         // the count below is then this transaction's first plain read and its snapshot
         // includes every signup committed before the lock was granted.
         $slot = ($this->slotModel ?? model(SlotModel::class))->findForCapacityCheck($slotId, $db);
         if ($slot === null) {
-            return SignupResult::failure('slot_full');
+            return SlotSignupResult::failure('slot_full');
         }
 
         // The public summary already filters inactive/finished slots, but the service
@@ -568,30 +572,31 @@ class SignupService
         // bypass it.
         if (($slot['status'] ?? null) !== SlotModel::STATUS_ACTIVE
             || (string) $slot['ends_at'] < (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('Y-m-d H:i:s')) {
-            return SignupResult::failure('slot_unavailable');
+            return SlotSignupResult::failure('slot_unavailable');
         }
 
-        $activeCount = $this->signupModel->countActiveForSlot($slotId, $db);
+        $activeCount = $this->slotSignupModel->countActiveForSlot($slotId, $db);
         if ($activeCount >= (int) $slot['capacity']) {
-            return SignupResult::failure('slot_full');
+            return SlotSignupResult::failure('slot_full');
         }
 
         $userId = $this->findUserByEmail($db, $email);
 
-        if ($this->signupModel->findActiveByEmailOrUserAndSlot($email, $userId, $slotId, $db) !== null) {
-            return SignupResult::failure('duplicate_signup');
+        if ($this->slotSignupModel->findActiveByEmailOrUserAndSlot($email, $userId, $slotId, $db) !== null) {
+            return SlotSignupResult::failure('duplicate_signup');
         }
 
-        $overlap = $this->signupModel->findOverlappingActiveByEmailOrUser(
+        $overlap = $this->slotSignupModel->findOverlappingActiveByEmailOrUser(
             $email,
             $userId,
             (string) $slot['starts_at'],
             (string) $slot['ends_at'],
             $slotId,
+            $kermesseId,
             $db,
         );
         if ($overlap !== null) {
-            return SignupResult::failure('overlap_conflict', [
+            return SlotSignupResult::failure('overlap_conflict', [
                 'conflicting_starts_at' => $overlap['starts_at'] ?? null,
                 'conflicting_ends_at'   => $overlap['ends_at'] ?? null,
             ]);
@@ -614,10 +619,10 @@ class SignupService
             $row['accepted_at'] = $now;
         }
 
-        $signupId = $this->signupModel->skipValidation(true)->insert($row);
+        $signupId = $this->slotSignupModel->skipValidation(true)->insert($row);
 
         if ($signupId === false) {
-            return SignupResult::failure('signup_insert_failed');
+            return SlotSignupResult::failure('signup_insert_failed');
         }
 
         if ($userId !== null) {
@@ -631,15 +636,13 @@ class SignupService
             ]);
         }
 
-
-
         // Internal result: the slot row rides in context so the caller can build
         // the confirmation email after commit; signup() rebuilds the public result.
-        return new SignupResult(true, (int) $signupId, $userId, null, ['slot' => $slot]);
+        return new SlotSignupResult(true, (int) $signupId, $userId, null, ['slot' => $slot]);
     }
 
     /**
-     * Send the confirmation email for a committed signup. Every failure mode —
+     * Send the confirmation email for a committed slot-signup. Every failure mode —
      * send() returning false, view errors, SMTP exceptions — is absorbed here:
      * the caller only learns whether the email left (story 3.5 AC4).
      *
@@ -658,7 +661,7 @@ class SignupService
                 $issued       = ($this->tokenService ?? new TokenService())->issueMagicLink($email, (int) $kermesse['id']);
                 $magicLinkUrl = site_url('auth/magic-link/' . $issued->rawToken);
             } catch (\Throwable $e) {
-                log_message('error', 'SignupService: magic link generation failed: ' . $e->getMessage());
+                log_message('error', 'SlotSignupService: magic link generation failed: ' . $e->getMessage());
             }
 
             $delivery = ($this->emailService ?? new EmailService())->sendSignupConfirmationEmail(
@@ -673,7 +676,7 @@ class SignupService
 
             return $delivery->sent;
         } catch (\Throwable $e) {
-            log_message('error', 'SignupService: confirmation email failed: ' . $e->getMessage());
+            log_message('error', 'SlotSignupService: confirmation email failed: ' . $e->getMessage());
 
             return false;
         }
@@ -691,7 +694,7 @@ class SignupService
     }
 
     /**
-     * Accept a signup on behalf of the volunteer — Story 5.14 AC3.
+     * Accept a slot-signup on behalf of the volunteer — Story 5.14 AC3.
      *
      * Sets accepted_at, which transitions the signup to "certified". Scoped to the
      * volunteer's own signups (by user_id or email) within the kermesse. Only applies
@@ -699,23 +702,23 @@ class SignupService
      *
      * Failure codes: not_found | accept_failed
      */
-    public function acceptSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    public function acceptSlotSignup(int $slotSignupId, int $userId, int $kermesseId): SlotSignupResult
     {
-        // Ownership + scope guard: the signup must be an active one in this kermesse.
-        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
-        if ($signup === null) {
-            return SignupResult::failure('not_found');
+        // Ownership + scope guard: the slot-signup must be an active one in this kermesse.
+        $slotSignup = $this->slotSignupModel->findActiveOwnedInKermesse($slotSignupId, $userId, $kermesseId);
+        if ($slotSignup === null) {
+            return SlotSignupResult::failure('not_found');
         }
 
-        if (! $this->signupModel->markAccepted($signupId, $userId)) {
-            return SignupResult::failure('accept_failed');
+        if (! $this->slotSignupModel->markAccepted($slotSignupId, $userId)) {
+            return SlotSignupResult::failure('accept_failed');
         }
 
-        return SignupResult::success($signupId, $userId);
+        return SlotSignupResult::success($slotSignupId, $userId);
     }
 
     /**
-     * Reject a signup on behalf of the volunteer — Story 5.14 AC4.
+     * Reject a slot-signup on behalf of the volunteer — Story 5.14 AC4.
      *
      * Sets rejected_at, which transitions the signup to "refused" and frees the slot
      * capacity immediately (rejected_at IS NOT NULL → excluded from active count).
@@ -726,44 +729,44 @@ class SignupService
      *
      * Failure codes: not_found | reject_failed
      */
-    public function rejectSignup(int $signupId, int $userId, int $kermesseId): SignupResult
+    public function rejectSlotSignup(int $slotSignupId, int $userId, int $kermesseId): SlotSignupResult
     {
-        $signup = $this->signupModel->findActiveOwnedInKermesse($signupId, $userId, $kermesseId);
-        if ($signup === null) {
-            // Idempotent: if the signup was already rejected (double-click / two tabs),
+        $slotSignup = $this->slotSignupModel->findActiveOwnedInKermesse($slotSignupId, $userId, $kermesseId);
+        if ($slotSignup === null) {
+            // Idempotent: if the slot-signup was already rejected (double-click / two tabs),
             // the slot is already freed — return success instead of a confusing error.
-            if ($this->signupModel->findRejectedOwnedInKermesse($signupId, $userId, $kermesseId) !== null) {
-                return SignupResult::success($signupId, $userId);
+            if ($this->slotSignupModel->findRejectedOwnedInKermesse($slotSignupId, $userId, $kermesseId) !== null) {
+                return SlotSignupResult::success($slotSignupId, $userId);
             }
-            return SignupResult::failure('not_found');
+            return SlotSignupResult::failure('not_found');
         }
 
-        if (! $this->signupModel->markRejected($signupId, $userId)) {
-            return SignupResult::failure('reject_failed');
+        if (! $this->slotSignupModel->markRejected($slotSignupId, $userId)) {
+            return SlotSignupResult::failure('reject_failed');
         }
 
-        return SignupResult::success($signupId, $userId);
+        return SlotSignupResult::success($slotSignupId, $userId);
     }
 
     /**
-     * Resolves orphan signups for a newly logged in user.
+     * Resolves orphan slot-signups for a newly logged in user.
      * Maps any unassigned signups created by guests with this email to the user,
      * records that the user has viewed them, inserts the benevole role for each
      * kermesse where orphan signups were attached, and backfills the user profile
      * from signup snapshot data if the profile is still empty.
      */
-    public function resolveOrphanSignups(string $email, int $userId): int
+    public function resolveOrphanSlotSignups(string $email, int $userId): int
     {
-        $attached = $this->signupModel->attachOrphansToUser($email, $userId);
-        // Also stamp viewed_at for non-orphan unconfirmed signups already linked to this user
-        $this->signupModel->stampViewedForUnconfirmedSignups($userId);
+        $attached = $this->slotSignupModel->attachOrphansToUser($email, $userId);
+        // Also stamp viewed_at for non-orphan unconfirmed slot-signups already linked to this user
+        $this->slotSignupModel->stampViewedForUnconfirmedSignups($userId);
 
         if ($attached > 0) {
             // Ensure the user has a benevole role for every kermesse they signed up to as guest.
             // (The role INSERT is normally done in signupWithinTransaction, but was skipped when
             // user_id was NULL at signup time.)
             $db = $this->db ?? db_connect();
-            foreach ($this->signupModel->findKermesseIdsForUser($userId) as $kermesseId) {
+            foreach ($this->slotSignupModel->findKermesseIdsForUser($userId) as $kermesseId) {
                 $db->table('kermesse_user_roles')->ignore(true)->insert([
                     'kermesse_id' => (int) $kermesseId,
                     'user_id'     => $userId,
@@ -771,19 +774,18 @@ class SignupService
                 ]);
             }
 
-            // Backfill first_name/last_name/phone into users from the signup snapshot
+            // Backfill first_name/last_name/phone into users from the slot-signup snapshot
             // when the profile was never filled (newly created accounts via magic link).
             $userRow = $this->userModel->find($userId);
             if ($userRow !== null && (string) ($userRow['first_name'] ?? '') === '') {
-                $snapshot = $this->signupModel->db->table('signups')
-                    ->select('first_name, last_name, phone')
-                    ->where('user_id', $userId)
-                    ->where('first_name !=', '')
-                    ->where('deleted_at', null)
-                    ->orderBy('id', 'ASC')
-                    ->limit(1)
-                    ->get()
-                    ->getRowArray();
+                $ss = $this->slotSignupModel->db->prefixTable('slot_signups');
+                $snapshot = $this->slotSignupModel->db->query(
+                    "SELECT first_name, last_name, phone
+                     FROM {$ss}
+                     WHERE user_id = ? AND first_name != '' AND deleted_at IS NULL
+                     ORDER BY id ASC LIMIT 1",
+                    [$userId]
+                )->getRowArray();
 
                 if ($snapshot !== null) {
                     $this->userModel->update($userId, [
@@ -805,17 +807,16 @@ class SignupService
      */
     private function assertSharedConnection(ConnectionInterface $db): void
     {
-        foreach ([$this->userModel, $this->signupModel] as $model) {
+        foreach ([$this->userModel, $this->slotSignupModel] as $model) {
             if ($model === null) {
                 continue;
             }
             $modelDb = $model->db ?? null;
             if ($modelDb instanceof ConnectionInterface && $modelDb !== $db) {
                 throw new DatabaseException(
-                    'SignupService models must share the transaction connection.'
+                    'SlotSignupService models must share the transaction connection.'
                 );
             }
         }
     }
-
 }

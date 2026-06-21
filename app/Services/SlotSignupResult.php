@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
-final class SignupResult
+final class SlotSignupResult
 {
     /**
      * @param array<string, mixed> $context   Optional extra data (e.g. conflicting slot times for overlap_conflict).

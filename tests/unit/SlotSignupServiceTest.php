@@ -11,14 +11,14 @@ use App\Models\StandModel;
 use App\Services\EmailDeliveryResult;
 use App\Services\EmailService;
 use App\Services\IssuedToken;
-use App\Services\SignupService;
-use App\Services\SignupResult;
+use App\Services\SlotSignupService;
+use App\Services\SlotSignupResult;
 use App\Services\TokenService;
 use App\Models\UserModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 
 /**
- * Unit tests for SignupService — Stories 3.2, 3.3 & 3.4.
+ * Unit tests for SlotSignupService — Stories 3.2, 3.3 & 3.4.
  *
  * All DB access is mocked — including the transaction connection — so tests are
  * fast and fully isolated from any real database.
@@ -27,21 +27,21 @@ use App\Models\SignupModel;
  *
  * @internal
  */
-final class SignupServiceTest extends CIUnitTestCase
+final class SlotSignupServiceTest extends CIUnitTestCase
 {
     private function buildService(
         ?UserModel               $userModel              = null,
-        ?SignupModel              $signupModel            = null,
+        ?SlotSignupModel         $slotSignupModel        = null,
         ?KermesseModel           $kermesseModel          = null,
         ?SlotModel               $slotModel              = null,
         ?BaseConnection          $db                     = null,
         ?EmailService            $emailService           = null,
         ?StandModel              $standModel             = null,
         ?TokenService            $tokenService           = null,
-    ): SignupService {
-        return new SignupService(
+    ): SlotSignupService {
+        return new SlotSignupService(
             $userModel              ?? $this->buildMockUserModel(),
-            $signupModel            ?? $this->buildMockSignupModel(),
+            $slotSignupModel        ?? $this->buildMockSlotSignupModel(),
             $kermesseModel          ?? $this->buildMockKermesseModel(),
             $slotModel              ?? $this->buildMockSlotModel(),
             $db                     ?? $this->buildMockConnection(),
@@ -108,15 +108,15 @@ final class SignupServiceTest extends CIUnitTestCase
     }
 
     /**
-     * Build a SignupModel mock with insert preconfigured.
+     * Build a SlotSignupModel mock with insert preconfigured.
      * countActiveForSlot/findActiveByEmailOrUserAndSlot/findOverlappingActiveByEmailOrUser
      * are left unconfigured so callers can override without FIFO stub conflicts.
      * Unconfigured mock methods return null — which the service treats as "no issue" (0
      * active signups, no duplicate, no overlap) for happy-path tests.
      */
-    private function buildMockSignupModel(int $returnedId = 99): SignupModel
+    private function buildMockSlotSignupModel(int $returnedId = 99): SlotSignupModel
     {
-        $mock = $this->getMockBuilder(SignupModel::class)
+        $mock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
             ->getMock();
@@ -175,17 +175,17 @@ final class SignupServiceTest extends CIUnitTestCase
         $userMock->method('findByEmailHash')->willReturn(null);
         $userMock->expects($this->never())->method('insert');
 
-        $signupMock = $this->buildMockSignupModel(99);
-        $signupMock->expects($this->once())->method('insert')->willReturnCallback(function (array $data) {
+        $slotSignupMock = $this->buildMockSlotSignupModel(99);
+        $slotSignupMock->expects($this->once())->method('insert')->willReturnCallback(function (array $data) {
             $this->assertNull($data['user_id']);
             $this->assertSame('marie@exemple.fr', $data['email']);
             return 99;
         });
 
-        $service = $this->buildService($userMock, $signupMock);
+        $service = $this->buildService($userMock, $slotSignupMock);
         $result  = $service->signup(1, 10, $this->validFields());
 
-        $this->assertInstanceOf(SignupResult::class, $result);
+        $this->assertInstanceOf(SlotSignupResult::class, $result);
         $this->assertTrue($result->success);
         $this->assertSame(99, $result->signupId);
         $this->assertNull($result->volunteerId);
@@ -206,10 +206,10 @@ final class SignupServiceTest extends CIUnitTestCase
         $userMock->method('findByEmailHash')->willReturn($existingUser);
         $userMock->expects($this->never())->method('insert');
 
-        $signupMock = $this->buildMockSignupModel(100);
-        $signupMock->expects($this->once())->method('insert');
+        $slotSignupMock = $this->buildMockSlotSignupModel(100);
+        $slotSignupMock->expects($this->once())->method('insert');
 
-        $service = $this->buildService($userMock, $signupMock);
+        $service = $this->buildService($userMock, $slotSignupMock);
         $result  = $service->signup(1, 10, $this->validFields());
 
         $this->assertTrue($result->success);
@@ -238,7 +238,7 @@ final class SignupServiceTest extends CIUnitTestCase
 
         $fields = array_merge($this->validFields(), ['email' => '  TEST@EXAMPLE.COM  ']);
 
-        $service = $this->buildService($userMock, $this->buildMockSignupModel());
+        $service = $this->buildService($userMock, $this->buildMockSlotSignupModel());
         $service->signup(1, 10, $fields);
 
         $this->assertSame(
@@ -260,19 +260,19 @@ final class SignupServiceTest extends CIUnitTestCase
         $userMock->method('skipValidation')->willReturnSelf();
         $userMock->expects($this->never())->method('insert');
 
-        $signupMock = $this->getMockBuilder(SignupModel::class)
+        $slotSignupMock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
             ->getMock();
-        $signupMock->method('skipValidation')->willReturnSelf();
-        $signupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
+        $slotSignupMock->method('skipValidation')->willReturnSelf();
+        $slotSignupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedData) {
             $capturedData = $data;
             return 1;
         });
 
         $fields = array_merge($this->validFields(), ['email' => 'Marie@Example.FR']);
 
-        $service = $this->buildService($userMock, $signupMock);
+        $service = $this->buildService($userMock, $slotSignupMock);
         $service->signup(1, 10, $fields);
 
         $this->assertSame('marie@example.fr', $capturedData['email'] ?? null);
@@ -294,17 +294,17 @@ final class SignupServiceTest extends CIUnitTestCase
         $userMock->method('insert')->willReturn(55);
         $userMock->method('findByEmailHash')->willReturn(['id' => 55, 'email' => 'marie@exemple.fr']);
 
-        $signupMock = $this->getMockBuilder(SignupModel::class)
+        $slotSignupMock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['skipValidation', 'insert', 'countActiveForSlot', 'findActiveByEmailOrUserAndSlot', 'findOverlappingActiveByEmailOrUser'])
             ->getMock();
-        $signupMock->method('skipValidation')->willReturnSelf();
-        $signupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedSignup) {
+        $slotSignupMock->method('skipValidation')->willReturnSelf();
+        $slotSignupMock->method('insert')->willReturnCallback(function (array $data) use (&$capturedSignup) {
             $capturedSignup = $data;
             return 77;
         });
 
-        $service = $this->buildService($userMock, $signupMock);
+        $service = $this->buildService($userMock, $slotSignupMock);
         $service->signup(slotId: 3, kermesseId: 10, fields: $this->validFields());
 
         $this->assertSame(3,  $capturedSignup['slot_id'] ?? null);
@@ -346,12 +346,12 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testSignupRefusedWhenSlotFull(): void
     {
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('countActiveForSlot')->willReturn(3);
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('countActiveForSlot')->willReturn(3);
 
         $service = $this->buildService(
-            signupModel: $signupMock,
-            slotModel:   $this->buildMockSlotModel(3), // capacity 3, count 3 → full
+            slotSignupModel: $slotSignupMock,
+            slotModel:       $this->buildMockSlotModel(3), // capacity 3, count 3 → full
         );
 
         $result = $service->signup(1, 10, $this->validFields());
@@ -362,12 +362,12 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testSignupAllowedWhenOneSlotRemains(): void
     {
-        $signupMock = $this->buildMockSignupModel(77);
-        $signupMock->method('countActiveForSlot')->willReturn(2);
+        $slotSignupMock = $this->buildMockSlotSignupModel(77);
+        $slotSignupMock->method('countActiveForSlot')->willReturn(2);
 
         $service = $this->buildService(
-            signupModel: $signupMock,
-            slotModel:   $this->buildMockSlotModel(3), // capacity 3, count 2 → still 1 place
+            slotSignupModel: $slotSignupMock,
+            slotModel:       $this->buildMockSlotModel(3), // capacity 3, count 2 → still 1 place
         );
 
         $result = $service->signup(1, 10, $this->validFields());
@@ -381,10 +381,10 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testSignupRefusedWhenDuplicateExists(): void
     {
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
-        $service = $this->buildService(signupModel: $signupMock);
+        $service = $this->buildService(slotSignupModel: $slotSignupMock);
 
         $result = $service->signup(1, 10, $this->validFields());
 
@@ -404,10 +404,10 @@ final class SignupServiceTest extends CIUnitTestCase
             'ends_at'   => '2026-09-12 10:00:00',
         ];
 
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByEmailOrUser')->willReturn($conflictingSlot);
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('findOverlappingActiveByEmailOrUser')->willReturn($conflictingSlot);
 
-        $service = $this->buildService(signupModel: $signupMock);
+        $service = $this->buildService(slotSignupModel: $slotSignupMock);
 
         $result = $service->signup(1, 10, $this->validFields());
 
@@ -419,13 +419,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testOverlapContextCarriesConflictingTimes(): void
     {
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByEmailOrUser')->willReturn([
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('findOverlappingActiveByEmailOrUser')->willReturn([
             'starts_at' => '2026-09-12 11:00:00',
             'ends_at'   => '2026-09-12 12:30:00',
         ]);
 
-        $result = $this->buildService(signupModel: $signupMock)->signup(1, 10, $this->validFields());
+        $result = $this->buildService(slotSignupModel: $slotSignupMock)->signup(1, 10, $this->validFields());
 
         $this->assertSame('2026-09-12 11:00:00', $result->context['conflicting_starts_at'] ?? null);
         $this->assertSame('2026-09-12 12:30:00', $result->context['conflicting_ends_at']   ?? null);
@@ -437,13 +437,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testCapacityCheckedBeforeDuplicate(): void
     {
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('countActiveForSlot')->willReturn(5);
-        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('countActiveForSlot')->willReturn(5);
+        $slotSignupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
         $service = $this->buildService(
-            signupModel: $signupMock,
-            slotModel:   $this->buildMockSlotModel(5), // full
+            slotSignupModel: $slotSignupMock,
+            slotModel:       $this->buildMockSlotModel(5), // full
         );
 
         $result = $service->signup(1, 10, $this->validFields());
@@ -499,11 +499,11 @@ final class SignupServiceTest extends CIUnitTestCase
     public function testOverlapCheckFailureFailsClosed(): void
     {
         // A failed overlap check must abort the signup, never pass as "no overlap"
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findOverlappingActiveByEmailOrUser')
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('findOverlappingActiveByEmailOrUser')
             ->willThrowException(new DatabaseException('overlap check failed'));
 
-        $result = $this->buildService(signupModel: $signupMock)->signup(1, 10, $this->validFields());
+        $result = $this->buildService(slotSignupModel: $slotSignupMock)->signup(1, 10, $this->validFields());
 
         $this->assertFalse($result->success);
         $this->assertSame('transaction_failed', $result->errorCode);
@@ -546,10 +546,10 @@ final class SignupServiceTest extends CIUnitTestCase
         $emailMock = $this->createMock(EmailService::class);
         $emailMock->expects($this->never())->method('sendSignupConfirmationEmail');
 
-        $signupMock = $this->buildMockSignupModel();
-        $signupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
+        $slotSignupMock = $this->buildMockSlotSignupModel();
+        $slotSignupMock->method('findActiveByEmailOrUserAndSlot')->willReturn(['id' => 5, 'status' => 'active']);
 
-        $result = $this->buildService(signupModel: $signupMock, emailService: $emailMock)
+        $result = $this->buildService(slotSignupModel: $slotSignupMock, emailService: $emailMock)
             ->signup(1, 10, $this->validFields());
 
         $this->assertFalse($result->success);
@@ -632,7 +632,7 @@ final class SignupServiceTest extends CIUnitTestCase
     // Story 3.2 — AC3: Profile divergence detection
     //
     // When a public signup provides different name/phone than the stored profile,
-    // SignupService must insert a profile_divergences row in the same transaction,
+    // SlotSignupService must insert a profile_divergences row in the same transaction,
     // without blocking the signup success.
     // ------------------------------------------------------------------
 
@@ -649,13 +649,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
 
     // ------------------------------------------------------------------
-    // Story 4.3 — cancelSignup: ownership, lifecycle, instant slot recovery
+    // Story 4.3 — cancelSlotSignup: ownership, lifecycle, instant slot recovery
     // ------------------------------------------------------------------
 
-    /** SignupModel mock exposing only the two cancellation seams. */
-    private function buildCancelSignupModel(?array $owned): SignupModel
+    /** SlotSignupModel mock exposing only the two cancellation seams. */
+    private function buildCancelSlotSignupModel(?array $owned): SlotSignupModel
     {
-        $mock = $this->getMockBuilder(SignupModel::class)
+        $mock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['findActiveOwnedInKermesse', 'markCancelled'])
             ->getMock();
@@ -666,13 +666,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testCancelSignupSucceedsForOwnerWhenOpen(): void
     {
-        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
-        $signupMock->expects($this->once())->method('markCancelled')->with(5, 42)->willReturn(true);
+        $slotSignupMock = $this->buildCancelSlotSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $slotSignupMock->expects($this->once())->method('markCancelled')->with(5, 42)->willReturn(true);
 
         $result = $this->buildService(
-            signupModel:   $signupMock,
-            kermesseModel: $this->buildMockKermesseModel('open'),
-        )->cancelSignup(5, 42, 10);
+            slotSignupModel: $slotSignupMock,
+            kermesseModel:   $this->buildMockKermesseModel('open'),
+        )->cancelSlotSignup(5,42, 10);
 
         $this->assertTrue($result->success);
         $this->assertSame(5, $result->signupId);
@@ -682,13 +682,13 @@ final class SignupServiceTest extends CIUnitTestCase
     {
         // findActiveOwnedInKermesse returns null when the signup is not the user's
         // (or belongs to another kermesse): markCancelled must never be reached.
-        $signupMock = $this->buildCancelSignupModel(null);
-        $signupMock->expects($this->never())->method('markCancelled');
+        $slotSignupMock = $this->buildCancelSlotSignupModel(null);
+        $slotSignupMock->expects($this->never())->method('markCancelled');
 
         $result = $this->buildService(
-            signupModel:   $signupMock,
-            kermesseModel: $this->buildMockKermesseModel('open'),
-        )->cancelSignup(5, 999, 10);
+            slotSignupModel: $slotSignupMock,
+            kermesseModel:   $this->buildMockKermesseModel('open'),
+        )->cancelSlotSignup(5,999, 10);
 
         $this->assertFalse($result->success);
         $this->assertSame('not_found', $result->errorCode);
@@ -696,13 +696,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testCancelSignupRefusedWhenKermesseClosed(): void
     {
-        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
-        $signupMock->expects($this->never())->method('markCancelled');
+        $slotSignupMock = $this->buildCancelSlotSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $slotSignupMock->expects($this->never())->method('markCancelled');
 
         $result = $this->buildService(
-            signupModel:   $signupMock,
-            kermesseModel: $this->buildMockKermesseModel('closed'),
-        )->cancelSignup(5, 42, 10);
+            slotSignupModel: $slotSignupMock,
+            kermesseModel:   $this->buildMockKermesseModel('closed'),
+        )->cancelSlotSignup(5,42, 10);
 
         $this->assertFalse($result->success);
         $this->assertSame('signups_not_open', $result->errorCode);
@@ -710,12 +710,12 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testCancelSignupRefusedWhenKermesseInPreparation(): void
     {
-        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $slotSignupMock = $this->buildCancelSlotSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
 
         $result = $this->buildService(
-            signupModel:   $signupMock,
-            kermesseModel: $this->buildMockKermesseModel('preparation'),
-        )->cancelSignup(5, 42, 10);
+            slotSignupModel: $slotSignupMock,
+            kermesseModel:   $this->buildMockKermesseModel('preparation'),
+        )->cancelSlotSignup(5,42, 10);
 
         $this->assertFalse($result->success);
         $this->assertSame('signups_not_open', $result->errorCode);
@@ -723,13 +723,13 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testCancelSignupReturnsFailureWhenMarkCancelledFails(): void
     {
-        $signupMock = $this->buildCancelSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
-        $signupMock->method('markCancelled')->willReturn(false);
+        $slotSignupMock = $this->buildCancelSlotSignupModel(['id' => 5, 'user_id' => 42, 'slot_id' => 3]);
+        $slotSignupMock->method('markCancelled')->willReturn(false);
 
         $result = $this->buildService(
-            signupModel:   $signupMock,
-            kermesseModel: $this->buildMockKermesseModel('open'),
-        )->cancelSignup(5, 42, 10);
+            slotSignupModel: $slotSignupMock,
+            kermesseModel:   $this->buildMockKermesseModel('open'),
+        )->cancelSlotSignup(5,42, 10);
 
         $this->assertFalse($result->success);
         $this->assertSame('cancel_failed', $result->errorCode);
@@ -741,29 +741,29 @@ final class SignupServiceTest extends CIUnitTestCase
 
     public function testStampAdminModificationDelegatesToModelAndReturnsTrue(): void
     {
-        $signupMock = $this->getMockBuilder(SignupModel::class)
+        $slotSignupMock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['stampAdminModification'])
             ->getMock();
-        $signupMock->expects($this->once())
+        $slotSignupMock->expects($this->once())
             ->method('stampAdminModification')
             ->with(7, 42)
             ->willReturn(true);
 
-        $result = $this->buildService(signupModel: $signupMock)->stampAdminModification(7, 42);
+        $result = $this->buildService(slotSignupModel: $slotSignupMock)->stampAdminModification(7, 42);
 
         $this->assertTrue($result);
     }
 
     public function testStampAdminModificationReturnsFalseOnModelMiss(): void
     {
-        $signupMock = $this->getMockBuilder(SignupModel::class)
+        $slotSignupMock = $this->getMockBuilder(SlotSignupModel::class)
             ->disableOriginalConstructor()
             ->onlyMethods(['stampAdminModification'])
             ->getMock();
-        $signupMock->method('stampAdminModification')->willReturn(false);
+        $slotSignupMock->method('stampAdminModification')->willReturn(false);
 
-        $result = $this->buildService(signupModel: $signupMock)->stampAdminModification(99999, 42);
+        $result = $this->buildService(slotSignupModel: $slotSignupMock)->stampAdminModification(99999, 42);
 
         $this->assertFalse($result);
     }

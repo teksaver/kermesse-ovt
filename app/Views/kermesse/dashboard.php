@@ -504,7 +504,7 @@
                                 <div class="admin-cancel-details__panel">
                                     <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
                                     <form method="post"
-                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-cancel") ?>"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-cancel") ?>"
                                           class="admin-cancel-form">
                                         <?= csrf_field() ?>
                                         <label class="admin-cancel__notify-label">
@@ -525,7 +525,7 @@
                                 <summary class="btn btn--secondary btn--sm">Modifier la fiche</summary>
                                 <div class="admin-edit-details__panel">
                                     <form method="post"
-                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-edit") ?>"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-edit") ?>"
                                           class="admin-edit-form">
                                         <?= csrf_field() ?>
 
@@ -592,7 +592,7 @@
                                 <summary class="btn btn--secondary btn--sm">Déplacer</summary>
                                 <div class="admin-move-details__panel">
                                     <form method="post"
-                                          action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$vol['signup_id']}/admin-move-signup") ?>"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-move-slot-signup") ?>"
                                           class="admin-move-form">
                                         <?= csrf_field() ?>
                                         <div class="form-group form-group--sm">
@@ -655,7 +655,7 @@
                             <?= esc($pStand['name']) ?> · <?= esc($pSlot['date']) ?> · <?= esc($pSlot['start_time']) ?> – <?= esc($pSlot['end_time']) ?>
                         </p>
                         <form method="post"
-                              action="<?= site_url("kermesse/{$kermesse['id']}/slots/{$pSlot['slot_id']}/admin-add-signup") ?>"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/slots/{$pSlot['slot_id']}/admin-add-slot-signup") ?>"
                               class="k-modal__form"
                               id="<?= esc($addFormId, 'attr') ?>">
                             <?= csrf_field() ?>
@@ -1104,20 +1104,20 @@
                         <?php if (! empty($participation['needs_confirmation'])): ?>
                         <!-- Boutons Accepter / Refuser (Story 5.14 AC2/3/4) -->
                         <form method="post"
-                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/accept") ?>"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$participation['signup_id']}/accept") ?>"
                               onsubmit="this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>
                             <button type="submit" class="btn btn--primary btn--sm">Accepter</button>
                         </form>
                         <form method="post"
-                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/reject") ?>"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$participation['signup_id']}/reject") ?>"
                               onsubmit="if (!confirm('Voulez-vous vraiment refuser cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>
                             <button type="submit" class="btn btn--danger btn--sm">Refuser</button>
                         </form>
                         <?php elseif ($signupsOpen || ! empty($participation['is_confirmed'])): ?>
                         <form method="post"
-                              action="<?= site_url("kermesse/{$kermesse['id']}/signups/{$participation['signup_id']}/cancel") ?>"
+                              action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$participation['signup_id']}/cancel") ?>"
                               class="my-signups-list__cancel"
                               onsubmit="if (!confirm('Voulez-vous vraiment annuler cette participation ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>

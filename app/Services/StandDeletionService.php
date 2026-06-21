@@ -29,11 +29,11 @@ class StandDeletionService
         $db = db_connect();
         $db->resetDataCache();
 
-        if (! $db->tableExists('signups')) {
+        if (! $db->tableExists('slot_signups')) {
             return 0;
         }
 
-        $builder = $db->table('signups')->where('slot_id', $slotId);
+        $builder = $db->table('slot_signups')->where('slot_id', $slotId);
         $this->applyActiveSignupFilter($builder, $db);
 
         return (int) $builder->countAllResults();
@@ -68,13 +68,13 @@ class StandDeletionService
         $db->resetDataCache();
 
         // Pre-Epic-3: signups/slots tables may not exist yet — nothing can require strong confirm.
-        if (! $db->tableExists('slots') || ! $db->tableExists('signups')) {
+        if (! $db->tableExists('slots') || ! $db->tableExists('slot_signups')) {
             return $requiresStrong;
         }
 
-        $builder = $db->table('signups')
+        $builder = $db->table('slot_signups')
             ->select('slots.stand_id')
-            ->join('slots', 'slots.id = signups.slot_id')
+            ->join('slots', 'slots.id = slot_signups.slot_id')
             ->whereIn('slots.stand_id', $standIds)
             ->groupBy('slots.stand_id');
 
@@ -115,7 +115,7 @@ class StandDeletionService
             return self::RESULT_FAILED;
         }
 
-        if (! $db->tableExists('slots') || ! $db->tableExists('signups')) {
+        if (! $db->tableExists('slots') || ! $db->tableExists('slot_signups')) {
             $db->transCommit();
 
             return $db->transStatus() ? self::RESULT_SUCCESS : self::RESULT_FAILED;
@@ -131,7 +131,7 @@ class StandDeletionService
             $slotIds = array_column($slotIds, 'id');
             // Soft-delete active signups (Story 5.14: no more status column on signups)
             $now = date('Y-m-d H:i:s');
-            $builder = $db->table('signups')
+            $builder = $db->table('slot_signups')
                 ->whereIn('slot_id', $slotIds)
                 ->set('deleted_at', $now)
                 ->set('updated_at', $now);
@@ -154,7 +154,7 @@ class StandDeletionService
 
     private function countActiveSignupsWithConnection(object $db, int $standId): int
     {
-        if (! $db->tableExists('slots') || ! $db->tableExists('signups')) {
+        if (! $db->tableExists('slots') || ! $db->tableExists('slot_signups')) {
             return 0;
         }
 
@@ -168,7 +168,7 @@ class StandDeletionService
             return 0;
         }
 
-        $builder = $db->table('signups')
+        $builder = $db->table('slot_signups')
             ->whereIn('slot_id', array_column($slotIds, 'id'));
 
         $this->applyActiveSignupFilter($builder, $db);
@@ -179,11 +179,11 @@ class StandDeletionService
     private function applyActiveSignupFilter(object $builder, object $db): void
     {
         // Story 5.14: active = no cancellation timestamp and not soft-deleted
-        $builder->where('signups.canceled_at', null)
-                ->where('signups.rejected_at', null);
+        $builder->where('slot_signups.canceled_at', null)
+                ->where('slot_signups.rejected_at', null);
 
-        if ($db->fieldExists('deleted_at', 'signups')) {
-            $builder->where('signups.deleted_at', null);
+        if ($db->fieldExists('deleted_at', 'slot_signups')) {
+            $builder->where('slot_signups.deleted_at', null);
         }
     }
 }

@@ -4,14 +4,14 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\KermesseLifecycleService;
 use App\Services\RoleService;
-use App\Services\SignupService;
+use App\Services\SlotSignupService;
 use App\Services\StandDeletionService;
 use CodeIgniter\I18n\Time;
 
@@ -44,8 +44,8 @@ class KermesseAdminController extends BaseController
         // attachOrphansToUser is a single UPDATE — cheap no-op when nothing to attach.
         $userEmail = (string) (model(UserModel::class)->find($userId)['email'] ?? '');
         if ($userEmail !== '') {
-            (new SignupService(model(UserModel::class), model(SignupModel::class)))
-                ->resolveOrphanSignups($userEmail, $userId);
+            (new SlotSignupService(model(UserModel::class), model(SlotSignupModel::class)))
+                ->resolveOrphanSlotSignups($userEmail, $userId);
         }
 
         // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
@@ -114,11 +114,11 @@ class KermesseAdminController extends BaseController
                     'date'               => $start->format('d/m/Y'),
                     'start_time'         => $start->format('H:i'),
                     'end_time'           => $end->format('H:i'),
-                    'needs_confirmation' => SignupModel::needsConfirmation($p, $userId),
+                    'needs_confirmation' => SlotSignupModel::needsConfirmation($p, $userId),
                     'is_confirmed'       => ! empty($p['accepted_at']),
                 ];
             },
-            model(SignupModel::class)->findActiveForUserAndKermesse($userId, $id),
+            model(SlotSignupModel::class)->findActiveForUserAndKermesse($userId, $id),
         );
 
         $teamMembers = [];
@@ -166,7 +166,7 @@ class KermesseAdminController extends BaseController
      * slots, and for every slot the occupied/remaining places plus the nominative list
      * of active volunteers (Story 4.4/5.3, UX-DR24).
      *
-     * Occupancy is derived from SignupModel::findActiveParticipantsForKermesse(), whose
+     * Occupancy is derived from SlotSignupModel::findActiveParticipantsForKermesse(), whose
      * "active" definition is identical to public availability — the recap can therefore
      * never show a fill level different from the public page (AC). Empty slots keep an
      * empty volunteer list so the operator still sees the remaining capacity.
@@ -185,7 +185,7 @@ class KermesseAdminController extends BaseController
             return [];
         }
 
-        $signupModel = model(SignupModel::class);
+        $signupModel = model(SlotSignupModel::class);
 
         $participantsBySlot = [];
         foreach ($signupModel->findActiveParticipantsForKermesse($kermesseId) as $p) {
@@ -206,7 +206,7 @@ class KermesseAdminController extends BaseController
             // Story 5.14 display rule (AC8): for unconfirmed/orphan signups (user_id IS NULL
             // or status is unconfirmed), use the signup snapshot fields. For certified signups
             // with a linked user, apply the Story 5.10 lock logic.
-            $computedStatus = \App\Models\SignupModel::getStatus($p);
+            $computedStatus = \App\Models\SlotSignupModel::getStatus($p);
             $isOrphan       = ($p['user_id'] === null);
 
             if ($isOrphan || $computedStatus === 'unconfirmed') {

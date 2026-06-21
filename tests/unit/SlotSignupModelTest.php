@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use CodeIgniter\Test\CIUnitTestCase;
 
 /**
- * Story 4.2 — Tests unitaires de SignupModel::findActiveForUserAndKermesse().
+ * Story 4.2 — Tests unitaires de SlotSignupModel::findActiveForUserAndKermesse().
  *
  * Invariant d'affichage de « Mes participations » : seules les inscriptions
  * ACTIVES d'un utilisateur, sur une kermesse donnée, remontent — jointes au stand
@@ -17,7 +17,7 @@ use CodeIgniter\Test\CIUnitTestCase;
  *
  * @internal
  */
-final class SignupModelTest extends CIUnitTestCase
+final class SlotSignupModelTest extends CIUnitTestCase
 {
     private int $userId          = 0;
     private int $otherUserId     = 0;
@@ -35,7 +35,7 @@ final class SignupModelTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
@@ -53,7 +53,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $this->insertSignup($slotId, $this->userId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame('Stand Buvette', $rows[0]['stand_name']);
@@ -78,7 +78,7 @@ final class SignupModelTest extends CIUnitTestCase
         // Active mais soft-deleted : doit aussi être exclu (deleted_at IS NOT NULL).
         $this->insertSignup($softDeleted, $this->userId, 'active', '2026-01-01 00:00:00');
 
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame('2026-10-10 09:00:00', $rows[0]['starts_at']);
@@ -96,7 +96,7 @@ final class SignupModelTest extends CIUnitTestCase
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
         $this->insertSignup($otherSlot, $this->userId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertSame([], $rows);
     }
@@ -110,7 +110,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($late, $this->userId, 'active');
         $this->insertSignup($early, $this->userId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertCount(2, $rows);
         $this->assertSame('2026-10-10 09:00:00', $rows[0]['starts_at']);
@@ -119,7 +119,7 @@ final class SignupModelTest extends CIUnitTestCase
 
     public function testReturnsEmptyArrayWhenNoActiveSignups(): void
     {
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertSame([], $rows);
     }
@@ -130,13 +130,13 @@ final class SignupModelTest extends CIUnitTestCase
 
         // Orphan signup (user_id = null, email matches) — not yet resolved via resolveOrphanSignups.
         // findActiveForUserAndKermesse uses user_id only; orphan is invisible until attached.
-        db_connect()->table('signups')->insert([
+        db_connect()->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => null,
             'email'   => 'benevole@signupmodel.test',
         ]);
 
-        $rows = model(SignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveForUserAndKermesse($this->userId, $this->kermesseId);
 
         $this->assertSame([], $rows, 'Orphan signup must not appear before resolveOrphanSignups sets user_id');
     }
@@ -151,7 +151,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        $model = model(SignupModel::class);
+        $model = model(SlotSignupModel::class);
 
         // Propriétaire + bonne kermesse + actif → trouvé.
         $row = $model->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId);
@@ -171,7 +171,7 @@ final class SignupModelTest extends CIUnitTestCase
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'cancelled');
 
         $this->assertNull(
-            model(SignupModel::class)->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId)
+            model(SlotSignupModel::class)->findActiveOwnedInKermesse($signupId, $this->userId, $this->kermesseId)
         );
     }
 
@@ -184,7 +184,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        $model = model(SignupModel::class);
+        $model = model(SlotSignupModel::class);
 
         // Mauvais propriétaire → no-op : la place reste occupée.
         $this->assertFalse($model->markCancelled($signupId, $this->otherUserId));
@@ -202,7 +202,7 @@ final class SignupModelTest extends CIUnitTestCase
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'cancelled');
 
         // Already cancelled → no active row to transition → false (no double-free).
-        $this->assertFalse(model(SignupModel::class)->markCancelled($signupId, $this->userId));
+        $this->assertFalse(model(SlotSignupModel::class)->markCancelled($signupId, $this->userId));
     }
 
     // ------------------------------------------------------------------
@@ -215,7 +215,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($slotId, $this->userId, 'active');
         $this->setPhone($this->userId, '0612345678');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame($slotId, (int) $rows[0]['slot_id']);
@@ -242,7 +242,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($removed, $this->userId, 'removed');
         $this->insertSignup($softDeleted, $this->userId, 'active', '2026-01-01 00:00:00');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         // Même définition « actif » que la disponibilité publique : seule l'inscription
         // active non soft-deleted remonte (cohérence places occupées/restantes).
@@ -260,7 +260,7 @@ final class SignupModelTest extends CIUnitTestCase
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
         $this->insertSignup($otherSlot, $this->otherUserId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame($slotHere, (int) $rows[0]['slot_id']);
@@ -272,7 +272,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($slotId, $this->userId, 'active');
         $this->insertSignup($slotId, $this->otherUserId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(2, $rows);
         foreach ($rows as $row) {
@@ -289,12 +289,12 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        db_connect()->table('signups')->where('id', $signupId)->update([
+        db_connect()->table('slot_signups')->where('id', $signupId)->update([
             'last_modified_by_user_id' => $this->otherUserId,
             'last_modified_at'         => '2026-10-11 10:00:00',
         ]);
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame('Autre', $rows[0]['modifier_first_name']);
@@ -306,7 +306,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $this->insertSignup($slotId, $this->userId, 'active');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertNull($rows[0]['modifier_first_name']);
@@ -322,18 +322,18 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        $result = model(SignupModel::class)->stampAdminModification($signupId, $this->otherUserId);
+        $result = model(SlotSignupModel::class)->stampAdminModification($signupId, $this->otherUserId);
 
         $this->assertTrue($result);
 
-        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('id', $signupId)->get()->getRowArray();
         $this->assertSame($this->otherUserId, (int) $row['last_modified_by_user_id']);
         $this->assertNotNull($row['last_modified_at']);
     }
 
     public function testStampAdminModificationReturnsFalseForUnknownId(): void
     {
-        $result = model(SignupModel::class)->stampAdminModification(99999, $this->userId);
+        $result = model(SlotSignupModel::class)->stampAdminModification(99999, $this->userId);
 
         $this->assertFalse($result);
     }
@@ -343,7 +343,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $this->insertSignup($slotId, $this->userId, 'active');
 
-        $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('slot_id', $slotId)->get()->getRowArray();
 
         $this->assertNull($row['last_modified_by_user_id']);
         $this->assertNull($row['last_modified_at']);
@@ -353,14 +353,14 @@ final class SignupModelTest extends CIUnitTestCase
     {
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
 
-        model(SignupModel::class)->skipValidation(true)->insert([
+        model(SlotSignupModel::class)->skipValidation(true)->insert([
             'slot_id'                  => $slotId,
             'user_id'                  => $this->userId,
             'last_modified_by_user_id' => $this->userId,
             'last_modified_at'         => '2026-10-11 10:00:00',
         ]);
 
-        $row = db_connect()->table('signups')->where('slot_id', $slotId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('slot_id', $slotId)->get()->getRowArray();
         $this->assertSame($this->userId, (int) $row['last_modified_by_user_id']);
         $this->assertSame('2026-10-11 10:00:00', $row['last_modified_at']);
     }
@@ -374,15 +374,15 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        $model = model(SignupModel::class);
+        $model = model(SlotSignupModel::class);
 
         $this->assertTrue($model->markCancelledByAdmin($signupId, $this->otherUserId));
 
         // Story 5.14: status is computed from canceled_at/canceled_by timestamps
-        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('id', $signupId)->get()->getRowArray();
         $this->assertNotNull($row['canceled_at']);
         $this->assertSame($this->otherUserId, (int) $row['canceled_by']);
-        $this->assertSame('removed', \App\Models\SignupModel::getStatus($row));
+        $this->assertSame('removed', \App\Models\SlotSignupModel::getStatus($row));
     }
 
     public function testMarkCancelledByAdminFreesSlotCapacity(): void
@@ -390,7 +390,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'active');
 
-        $model = model(SignupModel::class);
+        $model = model(SlotSignupModel::class);
         $this->assertSame(1, $model->countActiveBySlotIds([$slotId])[$slotId] ?? 0);
 
         $model->markCancelledByAdmin($signupId, $this->otherUserId);
@@ -402,7 +402,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId   = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $signupId = $this->insertSignupReturningId($slotId, $this->userId, 'removed');
 
-        $this->assertFalse(model(SignupModel::class)->markCancelledByAdmin($signupId, $this->otherUserId));
+        $this->assertFalse(model(SlotSignupModel::class)->markCancelledByAdmin($signupId, $this->otherUserId));
     }
 
     public function testFindActiveParticipantsExcludesRemovedStatus(): void
@@ -410,7 +410,7 @@ final class SignupModelTest extends CIUnitTestCase
         $slotId = $this->insertSlot($this->standId, '2026-10-10 09:00:00', '2026-10-10 12:00:00');
         $this->insertSignup($slotId, $this->userId, 'removed');
 
-        $rows = model(SignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findActiveParticipantsForKermesse($this->kermesseId);
         $this->assertSame([], $rows);
     }
 
@@ -426,7 +426,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($slot1, $this->userId, 'cancelled');
         $this->insertSignup($slot2, $this->otherUserId, 'removed');
 
-        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(2, $rows);
         $statuses = array_column($rows, 'status');
@@ -444,7 +444,7 @@ final class SignupModelTest extends CIUnitTestCase
         $this->insertSignup($slot2, $this->userId, 'deactivated');
         $this->insertSignup($slot3, $this->otherUserId, 'deleted');
 
-        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
         $this->assertSame([], $rows);
     }
@@ -458,7 +458,7 @@ final class SignupModelTest extends CIUnitTestCase
         $otherSlot    = $this->insertSlot($otherStandId, '2026-10-10 09:00:00', '2026-10-10 10:00:00');
         $this->insertSignup($otherSlot, $this->otherUserId, 'removed');
 
-        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
 
         $this->assertCount(1, $rows);
         $this->assertSame($slotHere, (int) $rows[0]['slot_id']);
@@ -470,7 +470,7 @@ final class SignupModelTest extends CIUnitTestCase
         // status = cancelled but soft-deleted — must not appear.
         $this->insertSignup($slotId, $this->userId, 'cancelled', '2026-01-01 00:00:00');
 
-        $rows = model(SignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
+        $rows = model(SlotSignupModel::class)->findHistoricalParticipantsForKermesse($this->kermesseId);
         $this->assertSame([], $rows);
     }
 
@@ -486,7 +486,7 @@ final class SignupModelTest extends CIUnitTestCase
     private function insertSignupReturningId(int $slotId, int $userId, string $state = 'active'): int
     {
         $db = db_connect();
-        $db->table('signups')->insert($this->buildSignupRow($slotId, $userId, $state));
+        $db->table('slot_signups')->insert($this->buildSignupRow($slotId, $userId, $state));
 
         return (int) $db->insertID();
     }
@@ -564,7 +564,7 @@ final class SignupModelTest extends CIUnitTestCase
         if ($deletedAt !== null) {
             $row['deleted_at'] = $deletedAt;
         }
-        db_connect()->table('signups')->insert($row);
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     /**
@@ -641,8 +641,8 @@ final class SignupModelTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            DROP TABLE IF EXISTS db_signups;
-            CREATE TABLE IF NOT EXISTS db_signups (
+            DROP TABLE IF EXISTS db_slot_signups;
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

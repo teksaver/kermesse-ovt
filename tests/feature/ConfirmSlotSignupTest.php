@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -21,7 +21,7 @@ use CodeIgniter\Test\FeatureTestTrait;
  *
  * @internal
  */
-final class ConfirmSignupTest extends CIUnitTestCase
+final class ConfirmSlotSignupTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
@@ -55,7 +55,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -101,7 +101,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
     public function testBenevoleAcceptsUnconfirmedSignupSetsAcceptedAt(): void
     {
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->unconfirmedSignupId}/accept");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -118,7 +118,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
         $before = $this->activeCount($this->slotId);
 
         $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->unconfirmedSignupId}/accept");
 
         // After accept: still counted (certified is active).
         $this->assertSame($before, $this->activeCount($this->slotId));
@@ -133,7 +133,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
         $before = $this->activeCount($this->slotId);
 
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/reject");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->unconfirmedSignupId}/reject");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -152,7 +152,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
     public function testAnotherBenevoleCannotAcceptSomeoneElsesSignup(): void
     {
         $result = $this->withSession($this->session($this->autreBenevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/accept");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->unconfirmedSignupId}/accept");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -164,7 +164,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
     public function testAnotherBenevoleCannotRejectSomeoneElsesSignup(): void
     {
         $result = $this->withSession($this->session($this->autreBenevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->unconfirmedSignupId}/reject");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->unconfirmedSignupId}/reject");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -233,7 +233,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
         $this->slotId = (int) $db->insertID();
 
         // Signup créé par l'admin (created_by = ownerId ≠ benevoleId) → statut unconfirmed.
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id'    => $this->slotId,
             'user_id'    => $this->benevoleId,
             'created_by' => $this->ownerId,
@@ -251,7 +251,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
         $this->slot2Id = (int) $db->insertID();
 
         // Signup créé par le bénévole lui-même → accepted_at renseigné d'office (certified).
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id'    => $this->slot2Id,
             'user_id'    => $this->benevoleId,
             'created_by' => $this->benevoleId,
@@ -262,14 +262,14 @@ final class ConfirmSignupTest extends CIUnitTestCase
 
     private function signupStatus(int $signupId): string
     {
-        $row = db_connect()->table('signups')->where('id', $signupId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('id', $signupId)->get()->getRowArray();
 
-        return $row !== null ? SignupModel::getStatus($row) : '';
+        return $row !== null ? SlotSignupModel::getStatus($row) : '';
     }
 
     private function activeCount(int $slotId): int
     {
-        return model(SignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
+        return model(SlotSignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
     }
 
     private function session(int $userId): array
@@ -360,7 +360,7 @@ final class ConfirmSignupTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

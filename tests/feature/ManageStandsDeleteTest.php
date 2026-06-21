@@ -39,7 +39,7 @@ final class ManageStandsDeleteTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -122,7 +122,7 @@ final class ManageStandsDeleteTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
@@ -229,7 +229,7 @@ final class ManageStandsDeleteTest extends CIUnitTestCase
     private function insertSignup(int $slotId, int $userId): int
     {
         $db = db_connect();
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
         ]);
@@ -256,7 +256,7 @@ final class ManageStandsDeleteTest extends CIUnitTestCase
     private function activeSignupsExistForSlot(int $slotId): bool
     {
         $row = db_connect()
-            ->query("SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND status = 'active' AND deleted_at IS NULL")
+            ->query("SELECT COUNT(*) AS cnt FROM db_slot_signups WHERE slot_id = {$slotId} AND status = 'active' AND deleted_at IS NULL")
             ->getRowArray();
         return (int) $row['cnt'] > 0;
     }

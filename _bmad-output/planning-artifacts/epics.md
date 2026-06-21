@@ -56,7 +56,7 @@ NFR6: Préparation à la production — chaque parcours critique P0/P1 doit disp
 - **Déconnexion** : route `POST /auth/logout` pour détruire la session globale.
 - **RBAC** : contrôle d'accès basé sur des rôles par kermesse (Owner, Admin, Gestionnaire, Bénévole), vérifiés en base côté serveur via filtres (`AuthFilter` session + `RoleFilter` rôle).
 - **Schéma initial** : tables `users`, `access_tokens`, `kermesses`, `kermesse_user_roles`, `stands`, `slots`, `signups`, `email_events`, `schema_versions`. *(Note : `profile_divergences` n'est **pas** créée — la réconciliation de profil est stateless, voir Story 5.4.)*
-- **Invariants service-owned** : `SignupService` (capacité/doublon/chevauchement/annulation, transactionnel), `TokenService` (Magic Links hachés, usage unique, expiration), `EmailService` (+ `email_events`), `RoleService` (rôles + invitations), `KermesseLifecycleService` (préparation/ouvert/fermé).
+- **Invariants service-owned** : `SlotSignupService` (capacité/doublon/chevauchement/annulation, transactionnel), `TokenService` (Magic Links hachés, usage unique, expiration), `EmailService` (+ `email_events`), `RoleService` (rôles + invitations), `KermesseLifecycleService` (préparation/ouvert/fermé).
 - **Sécurité formulaires** : CSRF actif sur tous les formulaires modifiant l'état.
 - **Codes d'erreur stables** : `slot_full`, `duplicate_signup`, `overlap_conflict`, `signups_not_open`, `invalid_token`, `expired_token`, `unauthorized_admin`, `unauthorized_role`.
 - **RGPD** : suppression/archivage des comptes inactifs en post-MVP (le compte persiste par défaut).
@@ -143,17 +143,17 @@ Les bénévoles consultent le planning public et s'inscrivent en quelques gestes
 Les bénévoles libèrent leur place depuis leur espace connecté, les administrateurs suivent le remplissage par stand/créneau, et un Owner/Admin peut inviter une équipe de gestion.
 **FRs covered:** FR10, FR11, FR12, FR14
 
-### Epic 5 : Post-MVP — Identité avancée, gestion des inscriptions et délégation
-Vague d'évolutions post-livraison : confirmation d'identité à la 1ʳᵉ connexion, navigation 4 onglets, gestion des inscriptions par l'admin (ajouter/corriger/annuler/déplacer), révocation, départ autonome, page profil, duplication de stand, renommage `signup`→`SlotSignup`.
-**FRs covered:** FR10 (extension 4 onglets), FR13 (extension confirmation), FR15, FR16, FR17, FR18
+### Epic 5 : Post-MVP — Identité avancée et délégation
+Vague d\'évolutions post-livraison : confirmation d\'identité à la 1ʳᵉ connexion, navigation 4 onglets, révocation, départ autonome, page profil, duplication de stand, gestion des inscriptions. [TERMINÉ]
+**FRs covered:** FR10 (extension), FR13 (extension), FR15, FR16, FR17, FR18
 
 ### Epic 6 : Stabilisation et préparation à la production
 Les organisateurs et bénévoles peuvent utiliser les parcours critiques de Kermesse sans régression connue ; l'équipe dispose de preuves automatisées reproductibles sur PHPUnit, MariaDB et navigateur réel, puis qualifie l'artefact immuable destiné à Ouvaton par une décision Go/No-Go fondée sur des preuves.
 **Requirements covered:** NFR6 ; validation transversale des FR1 à FR18
 
-### Epic 7 : Post-MVP — Système d'Invités (Guests)
-Les bénévoles pourront inscrire des tiers depuis leur compte afin de gérer les participations d'une famille partageant une même adresse email. Cette Epic reste gelée jusqu'à la qualification de production issue de l'Epic 6.
-**FRs covered:** exigences post-MVP à formaliser avant développement
+### Epic 7 : Backlog Post-MVP — Invités
+Les bénévoles pourront inscrire des tiers.
+**FRs covered:** Exigences post-MVP.
 
 ## Epic 1 : Identité Unifiée et Tableau de Bord Global
 
@@ -393,7 +393,7 @@ So that ma réservation soit fluide et automatiquement rattachée à mon email.
 **Then** ses informations (email, prénom, nom) sont pré-remplies.
 
 **Given** la soumission d'une inscription valide sur un créneau disponible,
-**When** `SignupService.createSignup()` la traite dans une transaction,
+**When** `SlotSignupService.createSignup()` la traite dans une transaction,
 **Then** la table `signups` (colonnes : id, slot_id, user_id, **first_name, last_name, email, phone** [snapshot coordonnées soumises], created_at — **pas de champ `status` stocké** : le statut est calculé à la volée depuis les timestamps `accepted_at`, `rejected_at`, `canceled_at`) étant disponible, un compte Utilisateur est créé si l'email est inconnu et l'inscription est rattachée à cet email,
 **And** la capacité restante est vérifiée de façon transactionnelle (rejet `slot_full` si pleine — NFR3),
 **And** si les informations soumises diffèrent du profil existant, le **snapshot** est conservé tel quel dans les colonnes `signups.first_name/last_name/email/phone` ; aucune table `profile_divergences` n'est créée — la réconciliation est stateless et sera effectuée à la première connexion du bénévole (Story 5.4) (FR8/FR13),
@@ -503,7 +503,7 @@ So that je libère immédiatement la place dans le planning public en cas d'impr
 
 **Given** une inscription active dans "Mes participations" alors que les inscriptions sont ouvertes,
 **When** le bénévole clique sur annuler et confirme,
-**Then** `SignupService.cancelSignup()` marque l'inscription comme annulée/inactive,
+**Then** `SlotSignupService.cancelSignup()` marque l'inscription comme annulée/inactive,
 **And** la place redevient immédiatement disponible sur le planning public,
 **And** l'inscription disparaît de la liste active avec le message "La place est de nouveau disponible." (UX-DR23).
 
@@ -541,7 +541,7 @@ So that je délègue la gestion de ma kermesse à une équipe de confiance.
 **And** un email d'invitation contenant un Magic Link vers la kermesse lui est envoyé (journalisé dans `email_events`),
 **And** l'UI confirme que l'invitation a été envoyée (UX-DR20).
 
-## Epic 5 : Post-MVP — Identité avancée, gestion des inscriptions et délégation
+## Epic 5 : Post-MVP — Identité avancée et délégation [TERMINÉ]
 
 Vague d'évolutions conçue **après** la livraison du MVP (Epics 1-4). Cet epic regroupe deux familles de stories : les **stories de modification** (deltas à des comportements déjà livrés — elles ne réécrivent pas l'historique des stories MVP, elles les font évoluer) et les **nouvelles fonctionnalités**. Couvre FR-15→18 ainsi que les extensions de FR-10 (4 onglets) et FR-13 (confirmation à la 1ʳᵉ connexion).
 
@@ -767,222 +767,6 @@ So that mon accueil connecté ne liste que les kermesses auxquelles je participe
 
 > **Note d'implémentation** : la notification est envoyée après le DELETE de la ligne `kermesse_user_roles`, de façon non bloquante. L'acteur de la notification est le membre lui-même (pas un tiers). Le message de confirmation en UI mentionne explicitement que le propriétaire sera notifié.
 
-### Story 5.10 : Onglet "Gestion des inscrits" — Gérer, annuler, et corriger une inscription
-
-As an Owner/Admin/Gestionnaire,
-I want pouvoir annuler, corriger ou annoter une inscription depuis l'onglet "Gestion des inscrits", avec une séparation claire entre actifs et historique,
-So que je maintienne un planning exact sans attendre que le bénévole agisse lui-même.
-
-**Acceptance Criteria:**
-
-**Given** l'interface "Gestion des inscrits" d'un créneau,
-**When** l'interface s'affiche,
-**Then** l'Admin voit deux tableaux distincts : un pour les inscriptions actives (statut calculé ∈ `unconfirmed`, `certified` — i.e. `canceled_at IS NULL` et `rejected_at IS NULL`), et un pour l'historique (statut calculé ∈ `cancelled`, `removed`, `refused`).
-
-**Given** l'affichage du nom d'un bénévole dans le tableau de bord de la kermesse (liste des inscrits),
-**When** l'inscription est affichée,
-**Then** si le statut calculé est `certified` ou `refused` (`accepted_at IS NOT NULL` ou `rejected_at IS NOT NULL`), **ou** si `viewed_at IS NOT NULL` (inscription déjà vue par le bénévole), le nom affiché est **exclusivement** celui de son profil global `users` (la copie `signups` est ignorée visuellement),
-**And** si le statut calculé est `unconfirmed` et `viewed_at IS NULL`, le nom affiché est le snapshot temporaire stocké dans `signups` (qui peut avoir été corrigé par l'admin).
-> **Note** : `confirmed` et `seen` ne sont pas des valeurs stockées dans `signups.status` — ils sont calculés à l'affichage (`seen` = `viewed_at IS NOT NULL`, `confirmed` = alias d'affichage pour `certified`).
-
-**Given** la création d'une nouvelle inscription par l'admin au nom d'un bénévole,
-**When** l'inscription est sauvegardée,
-**Then** les timestamps `accepted_at`, `rejected_at`, `canceled_at` restent à NULL → statut calculé = `unconfirmed`.
-
-**Given** l'onglet "Gestion des inscrits" ouvert par un rôle autorisé,
-**When** l'admin clique sur "Annuler l'inscription" d'un bénévole et confirme,
-**Then** `SignupService.adminCancelSignup()` renseigne `canceled_at = now()` et `canceled_by = adminUserId` (statut calculé = `removed`) et libère la place,
-**And** l'admin se voit proposer une case "Notifier [email du bénévole]" avant confirmation ; si cochée, un email d'annulation est envoyé,
-**And** le bénévole passe dans le tableau de l'historique du créneau,
-**And** `signups.last_modified_by_user_id` et `last_modified_at` sont renseignés,
-**And** cette action est possible quel que soit l'état de la kermesse (override admin).
-
-**Given** l'onglet "Gestion des inscrits" et la fiche d'un bénévole,
-**When** l'admin modifie la fiche de l'inscription (prénom, nom, email, téléphone, ou les **notes internes** `admin_notes`),
-**Then** **seuls** les champs de la fiche d'inscription (`signups`) sont mis à jour — le compte global (`users`) n'est **jamais** modifié.
-**And** dans tous les cas, le champ `admin_notes` ("Maman de Léo") reste visible et éditable par l'admin.
-
-> **Modèle de données — Approche Snapshot** : la fiche d'inscription (`signups`) porte sa **propre copie** prénom/nom/email/téléphone (capturée au moment de l'inscription publique) ainsi que le champ `admin_notes`. Le compte utilisateur global n'est jamais réécrit par un admin.
-
-> **Règle de l'Identité Unique (Choix A)** : 1 compte (email) = 1 identité physique. Dès que le compte est validé par l'utilisateur, l'organisateur ne voit plus que le "vrai" nom du compte (table `users`), garantissant que le système ne triche pas en inventant plusieurs identités pour un même compte. Tout le besoin organisationnel (ex: le conjoint qui vient tenir le stand) est couvert par le champ `admin_notes` en attendant la future Epic de gestion des Invités.
-
-### Story 5.11 : Onglet "Gestion des inscrits" — Ajouter une inscription manuellement
-
-As an Owner/Admin/Gestionnaire,
-I want ajouter manuellement une inscription depuis l'onglet "Gestion des inscrits",
-So que j'inscrive un bénévole qui s'est signalé par téléphone ou en personne.
-
-**Acceptance Criteria:**
-
-**Given** l'onglet "Gestion des inscrits" ouvert par un rôle autorisé,
-**When** l'admin clique sur "Ajouter un bénévole" sur un créneau,
-**Then** un formulaire s'ouvre avec prénom, nom, email (obligatoire), téléphone (facultatif) et une case "Envoyer un email de confirmation",
-**And** le bouton de validation est désactivé tant que les champs obligatoires sont vides.
-
-**Given** un formulaire soumis avec des champs obligatoires manquants ou un email invalide,
-**When** l'admin soumet,
-**Then** des erreurs inline sont liées aux champs invalides et les valeurs saisies sont conservées.
-
-**Given** la soumission d'une inscription manuelle valide,
-**When** `SignupService.createSignup()` la traite,
-**Then** les mêmes invariants s'appliquent qu'à l'inscription publique (capacité, doublon, chevauchement),
-**And** si la case "Envoyer un email de confirmation" est cochée, un email de confirmation avec Magic Link est envoyé via `EmailService`,
-**And** cette action est possible même si la kermesse est à l'état "Fermé" — override admin,
-**And** `signups.last_modified_by_user_id` est renseigné avec l'ID de l'admin.
-
-**Given** un email saisi qui correspond à un compte déjà existant, avec un prénom/nom différent de son profil,
-**When** l'inscription manuelle est créée,
-**Then** la fiche d'inscription (`signups`) porte les coordonnées saisies par l'admin, le compte global (`users`) n'est **pas** modifié,
-**And** la divergence copie↔profil sera réconciliée au premier accès du bénévole à la kermesse (Story 5.4), sans fusion silencieuse dans son compte.
-
-### Story 5.12 : Onglet "Gestion des inscrits" — Déplacer une inscription
-
-As an Owner/Admin/Gestionnaire,
-I want déplacer l'inscription d'un bénévole vers un autre créneau,
-So que je gère les ajustements de planning sans annuler et recréer manuellement.
-
-**Acceptance Criteria:**
-
-**Given** une inscription active dans l'onglet "Gestion des inscrits",
-**When** l'admin clique sur "Déplacer",
-**Then** une liste des créneaux disponibles (places restantes > 0, hors créneau source) s'affiche avec les horaires et places restantes.
-
-**Given** un créneau cible sélectionné,
-**When** l'admin confirme le déplacement,
-**Then** `SignupService.moveSignup()` exécute dans une transaction : annule l'inscription source et crée l'inscription cible,
-**And** si la capacité du créneau cible est pleine au moment du déplacement, l'erreur `slot_full` est retournée et aucune des deux inscriptions n'est modifiée,
-**And** si le créneau cible chevauche un autre créneau où le bénévole est déjà inscrit (hors inscription source), l'erreur `overlap_conflict` est retournée et aucune des deux inscriptions n'est modifiée,
-**And** l'admin se voit proposer une case "Notifier [email]" ; si cochée, un email de déplacement est envoyé,
-**And** `signups.last_modified_by_user_id` et `last_modified_at` sont renseignés sur la nouvelle inscription.
-
-### Story 5.13 : Renommer le concept `signup` → `SlotSignup` (Ubiquitous Language) `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
-
-> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
-
-As a développeur,
-I want que l'entité « inscription à un créneau » soit nommée sans ambiguïté dans le code,
-So that on ne confonde plus avec une « création de compte » (qui, elle, est implicite via Magic Link).
-
-**Acceptance Criteria:**
-
-**Given** le code actuel utilisant la racine `signup`,
-**When** le renommage est appliqué en **un changement atomique**,
-**Then** l'entité devient `SlotSignup` : `SlotSignupService`, `SlotSignupModel`, `SlotSignupResult`, contrôleurs, vues et emails associés,
-**And** la table `signups` est renommée `slot_signups` (migration de renommage),
-**And** les identifiants dans `epics.md`, `architecture.md` et `CLAUDE.md` sont alignés,
-**And** les codes d'erreur stables (`duplicate_signup`, `signups_not_open`, `slot_full`) sont **conservés** tels quels (contrats stables, contextuellement clairs),
-**And** l'UI/French reste inchangée (« inscription » / « Mes participations »).
-
-_Hors périmètre (post-Epic 5) : journal chronologique complet des modifications (Qui/Quand/Quoi) par inscription, y compris les actions du bénévole lui-même._
-
-### Story 5.14 : Traçabilité et Validation des Inscriptions (Stateless)
-
-> **[Modif 3.2, Modif 4.3, Modif 4.4]** Cette story modifie le comportement de `SignupService.createSignup()` livré en Story 3.2 (pas de création de compte silencieuse), de `SignupService.cancelSignup()` livré en Story 4.3 (ajout `canceled_at`/`canceled_by`), et de `SignupModel.findActiveParticipantsForKermesse()` livré en Story 4.4 (passage à `LEFT JOIN users` pour inclure les orphelins).
-
-As un architecte et product owner,
-I want tracer avec précision l'origine et le cycle de vie de chaque inscription via une machine à états rigoureuse (statuts + timestamps d'acteurs),
-So that je garantis la fiabilité des inscriptions tout en évitant la création de comptes inutiles et en responsabilisant les utilisateurs (bénévoles et admins).
-
-**Acceptance Criteria:**
-
----
-
-**[AC-1 — Statut à la création et `created_by`]**
-
-**Given** l'inscription publique d'un bénévole à un créneau,
-**When** le visiteur n'est pas connecté (email inconnu ou connu),
-**Then** l'inscription est insérée avec `user_id = NULL` et `created_by = NULL` (pas de création de compte silencieuse) — **aucun champ `status` n'est inséré en base** ; le statut `unconfirmed` est calculé à la volée : `canceled_at IS NULL AND rejected_at IS NULL AND accepted_at IS NULL`.
-**And** le champ `created_by` est présent dans `SignupModel.$allowedFields` et inclus dans chaque appel INSERT de `signupWithinTransaction()`.
-
-**When** l'utilisateur est connecté (bénévole ou admin via `createSignupByAdmin`),
-**Then** l'inscription est insérée avec `created_by = user_id_de_la_session` et `accepted_at = now()` — le statut `certified` est calculé à la volée : `accepted_at IS NOT NULL`.
-
-**And** dans tous les cas, `RoleService` ne crée une entrée `Bénévole` dans `kermesse_user_roles` **que si** `user_id` est non nul ; si `user_id = NULL`, cette entrée sera créée lors de `resolveOrphanSignups` à la première connexion.
-
----
-
-**[AC-2 — Rattachement des orphelins à la connexion]**
-
-**Given** un bénévole qui se connecte,
-**When** il existe des inscriptions associées à son email dont le `user_id` est NULL,
-**Then** le système les rattache (mise à jour du `user_id`) via `SignupService.resolveOrphanSignups()` (qui délègue à `SignupModel.attachOrphansToUser()` en interne),
-**And** `viewed_at` est renseigné sur ces inscriptions (s'il était NULL) pour prouver la prise de connaissance,
-**And** `RoleService` crée une entrée `Bénévole` dans `kermesse_user_roles` pour chaque kermesse concernée.
-
----
-
-**[AC-3 — Accept/Reject depuis "Mes participations"]**
-
-**Given** une inscription où `created_by` est NULL ou différent de l'`user_id` du bénévole connecté,
-**When** le bénévole consulte la section « Mes participations »,
-**Then** un bouton « Confirmer » et un bouton « Refuser » sont affichés tant que `accepted_at` et `rejected_at` sont tous les deux NULL.
-
-**When** le bénévole clique « Confirmer »,
-**Then** `SignupService.acceptSignup(signupId, userId)` renseigne `accepted_at = now()` et retourne succès.
-
-**When** le bénévole clique « Refuser »,
-**Then** `SignupService.rejectSignup(signupId, userId)` renseigne `rejected_at = now()` et retourne succès.
-
-Ces deux méthodes doivent exister dans `SignupService` et dans `SignupModel` (méthode dédiée ou via `save()`).
-
----
-
-**[AC-4 — Annulations avec `canceled_at` / `canceled_by`]**
-
-**Given** un bénévole annulant sa propre inscription (`cancelSignup`),
-**Then** en plus du `status = 'cancelled'`, `SignupModel.markCancelled()` renseigne `canceled_at = now()` et `canceled_by = userId`.
-
-**Given** un admin annulant une inscription (`adminCancelSignup`),
-**Then** en plus du `status = 'removed'`, `SignupModel.markCancelledByAdmin()` renseigne `canceled_at = now()` et `canceled_by = adminUserId`.
-
-Ces deux timestamps doivent être inclus dans le `update()` de leurs méthodes respectives dans `SignupModel`.
-
----
-
-**[AC-5 — Requête admin orphan-safe]**
-
-**Given** la méthode `SignupModel.findActiveParticipantsForKermesse()`,
-**When** des inscriptions avec `user_id = NULL` existent pour la kermesse,
-**Then** ces inscriptions apparaissent dans la liste admin (elles ne sont pas exclues),
-**And** pour ces orphelins, le nom et l'email affichés sont les colonnes snapshot `signups.first_name`, `signups.last_name`, `signups.email` (fallback puisqu'il n'y a pas de `users` row),
-**And** la requête utilise un `LEFT JOIN users` au lieu d'un `INNER JOIN` pour ne pas filtrer silencieusement les orphelins.
-
----
-
-**[AC-6 — Admin : réassignation d'email]**
-
-**When** l'administrateur corrige manuellement l'email d'un invité et que ce nouvel email correspond à un utilisateur existant,
-**Then** l'inscription est réassignée en mettant à jour le `user_id` avec celui du compte correspondant (réassignation simple — pas de fusion complexe de comptes).
-
----
-
-**[AC-7 — Orphelins et capacité]**
-
-**Given** une inscription orpheline (`user_id = NULL`) non encore réclamée,
-**When** elle existe sur un créneau,
-**Then** elle compte dans la capacité active ; seul l'admin peut la supprimer manuellement depuis « Gestion des inscrits ».
-
----
-
-> **Note de migration de comportement (Modif 3.2)** : en Epic 3, `SignupService.createSignup()` créait un compte `users` si l'email était inconnu. Cette story supprime ce comportement : seul `find` (jamais `findOrCreate`) est utilisé dans `signupWithinTransaction()`. Le `user_id` reste NULL jusqu'à la première connexion du bénévole. Les tests de Story 3.2 couvrant la création d'utilisateur implicite seront mis à jour lors du développement de cette story.
-
-> **Note d'implémentation — couche de données** : les colonnes `created_by`, `viewed_at`, `accepted_at`, `rejected_at`, `canceled_at`, `canceled_by` doivent toutes être présentes dans `SignupModel.$allowedFields`. La migration ajoutant ces colonnes à la table `signups` est le prérequis de cette story.
-
-### Story 5.15 : Nettoyage du code zombie de résolution de profil `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
-
-> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
-
-As a développeur,
-I want supprimer le code mort résiduel issu de l'ancienne résolution de profil (pré-stateless),
-So that la base de code ne contienne plus de chemins non utilisés qui créent de la confusion.
-
-**Acceptance Criteria:**
-
-**Given** le refactoring stateless effectué dans les stories 3.6 et 5.4,
-**When** le nettoyage est appliqué,
-**Then** tout code zombie identifié (méthodes, tables, colonnes, vues) est supprimé proprement,
-**And** les tests couvrant le comportement supprimé sont mis à jour ou retirés,
-**And** aucune régression fonctionnelle n'est introduite.
 
 ---
 
@@ -1148,6 +932,9 @@ So that les régressions JavaScript et d'intégration soient détectées avant f
 **Then** aucun test flaky n'est toléré avant son passage en gate bloquant.
 
 ### Story 6.4 : Automatiser les parcours critiques du bénévole
+
+> **[TERMINÉ]**
+
 
 As a bénévole,
 I want que mes parcours publics et connectés soient validés de bout en bout,
@@ -1369,7 +1156,42 @@ So that une release défectueuse ne puisse pas atteindre `main` ou la production
 **Then** elles sont rattachées au commit exact et au checksum de l'artefact,
 **And** les noms des checks obligatoires sont documentés pour la protection de branche.
 
-### Story 6.8 : Qualifier et déployer la release candidate
+### Story 6.8 : Gérer l'expiration de session avec redirection gracieuse
+
+As un utilisateur connecté (bénévole, gestionnaire, admin ou owner),
+I want que l'expiration de ma session ne produise jamais une page d'erreur PHP CodeIgniter,
+So that je sois redirigé vers la connexion Magic Link et ramené à ma page une fois authentifié.
+
+**Acceptance Criteria:**
+
+**Given** un utilisateur dont la session a expiré,
+**When** il accède à une route GET authentifiée (ex. tableau de bord, profil),
+**Then** le filtre d'authentification le redirige vers `/auth/request?redirect=<url_courante>`,
+**And** après connexion Magic Link réussie, `MagicLinkController` le renvoie sur l'URL d'origine,
+**And** aucune page d'erreur PHP n'est affichée.
+
+**Given** un utilisateur dont la session a expiré,
+**When** il soumet un formulaire POST (ex. inviter un admin, accepter/refuser/annuler une inscription),
+**Then** CodeIgniter lève une `SecurityException` (le hash CSRF stocké en session est perdu avec la session elle-même, avant même l'exécution du filtre d'auth),
+**And** le gestionnaire d'exceptions de l'application intercepte cette `SecurityException`, détecte l'absence de session utilisateur, et redirige vers `/auth/request` avec un message flash "Votre session a expiré — reconnectez-vous pour continuer.",
+**And** après reconnexion, l'utilisateur atterrit sur le tableau de bord de la kermesse concernée (pas une page d'erreur 403 CodeIgniter),
+**And** aucune page d'erreur PHP brute n'est affichée.
+
+**Given** la configuration du gestionnaire d'exceptions,
+**When** une `SecurityException` est levée avec une session active (CSRF genuinement invalide, pas une session expirée),
+**Then** la réponse 403 habituelle est retournée sans redirection silencieuse vers le login.
+
+**Given** le paramètre `redirect` transmis après reconnexion,
+**When** sa valeur est validée,
+**Then** seules les URLs de même origine (même domaine) sont acceptées,
+**And** toute URL externe est rejetée et l'utilisateur atterrit sur l'accueil connecté (protection open redirect).
+
+**Given** les tests de la Story 6.8,
+**When** la suite PHPUnit est exécutée,
+**Then** les scénarios GET expiré, POST expiré et open redirect sont couverts en feature tests,
+**And** les tests s'exécutent sous SQLite sans dépendance à Ouvaton.
+
+### Story 6.9 : Qualifier et déployer la release candidate
 
 As an organisateur responsable de la mise en production,
 I want disposer d'une release candidate éprouvée et récupérable,
@@ -1429,40 +1251,45 @@ So that la mise en production puisse être décidée et exécutée avec un risqu
 **Then** les résultats, durées, décisions et risques résiduels sont archivés,
 **And** l'Epic 7 peut quitter son état gelé.
 
-### Story 6.9 : Gérer l'expiration de session avec redirection gracieuse
+### Story 6.10 : Sécuriser le déploiement des migrations incompatibles
 
-As un utilisateur connecté (bénévole, gestionnaire, admin ou owner),
-I want que l'expiration de ma session ne produise jamais une page d'erreur PHP CodeIgniter,
-So that je sois redirigé vers la connexion Magic Link et ramené à ma page une fois authentifié.
+As a responsable de la mise en production,
+I want déployer le renommage physique `signups` → `slot_signups` avec une stratégie expand/contract et des contrôles automatisés,
+So that une migration échouée ou partiellement appliquée ne rende jamais la production indisponible.
 
 **Acceptance Criteria:**
 
-**Given** un utilisateur dont la session a expiré,
-**When** il accède à une route GET authentifiée (ex. tableau de bord, profil),
-**Then** le filtre d'authentification le redirige vers `/auth/request?redirect=<url_courante>`,
-**And** après connexion Magic Link réussie, `MagicLinkController` le renvoie sur l'URL d'origine,
-**And** aucune page d'erreur PHP n'est affichée.
+**Given** les migrations déjà appliquées par la branche `main` en production,
+**When** l'artefact de l'Epic 6 est construit,
+**Then** chaque migration déjà livrée est conservée byte-for-byte avec le même checksum,
+**And** toute dérive de checksum bloque la CI avant l'activation de la release,
+**And** seules les migrations SQL de `database/migrations_sql/` sont incluses pour Ouvaton — aucune migration CI4 native n'est requise ou packagée.
 
-**Given** un utilisateur dont la session a expiré,
-**When** il soumet un formulaire POST (ex. inviter un admin, accepter/refuser/annuler une inscription),
-**Then** CodeIgniter lève une `SecurityException` (le hash CSRF stocké en session est perdu avec la session elle-même, avant même l'exécution du filtre d'auth),
-**And** le gestionnaire d'exceptions de l'application intercepte cette `SecurityException`, détecte l'absence de session utilisateur, et redirige vers `/auth/request` avec un message flash "Votre session a expiré — reconnectez-vous pour continuer.",
-**And** après reconnexion, l'utilisateur atterrit sur le tableau de bord de la kermesse concernée (pas une page d'erreur 403 CodeIgniter),
-**And** aucune page d'erreur PHP brute n'est affichée.
+**Given** l'application encore connectée au schéma contenant `signups`,
+**When** la release de transition est activée,
+**Then** le code applicatif fonctionne avant comme après le renommage de table,
+**And** toutes les références SQL au nom physique de la table passent par le même mécanisme de compatibilité,
+**And** le retour à la release précédente reste possible tant que la migration n'est pas confirmée.
 
-**Given** la configuration du gestionnaire d'exceptions,
-**When** une `SecurityException` est levée avec une session active (CSRF genuinement invalide, pas une session expirée),
-**Then** la réponse 403 habituelle est retournée sans redirection silencieuse vers le login.
+**Given** l'état initial où seule la table `signups` existe,
+**When** la migration de renommage est exécutée via `POST /ops/migrate`,
+**Then** la table devient `slot_signups` sans perte de lignes, d'index ni de clés étrangères,
+**And** une nouvelle exécution après succès est sans effet et retourne un succès,
+**And** la présence simultanée des deux tables, ou l'absence des deux, provoque un échec explicite sans écriture supplémentaire.
 
-**Given** le paramètre `redirect` transmis après reconnexion,
-**When** sa valeur est validée,
-**Then** seules les URLs de même origine (même domaine) sont acceptées,
-**And** toute URL externe est rejetée et l'utilisateur atterrit sur l'accueil connecté (protection open redirect).
+**Given** une nouvelle release prête à être activée,
+**When** le workflow `deploy-ouvaton.yml` atteint la phase de migration,
+**Then** un préflight signé `POST /ops/migrate/status` vérifie l'absence de drift et la liste exacte des migrations attendues,
+**And** un postflight exige `pending = []` et `failed = []`,
+**And** un smoke test vérifie au minimum une lecture et une écriture sur `slot_signups`,
+**And** tout échec arrête le déploiement dans un état applicatif compatible avec le schéma restant.
 
-**Given** les tests de la Story 6.9,
-**When** la suite PHPUnit est exécutée,
-**Then** les scénarios GET expiré, POST expiré et open redirect sont couverts en feature tests,
-**And** les tests s'exécutent sous SQLite sans dépendance à Ouvaton.
+**Given** une base MariaDB contenant le schéma et des données représentatifs de la production sur `main`,
+**When** le test d'upgrade complet est exécuté en CI,
+**Then** toutes les migrations nouvelles sont appliquées dans leur ordre réel via `MigrationRunnerService`,
+**And** les nombres de lignes, index, clés étrangères et invariants d'inscription sont vérifiés après migration,
+**And** les assertions CI attendent `slot_signups` et l'absence de `profile_divergences`,
+**And** aucune fusion de l'Epic 6 sur `main` n'est autorisée tant que ce test et les quality gates ne sont pas verts.
 
 ---
 
@@ -1474,3 +1301,222 @@ _Note : Cette Epic est prévue pour gérer les cas de comptes partagés au sein 
 As un bénévole connecté,
 I want pouvoir inscrire mon conjoint ou mes enfants à des créneaux depuis mon propre compte,
 So that toute la famille puisse participer sans avoir à créer plusieurs adresses email fictives.
+
+
+### Story 5.10 : Onglet "Gestion des inscrits" — Gérer, annuler, et corriger une inscription
+
+As an Owner/Admin/Gestionnaire,
+I want pouvoir annuler, corriger ou annoter une inscription depuis l'onglet "Gestion des inscrits", avec une séparation claire entre actifs et historique,
+So que je maintienne un planning exact sans attendre que le bénévole agisse lui-même.
+
+**Acceptance Criteria:**
+
+**Given** l'interface "Gestion des inscrits" d'un créneau,
+**When** l'interface s'affiche,
+**Then** l'Admin voit deux tableaux distincts : un pour les inscriptions actives (statut calculé ∈ `unconfirmed`, `certified` — i.e. `canceled_at IS NULL` et `rejected_at IS NULL`), et un pour l'historique (statut calculé ∈ `cancelled`, `removed`, `refused`).
+
+**Given** l'affichage du nom d'un bénévole dans le tableau de bord de la kermesse (liste des inscrits),
+**When** l'inscription est affichée,
+**Then** si le statut calculé est `certified` ou `refused` (`accepted_at IS NOT NULL` ou `rejected_at IS NOT NULL`), **ou** si `viewed_at IS NOT NULL` (inscription déjà vue par le bénévole), le nom affiché est **exclusivement** celui de son profil global `users` (la copie `signups` est ignorée visuellement),
+**And** si le statut calculé est `unconfirmed` et `viewed_at IS NULL`, le nom affiché est le snapshot temporaire stocké dans `signups` (qui peut avoir été corrigé par l'admin).
+> **Note** : `confirmed` et `seen` ne sont pas des valeurs stockées dans `signups.status` — ils sont calculés à l'affichage (`seen` = `viewed_at IS NOT NULL`, `confirmed` = alias d'affichage pour `certified`).
+
+**Given** la création d'une nouvelle inscription par l'admin au nom d'un bénévole,
+**When** l'inscription est sauvegardée,
+**Then** les timestamps `accepted_at`, `rejected_at`, `canceled_at` restent à NULL → statut calculé = `unconfirmed`.
+
+**Given** l'onglet "Gestion des inscrits" ouvert par un rôle autorisé,
+**When** l'admin clique sur "Annuler l'inscription" d'un bénévole et confirme,
+**Then** `SlotSignupService.adminCancelSignup()` renseigne `canceled_at = now()` et `canceled_by = adminUserId` (statut calculé = `removed`) et libère la place,
+**And** l'admin se voit proposer une case "Notifier [email du bénévole]" avant confirmation ; si cochée, un email d'annulation est envoyé,
+**And** le bénévole passe dans le tableau de l'historique du créneau,
+**And** `signups.last_modified_by_user_id` et `last_modified_at` sont renseignés,
+**And** cette action est possible quel que soit l'état de la kermesse (override admin).
+
+**Given** l'onglet "Gestion des inscrits" et la fiche d'un bénévole,
+**When** l'admin modifie la fiche de l'inscription (prénom, nom, email, téléphone, ou les **notes internes** `admin_notes`),
+**Then** **seuls** les champs de la fiche d'inscription (`signups`) sont mis à jour — le compte global (`users`) n'est **jamais** modifié.
+**And** dans tous les cas, le champ `admin_notes` ("Maman de Léo") reste visible et éditable par l'admin.
+
+> **Modèle de données — Approche Snapshot** : la fiche d'inscription (`signups`) porte sa **propre copie** prénom/nom/email/téléphone (capturée au moment de l'inscription publique) ainsi que le champ `admin_notes`. Le compte utilisateur global n'est jamais réécrit par un admin.
+
+> **Règle de l'Identité Unique (Choix A)** : 1 compte (email) = 1 identité physique. Dès que le compte est validé par l'utilisateur, l'organisateur ne voit plus que le "vrai" nom du compte (table `users`), garantissant que le système ne triche pas en inventant plusieurs identités pour un même compte. Tout le besoin organisationnel (ex: le conjoint qui vient tenir le stand) est couvert par le champ `admin_notes` en attendant la future Epic de gestion des Invités.
+
+### Story 5.11 : Onglet "Gestion des inscrits" — Ajouter une inscription manuellement
+
+As an Owner/Admin/Gestionnaire,
+I want ajouter manuellement une inscription depuis l'onglet "Gestion des inscrits",
+So que j'inscrive un bénévole qui s'est signalé par téléphone ou en personne.
+
+**Acceptance Criteria:**
+
+**Given** l'onglet "Gestion des inscrits" ouvert par un rôle autorisé,
+**When** l'admin clique sur "Ajouter un bénévole" sur un créneau,
+**Then** un formulaire s'ouvre avec prénom, nom, email (obligatoire), téléphone (facultatif) et une case "Envoyer un email de confirmation",
+**And** le bouton de validation est désactivé tant que les champs obligatoires sont vides.
+
+**Given** un formulaire soumis avec des champs obligatoires manquants ou un email invalide,
+**When** l'admin soumet,
+**Then** des erreurs inline sont liées aux champs invalides et les valeurs saisies sont conservées.
+
+**Given** la soumission d'une inscription manuelle valide,
+**When** `SlotSignupService.createSignup()` la traite,
+**Then** les mêmes invariants s'appliquent qu'à l'inscription publique (capacité, doublon, chevauchement),
+**And** si la case "Envoyer un email de confirmation" est cochée, un email de confirmation avec Magic Link est envoyé via `EmailService`,
+**And** cette action est possible même si la kermesse est à l'état "Fermé" — override admin,
+**And** `signups.last_modified_by_user_id` est renseigné avec l'ID de l'admin.
+
+**Given** un email saisi qui correspond à un compte déjà existant, avec un prénom/nom différent de son profil,
+**When** l'inscription manuelle est créée,
+**Then** la fiche d'inscription (`signups`) porte les coordonnées saisies par l'admin, le compte global (`users`) n'est **pas** modifié,
+**And** la divergence copie↔profil sera réconciliée au premier accès du bénévole à la kermesse (Story 5.4), sans fusion silencieuse dans son compte.
+
+### Story 5.12 : Onglet "Gestion des inscrits" — Déplacer une inscription
+
+As an Owner/Admin/Gestionnaire,
+I want déplacer l'inscription d'un bénévole vers un autre créneau,
+So que je gère les ajustements de planning sans annuler et recréer manuellement.
+
+**Acceptance Criteria:**
+
+**Given** une inscription active dans l'onglet "Gestion des inscrits",
+**When** l'admin clique sur "Déplacer",
+**Then** une liste des créneaux disponibles (places restantes > 0, hors créneau source) s'affiche avec les horaires et places restantes.
+
+**Given** un créneau cible sélectionné,
+**When** l'admin confirme le déplacement,
+**Then** `SlotSignupService.moveSignup()` exécute dans une transaction : annule l'inscription source et crée l'inscription cible,
+**And** si la capacité du créneau cible est pleine au moment du déplacement, l'erreur `slot_full` est retournée et aucune des deux inscriptions n'est modifiée,
+**And** si le créneau cible chevauche un autre créneau où le bénévole est déjà inscrit (hors inscription source), l'erreur `overlap_conflict` est retournée et aucune des deux inscriptions n'est modifiée,
+**And** l'admin se voit proposer une case "Notifier [email]" ; si cochée, un email de déplacement est envoyé,
+**And** `signups.last_modified_by_user_id` et `last_modified_at` sont renseignés sur la nouvelle inscription.
+
+### Story 5.13 : Renommer le concept `signup` → `SlotSignup` (Ubiquitous Language) `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
+
+> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
+
+As a développeur,
+I want que l'entité « inscription à un créneau » soit nommée sans ambiguïté dans le code,
+So that on ne confonde plus avec une « création de compte » (qui, elle, est implicite via Magic Link).
+
+**Acceptance Criteria:**
+
+**Given** le code actuel utilisant la racine `signup`,
+**When** le renommage est appliqué en **un changement atomique**,
+**Then** l'entité devient `SlotSignup` : `SlotSignupService`, `SlotSignupModel`, `SlotSignupResult`, contrôleurs, vues et emails associés,
+**And** la table `signups` est renommée `slot_signups` (migration de renommage),
+**And** les identifiants dans `epics.md`, `architecture.md` et `CLAUDE.md` sont alignés,
+**And** les codes d'erreur stables (`duplicate_signup`, `signups_not_open`, `slot_full`) sont **conservés** tels quels (contrats stables, contextuellement clairs),
+**And** l'UI/French reste inchangée (« inscription » / « Mes participations »).
+
+_Hors périmètre (post-Epic 5) : journal chronologique complet des modifications (Qui/Quand/Quoi) par inscription, y compris les actions du bénévole lui-même._
+
+### Story 5.14 : Traçabilité et Validation des Inscriptions (Stateless)
+
+> **[Modif 3.2, Modif 4.3, Modif 4.4]** Cette story modifie le comportement de `SlotSignupService.createSignup()` livré en Story 3.2 (pas de création de compte silencieuse), de `SlotSignupService.cancelSignup()` livré en Story 4.3 (ajout `canceled_at`/`canceled_by`), et de `SlotSignupModel.findActiveParticipantsForKermesse()` livré en Story 4.4 (passage à `LEFT JOIN users` pour inclure les orphelins).
+
+As un architecte et product owner,
+I want tracer avec précision l'origine et le cycle de vie de chaque inscription via une machine à états rigoureuse (statuts + timestamps d'acteurs),
+So that je garantis la fiabilité des inscriptions tout en évitant la création de comptes inutiles et en responsabilisant les utilisateurs (bénévoles et admins).
+
+**Acceptance Criteria:**
+
+---
+
+**[AC-1 — Statut à la création et `created_by`]**
+
+**Given** l'inscription publique d'un bénévole à un créneau,
+**When** le visiteur n'est pas connecté (email inconnu ou connu),
+**Then** l'inscription est insérée avec `user_id = NULL` et `created_by = NULL` (pas de création de compte silencieuse) — **aucun champ `status` n'est inséré en base** ; le statut `unconfirmed` est calculé à la volée : `canceled_at IS NULL AND rejected_at IS NULL AND accepted_at IS NULL`.
+**And** le champ `created_by` est présent dans `SlotSignupModel.$allowedFields` et inclus dans chaque appel INSERT de `signupWithinTransaction()`.
+
+**When** l'utilisateur est connecté (bénévole ou admin via `createSignupByAdmin`),
+**Then** l'inscription est insérée avec `created_by = user_id_de_la_session` et `accepted_at = now()` — le statut `certified` est calculé à la volée : `accepted_at IS NOT NULL`.
+
+**And** dans tous les cas, `RoleService` ne crée une entrée `Bénévole` dans `kermesse_user_roles` **que si** `user_id` est non nul ; si `user_id = NULL`, cette entrée sera créée lors de `resolveOrphanSignups` à la première connexion.
+
+---
+
+**[AC-2 — Rattachement des orphelins à la connexion]**
+
+**Given** un bénévole qui se connecte,
+**When** il existe des inscriptions associées à son email dont le `user_id` est NULL,
+**Then** le système les rattache (mise à jour du `user_id`) via `SlotSignupService.resolveOrphanSignups()` (qui délègue à `SlotSignupModel.attachOrphansToUser()` en interne),
+**And** `viewed_at` est renseigné sur ces inscriptions (s'il était NULL) pour prouver la prise de connaissance,
+**And** `RoleService` crée une entrée `Bénévole` dans `kermesse_user_roles` pour chaque kermesse concernée.
+
+---
+
+**[AC-3 — Accept/Reject depuis "Mes participations"]**
+
+**Given** une inscription où `created_by` est NULL ou différent de l'`user_id` du bénévole connecté,
+**When** le bénévole consulte la section « Mes participations »,
+**Then** un bouton « Confirmer » et un bouton « Refuser » sont affichés tant que `accepted_at` et `rejected_at` sont tous les deux NULL.
+
+**When** le bénévole clique « Confirmer »,
+**Then** `SlotSignupService.acceptSignup(signupId, userId)` renseigne `accepted_at = now()` et retourne succès.
+
+**When** le bénévole clique « Refuser »,
+**Then** `SlotSignupService.rejectSignup(signupId, userId)` renseigne `rejected_at = now()` et retourne succès.
+
+Ces deux méthodes doivent exister dans `SignupService` et dans `SignupModel` (méthode dédiée ou via `save()`).
+
+---
+
+**[AC-4 — Annulations avec `canceled_at` / `canceled_by`]**
+
+**Given** un bénévole annulant sa propre inscription (`cancelSignup`),
+**Then** en plus du `status = 'cancelled'`, `SlotSignupModel.markCancelled()` renseigne `canceled_at = now()` et `canceled_by = userId`.
+
+**Given** un admin annulant une inscription (`adminCancelSignup`),
+**Then** en plus du `status = 'removed'`, `SlotSignupModel.markCancelledByAdmin()` renseigne `canceled_at = now()` et `canceled_by = adminUserId`.
+
+Ces deux timestamps doivent être inclus dans le `update()` de leurs méthodes respectives dans `SignupModel`.
+
+---
+
+**[AC-5 — Requête admin orphan-safe]**
+
+**Given** la méthode `SlotSignupModel.findActiveParticipantsForKermesse()`,
+**When** des inscriptions avec `user_id = NULL` existent pour la kermesse,
+**Then** ces inscriptions apparaissent dans la liste admin (elles ne sont pas exclues),
+**And** pour ces orphelins, le nom et l'email affichés sont les colonnes snapshot `signups.first_name`, `signups.last_name`, `signups.email` (fallback puisqu'il n'y a pas de `users` row),
+**And** la requête utilise un `LEFT JOIN users` au lieu d'un `INNER JOIN` pour ne pas filtrer silencieusement les orphelins.
+
+---
+
+**[AC-6 — Admin : réassignation d'email]**
+
+**When** l'administrateur corrige manuellement l'email d'un invité et que ce nouvel email correspond à un utilisateur existant,
+**Then** l'inscription est réassignée en mettant à jour le `user_id` avec celui du compte correspondant (réassignation simple — pas de fusion complexe de comptes).
+
+---
+
+**[AC-7 — Orphelins et capacité]**
+
+**Given** une inscription orpheline (`user_id = NULL`) non encore réclamée,
+**When** elle existe sur un créneau,
+**Then** elle compte dans la capacité active ; seul l'admin peut la supprimer manuellement depuis « Gestion des inscrits ».
+
+---
+
+> **Note de migration de comportement (Modif 3.2)** : en Epic 3, `SlotSignupService.createSignup()` créait un compte `users` si l'email était inconnu. Cette story supprime ce comportement : seul `find` (jamais `findOrCreate`) est utilisé dans `signupWithinTransaction()`. Le `user_id` reste NULL jusqu'à la première connexion du bénévole. Les tests de Story 3.2 couvrant la création d'utilisateur implicite seront mis à jour lors du développement de cette story.
+
+> **Note d'implémentation — couche de données** : les colonnes `created_by`, `viewed_at`, `accepted_at`, `rejected_at`, `canceled_at`, `canceled_by` doivent toutes être présentes dans `SlotSignupModel.$allowedFields`. La migration ajoutant ces colonnes à la table `signups` est le prérequis de cette story.
+
+
+### Story 7.2 : Nettoyage du code zombie de résolution de profil `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
+
+> **Décision (2026-06-17, renumérotation 2026-06-18)** : story déprioritisée au profit du fonctionnel restant (Story 5.14). Déplacée en backlog — candidate pour l'Epic 7 "Post-MVP Guests & Nettoyage".
+
+As a développeur,
+I want supprimer le code mort résiduel issu de l'ancienne résolution de profil (pré-stateless),
+So that la base de code ne contienne plus de chemins non utilisés qui créent de la confusion.
+
+**Acceptance Criteria:**
+
+**Given** le refactoring stateless effectué dans les stories 3.6 et 5.4,
+**When** le nettoyage est appliqué,
+**Then** tout code zombie identifié (méthodes, tables, colonnes, vues) est supprimé proprement,
+**And** les tests couvrant le comportement supprimé sont mis à jour ou retirés,
+**And** aucune régression fonctionnelle n'est introduite.

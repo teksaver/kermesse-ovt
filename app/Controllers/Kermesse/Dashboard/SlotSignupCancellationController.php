@@ -6,18 +6,18 @@ namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\UserModel;
-use App\Services\SignupService;
+use App\Services\SlotSignupService;
 
 /**
- * Lets a volunteer manage their OWN signups from the dashboard's "Mes participations"
+ * Lets a volunteer manage their OWN slot-signups from the dashboard's "Mes participations"
  * section (Stories 4.3, 5.14).
  *
- * Single responsibility: translate the POST into SignupService calls and
+ * Single responsibility: translate the POST into SlotSignupService calls and
  * PRG-redirect with a French flash message. All invariants live in the service.
  */
-class SignupCancellationController extends BaseController
+class SlotSignupCancellationController extends BaseController
 {
     /** POST /kermesse/{kermesseId}/signups/{signupId}/cancel */
     public function cancel(string $kermesseId, string $signupId): mixed
@@ -25,13 +25,13 @@ class SignupCancellationController extends BaseController
         $id     = (int) $kermesseId;
         $userId = (int) session()->get('user_id');
 
-        $service = new SignupService(
+        $service = new SlotSignupService(
             model(UserModel::class),
-            model(SignupModel::class),
+            model(SlotSignupModel::class),
             model(KermesseModel::class),
         );
 
-        $result = $service->cancelSignup((int) $signupId, $userId, $id);
+        $result = $service->cancelSlotSignup((int) $signupId, $userId, $id);
 
         if ($result->success) {
             session()->setFlashdata('participation_notice', 'La place est de nouveau disponible.');
@@ -50,13 +50,13 @@ class SignupCancellationController extends BaseController
         $id     = (int) $kermesseId;
         $userId = (int) session()->get('user_id');
 
-        $service = new SignupService(
+        $service = new SlotSignupService(
             model(UserModel::class),
-            model(SignupModel::class),
+            model(SlotSignupModel::class),
             model(KermesseModel::class),
         );
 
-        $result = $service->acceptSignup((int) $signupId, $userId, $id);
+        $result = $service->acceptSlotSignup((int) $signupId, $userId, $id);
 
         if ($result->success) {
             session()->setFlashdata('participation_notice', 'Votre participation a été confirmée.');
@@ -73,13 +73,13 @@ class SignupCancellationController extends BaseController
         $id     = (int) $kermesseId;
         $userId = (int) session()->get('user_id');
 
-        $service = new SignupService(
+        $service = new SlotSignupService(
             model(UserModel::class),
-            model(SignupModel::class),
+            model(SlotSignupModel::class),
             model(KermesseModel::class),
         );
 
-        $result = $service->rejectSignup((int) $signupId, $userId, $id);
+        $result = $service->rejectSlotSignup((int) $signupId, $userId, $id);
 
         if ($result->success) {
             session()->setFlashdata('participation_notice', 'Votre refus a été enregistré. La place a été libérée.');

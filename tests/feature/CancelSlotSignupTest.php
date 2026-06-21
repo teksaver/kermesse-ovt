@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -20,7 +20,7 @@ use CodeIgniter\Test\FeatureTestTrait;
  *
  * @internal
  */
-final class CancelSignupTest extends CIUnitTestCase
+final class CancelSlotSignupTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
@@ -47,7 +47,7 @@ final class CancelSignupTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -90,7 +90,7 @@ final class CancelSignupTest extends CIUnitTestCase
         $this->assertSame(1, $this->activeCount());
 
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/cancel");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -99,7 +99,7 @@ final class CancelSignupTest extends CIUnitTestCase
         $this->assertSame(0, $this->activeCount());
 
         // canceled_at et canceled_by sont renseignés (AC post-review).
-        $row = db_connect()->table('signups')->where('id', $this->signupId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('id', $this->signupId)->get()->getRowArray();
         $this->assertNotNull($row['canceled_at'], 'canceled_at doit être renseigné après annulation');
         $this->assertSame($this->benevoleId, (int) $row['canceled_by'], 'canceled_by doit correspondre à l\'annulateur');
 
@@ -113,7 +113,7 @@ final class CancelSignupTest extends CIUnitTestCase
     public function testMessageIsRenderedOnDashboardAfterCancel(): void
     {
         $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/cancel");
 
         // La participation annulée disparaît de la liste active.
         $result = $this->getDashboard($this->benevoleId);
@@ -130,7 +130,7 @@ final class CancelSignupTest extends CIUnitTestCase
         $this->setKermesseStatus('closed');
 
         $result = $this->withSession($this->session($this->benevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/cancel");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -151,7 +151,7 @@ final class CancelSignupTest extends CIUnitTestCase
     public function testBenevoleCannotCancelAnotherVolunteersSignup(): void
     {
         $result = $this->withSession($this->session($this->autreBenevoleId))
-            ->csrfPost("kermesse/{$this->kermesseId}/signups/{$this->signupId}/cancel");
+            ->csrfPost("kermesse/{$this->kermesseId}/slot-signups/{$this->signupId}/cancel");
 
         $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#participations');
 
@@ -178,7 +178,7 @@ final class CancelSignupTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => '', 
+                'phone'      => '',
             ]);
         }
 
@@ -220,7 +220,7 @@ final class CancelSignupTest extends CIUnitTestCase
         ]);
         $this->slotId = (int) $db->insertID();
 
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id'    => $this->slotId,
             'user_id'    => $this->benevoleId,
             'created_by' => $this->benevoleId,
@@ -235,14 +235,14 @@ final class CancelSignupTest extends CIUnitTestCase
 
     private function activeCount(): int
     {
-        return model(SignupModel::class)->countActiveBySlotIds([$this->slotId])[$this->slotId] ?? 0;
+        return model(SlotSignupModel::class)->countActiveBySlotIds([$this->slotId])[$this->slotId] ?? 0;
     }
 
     private function signupStatus(): string
     {
-        $row = db_connect()->table('signups')->where('id', $this->signupId)->get()->getRowArray();
+        $row = db_connect()->table('slot_signups')->where('id', $this->signupId)->get()->getRowArray();
 
-        return $row !== null ? \App\Models\SignupModel::getStatus($row) : '';
+        return $row !== null ? \App\Models\SlotSignupModel::getStatus($row) : '';
     }
 
     private function session(int $userId): array
@@ -333,7 +333,7 @@ final class CancelSignupTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

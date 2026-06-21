@@ -71,7 +71,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
@@ -98,7 +98,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
@@ -158,7 +158,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
             $vals .= ", '" . addslashes($ts) . "'";
         }
 
-        $db->query("INSERT INTO db_signups ({$cols}, first_name, last_name) VALUES ({$vals}, '" . addslashes($name) . "', '')");
+        $db->query("INSERT INTO db_slot_signups ({$cols}, first_name, last_name) VALUES ({$vals}, '" . addslashes($name) . "', '')");
         return (int) $db->insertID();
     }
 
@@ -210,7 +210,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $this->assertStringContainsString('sur 6', $body);
         // Available slot rendered as a real <a> link to the signup form
         $this->assertStringContainsString('slot-row--available', $body);
-        $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/signup"#', $body);
+        $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/slot-signup"#', $body);
         $this->assertStringContainsString('Déjà inscrit', $body);
         $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }

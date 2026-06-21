@@ -1,16 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Model;
 
-class SignupModel extends Model
+class SlotSignupModel extends Model
 {
     use LockingReadsTrait;
 
-    protected $table      = 'signups';
+    protected $table      = 'slot_signups';
     protected $primaryKey = 'id';
     protected $returnType = 'array';
     protected $useTimestamps = true;
@@ -36,16 +38,16 @@ class SignupModel extends Model
     ];
 
     /**
-     * Delegates to Signup::computeStatus() — logic lives in the entity.
+     * Delegates to SlotSignup::computeStatus() — logic lives in the entity.
      * Kept as a static wrapper for callers that work with raw row arrays.
      */
     public static function getStatus(array $row): string
     {
-        return \App\Entities\Signup::computeStatus($row);
+        return \App\Entities\SlotSignup::computeStatus($row);
     }
 
     /**
-     * Returns true when the signup requires the volunteer's explicit confirmation:
+     * Returns true when the slot-signup requires the volunteer's explicit confirmation:
      * created by someone else (admin) and not yet accepted.
      * Used to decide whether to show Accept/Refuse buttons vs the Cancel button.
      */
@@ -58,7 +60,7 @@ class SignupModel extends Model
     }
 
     /**
-     * SQL fragment that evaluates to true when a signup is "active" (counts toward
+     * SQL fragment that evaluates to true when a slot-signup is "active" (counts toward
      * capacity and is visible). Alias for the WHERE clause in raw queries.
      *
      * Active = not canceled, not refused, not soft-deleted.
@@ -66,7 +68,7 @@ class SignupModel extends Model
     public const ACTIVE_CONDITION = 'canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL';
 
     /**
-     * Return the active signup count for a single slot.
+     * Return the active slot-signup count for a single slot.
      *
      * Pass $db to run on the signup transaction's connection — the count is correct
      * under concurrency only because the slot row is locked FOR UPDATE before this
@@ -78,7 +80,7 @@ class SignupModel extends Model
             return $this->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
         }
 
-        $table = $db->prefixTable('signups');
+        $table = $db->prefixTable($this->table);
 
         $result = $db->query(
             "SELECT COUNT(*) AS cnt FROM {$table}
@@ -94,14 +96,14 @@ class SignupModel extends Model
     }
 
     /**
-     * Return an active signup for the given user on the given slot, or null.
+     * Return an active slot-signup for the given user on the given slot, or null.
      *
      * Used for duplicate-signup detection inside a transaction.
      */
     public function findActiveByEmailOrUserAndSlot(string $email, ?int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
     {
         $conn  = $db ?? $this->db;
-        $table = $conn->prefixTable('signups');
+        $table = $conn->prefixTable($this->table);
 
         $userCond = $userId !== null ? "OR user_id = ?" : "";
         $params = [$slotId, $email];
@@ -125,7 +127,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return the first active signup whose slot overlaps [$startsAt, $endsAt) for
+     * Return the first active slot-signup whose slot overlaps [$startsAt, $endsAt) for
      * the given user, excluding $excludeSlotId (the target slot).
      */
     public function findOverlappingActiveByEmailOrUser(
@@ -134,22 +136,26 @@ class SignupModel extends Model
         string $startsAt,
         string $endsAt,
         int    $excludeSlotId,
+        int    $kermesseId,
         ?ConnectionInterface $db = null,
     ): ?array {
         $conn    = $db ?? $this->db;
-        $tSign   = $conn->prefixTable('signups');
+        $tSign   = $conn->prefixTable($this->table);
         $tSlots  = $conn->prefixTable('slots');
+        $tStands = $conn->prefixTable('stands');
 
-        $userCond = $userId !== null ? "OR user_id = ?" : "";
-        $params = [$excludeSlotId, $email];
+        $userCond = $userId !== null ? "OR si.user_id = ?" : "";
+        $params = [$excludeSlotId, $kermesseId, $email];
         if ($userId !== null) {
             $params[] = $userId;
         }
 
         $signups = $conn->query(
-            "SELECT id, slot_id FROM {$tSign}
-             WHERE slot_id != ? AND (email = ? {$userCond})
-               AND " . self::ACTIVE_CONDITION . $this->forUpdateSuffix($conn),
+            "SELECT si.id, si.slot_id FROM {$tSign} si
+             JOIN {$tSlots} sl ON sl.id = si.slot_id
+             JOIN {$tStands} st ON st.id = sl.stand_id
+             WHERE si.slot_id != ? AND st.kermesse_id = ? AND (si.email = ? {$userCond})
+               AND si.canceled_at IS NULL AND si.rejected_at IS NULL AND si.deleted_at IS NULL " . $this->forUpdateSuffix($conn),
             $params
         )->getResultArray();
 
@@ -178,7 +184,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return active signup counts keyed by slot ID.
+     * Return active slot-signup counts keyed by slot ID.
      *
      * @param int[] $slotIds
      * @return array<int, int>  slot_id => count
@@ -205,7 +211,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return a connected user's ACTIVE signups for one kermesse, joined to the slot
+     * Return a connected user's ACTIVE slot-signups for one kermesse, joined to the slot
      * and stand for the dashboard "Mes participations" section (Story 4.2).
      *
      * Active = canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL.
@@ -214,15 +220,15 @@ class SignupModel extends Model
      */
     public function findActiveForUserAndKermesse(int $userId, int $kermesseId): array
     {
-        return $this->db->table($this->table . ' si')
-            ->select('si.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at, si.accepted_at, si.created_by')
-            ->join('slots sl', 'sl.id = si.slot_id')
+        return $this->db->table($this->table . ' ss')
+            ->select('ss.id AS signup_id, st.name AS stand_name, sl.starts_at, sl.ends_at, ss.accepted_at, ss.created_by')
+            ->join('slots sl', 'sl.id = ss.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
             ->where('st.kermesse_id', $kermesseId)
-            ->where('si.user_id', $userId)
-            ->where('si.canceled_at', null)
-            ->where('si.rejected_at', null)
-            ->where('si.deleted_at', null)
+            ->where('ss.user_id', $userId)
+            ->where('ss.canceled_at', null)
+            ->where('ss.rejected_at', null)
+            ->where('ss.deleted_at', null)
             ->orderBy('sl.starts_at', 'ASC')
             ->orderBy('sl.id', 'ASC')
             ->get()
@@ -230,7 +236,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return every ACTIVE signup for a kermesse, joined to each volunteer's identity and
+     * Return every ACTIVE slot-signup for a kermesse, joined to each volunteer's identity and
      * contact details, for the dashboard "Gestion des inscrits" section (Story 4.4/5.3/5.10/5.14).
      *
      * Story 5.14: LEFT JOIN users so orphan signups (user_id IS NULL) are included.
@@ -242,36 +248,36 @@ class SignupModel extends Model
      */
     public function findActiveParticipantsForKermesse(int $kermesseId): array
     {
-        $si    = $this->db->prefixTable('signups');
+        $ss    = $this->db->prefixTable($this->table);
         $sl    = $this->db->prefixTable('slots');
         $st    = $this->db->prefixTable('stands');
         $u     = $this->db->prefixTable('users');
         $kur   = $this->db->prefixTable('kermesse_user_roles');
 
         $sql = "SELECT
-                si.id AS signup_id, si.slot_id, sl.stand_id,
-                si.user_id, si.accepted_at, si.created_by,
+                ss.id AS signup_id, ss.slot_id, sl.stand_id,
+                ss.user_id, ss.accepted_at, ss.created_by,
                 u.first_name, u.last_name, u.phone, u.email, u.last_login_at,
-                si.first_name  AS signup_first_name, si.last_name AS signup_last_name,
-                si.email       AS signup_email,       si.phone    AS signup_phone,
-                si.admin_notes,
+                ss.first_name  AS signup_first_name, ss.last_name AS signup_last_name,
+                ss.email       AS signup_email,       ss.phone    AS signup_phone,
+                ss.admin_notes,
                 kur_agg.first_access_at,
-                si.last_modified_at, mod_u.first_name AS modifier_first_name
-            FROM {$si} si
-            JOIN {$sl} sl      ON sl.id = si.slot_id
+                ss.last_modified_at, mod_u.first_name AS modifier_first_name
+            FROM {$ss} ss
+            JOIN {$sl} sl      ON sl.id = ss.slot_id
             JOIN {$st} st      ON st.id = sl.stand_id
-            LEFT JOIN {$u}  u       ON u.id  = si.user_id
-            LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
+            LEFT JOIN {$u}  u       ON u.id  = ss.user_id
+            LEFT JOIN {$u}  mod_u ON mod_u.id = ss.last_modified_by_user_id
             LEFT JOIN (
                 SELECT user_id, kermesse_id, MIN(first_access_at) AS first_access_at
                 FROM {$kur}
                 GROUP BY user_id, kermesse_id
-            ) kur_agg ON kur_agg.user_id = si.user_id AND kur_agg.kermesse_id = st.kermesse_id
+            ) kur_agg ON kur_agg.user_id = ss.user_id AND kur_agg.kermesse_id = st.kermesse_id
             WHERE st.kermesse_id = ?
-              AND si.canceled_at IS NULL
-              AND si.rejected_at IS NULL
-              AND si.deleted_at IS NULL
-            ORDER BY u.last_name ASC, u.first_name ASC, si.id ASC";
+              AND ss.canceled_at IS NULL
+              AND ss.rejected_at IS NULL
+              AND ss.deleted_at IS NULL
+            ORDER BY u.last_name ASC, u.first_name ASC, ss.id ASC";
 
         $result = $this->db->query($sql, [$kermesseId]);
 
@@ -279,7 +285,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return historical (cancelled/removed/refused) signups for a kermesse.
+     * Return historical (cancelled/removed/refused) slot-signups for a kermesse.
      *
      * Story 5.14: status is computed from timestamps. Cancelled = canceled_at set by
      * volunteer (canceled_by = user_id). Removed = canceled_at set by admin (canceled_by
@@ -289,26 +295,26 @@ class SignupModel extends Model
      */
     public function findHistoricalParticipantsForKermesse(int $kermesseId): array
     {
-        $si  = $this->db->prefixTable('signups');
+        $ss  = $this->db->prefixTable($this->table);
         $sl  = $this->db->prefixTable('slots');
         $st  = $this->db->prefixTable('stands');
         $u   = $this->db->prefixTable('users');
 
         $sql = "SELECT
-                si.id AS signup_id, si.slot_id, sl.stand_id,
-                si.canceled_at, si.canceled_by, si.rejected_at, si.user_id,
+                ss.id AS signup_id, ss.slot_id, sl.stand_id,
+                ss.canceled_at, ss.canceled_by, ss.rejected_at, ss.user_id,
                 u.first_name, u.last_name,
-                si.first_name AS signup_first_name, si.last_name AS signup_last_name,
-                si.last_modified_at, mod_u.first_name AS modifier_first_name
-            FROM {$si} si
-            JOIN {$sl} sl      ON sl.id = si.slot_id
+                ss.first_name AS signup_first_name, ss.last_name AS signup_last_name,
+                ss.last_modified_at, mod_u.first_name AS modifier_first_name
+            FROM {$ss} ss
+            JOIN {$sl} sl      ON sl.id = ss.slot_id
             JOIN {$st} st      ON st.id = sl.stand_id
-            LEFT JOIN {$u}  u       ON u.id  = si.user_id
-            LEFT JOIN {$u}  mod_u ON mod_u.id = si.last_modified_by_user_id
+            LEFT JOIN {$u}  u       ON u.id  = ss.user_id
+            LEFT JOIN {$u}  mod_u ON mod_u.id = ss.last_modified_by_user_id
             WHERE st.kermesse_id = ?
-              AND (si.canceled_at IS NOT NULL OR si.rejected_at IS NOT NULL)
-              AND si.deleted_at IS NULL
-            ORDER BY si.last_modified_at DESC, u.last_name ASC, si.id ASC";
+              AND (ss.canceled_at IS NOT NULL OR ss.rejected_at IS NOT NULL)
+              AND ss.deleted_at IS NULL
+            ORDER BY ss.last_modified_at DESC, u.last_name ASC, ss.id ASC";
 
         $result = $this->db->query($sql, [$kermesseId]);
 
@@ -323,23 +329,23 @@ class SignupModel extends Model
     }
 
     /**
-     * Return an ACTIVE signup that belongs to $kermesseId (via slot→stand scope),
+     * Return an ACTIVE slot-signup that belongs to $kermesseId (via slot→stand scope),
      * with no user-ownership restriction — used by admin cancel and edit actions.
      *
      * @return array{id: int, user_id: int|null, slot_id: int, email: string|null, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null, stand_name: string, starts_at: string, ends_at: string}|null
      */
     public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
     {
-        $row = $this->db->table($this->table . ' si')
-            ->select('si.id, si.user_id, si.slot_id, u.email, u.first_name, u.last_name, u.phone, si.email AS signup_email, si.first_name AS signup_first_name, si.last_name AS signup_last_name, si.phone AS signup_phone, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
-            ->join('slots sl', 'sl.id = si.slot_id')
+        $row = $this->db->table($this->table . ' ss')
+            ->select('ss.id, ss.user_id, ss.slot_id, u.email, u.first_name, u.last_name, u.phone, ss.email AS signup_email, ss.first_name AS signup_first_name, ss.last_name AS signup_last_name, ss.phone AS signup_phone, st.name AS stand_name, sl.starts_at, sl.ends_at', false)
+            ->join('slots sl', 'sl.id = ss.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
-            ->join('users u', 'u.id = si.user_id', 'left')
-            ->where('si.id', $signupId)
+            ->join('users u', 'u.id = ss.user_id', 'left')
+            ->where('ss.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
-            ->where('si.canceled_at', null)
-            ->where('si.rejected_at', null)
-            ->where('si.deleted_at', null)
+            ->where('ss.canceled_at', null)
+            ->where('ss.rejected_at', null)
+            ->where('ss.deleted_at', null)
             ->get()
             ->getRowArray();
 
@@ -347,7 +353,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Mark a signup as cancelled by admin (sets canceled_at and canceled_by to admin).
+     * Mark a slot-signup as cancelled by admin (sets canceled_at and canceled_by to admin).
      * Returns true when exactly one active row was updated.
      */
     public function markCancelledByAdmin(int $signupId, int $adminUserId): bool
@@ -368,7 +374,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Write the admin-editable contact fields to the signups row (Story 5.10 AC2).
+     * Write the admin-editable contact fields to the slot_signups row (Story 5.10 AC2).
      *
      * @param array{first_name?: string, last_name?: string, email?: string, phone?: string, admin_notes?: string} $fields
      */
@@ -390,7 +396,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Return an ACTIVE signup that belongs to $userId AND to $kermesseId, or null.
+     * Return an ACTIVE slot-signup that belongs to $userId AND to $kermesseId, or null.
      * Ownership + scope guard for volunteer self-cancellation (Story 4.3).
      *
      * @return array{id: int, user_id: int, slot_id: int}|null
@@ -399,23 +405,23 @@ class SignupModel extends Model
     {
         $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
 
-        $builder = $this->db->table($this->table . ' si')
-            ->select('si.id, si.user_id, si.slot_id, si.accepted_at')
-            ->join('slots sl', 'sl.id = si.slot_id')
+        $builder = $this->db->table($this->table . ' ss')
+            ->select('ss.id, ss.user_id, ss.slot_id, ss.accepted_at')
+            ->join('slots sl', 'sl.id = ss.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
-            ->where('si.id', $signupId)
+            ->where('ss.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
-            ->where('si.canceled_at', null)
-            ->where('si.rejected_at', null)
-            ->where('si.deleted_at', null);
+            ->where('ss.canceled_at', null)
+            ->where('ss.rejected_at', null)
+            ->where('ss.deleted_at', null);
 
         if ($userRow !== null && $userRow->email !== '') {
             $builder->groupStart()
-                ->where('si.user_id', $userId)
-                ->orWhere('si.email', $userRow->email)
+                ->where('ss.user_id', $userId)
+                ->orWhere('ss.email', $userRow->email)
                 ->groupEnd();
         } else {
-            $builder->where('si.user_id', $userId);
+            $builder->where('ss.user_id', $userId);
         }
 
         $row = $builder->get()->getRowArray();
@@ -424,29 +430,29 @@ class SignupModel extends Model
     }
 
     /**
-     * Find a signup that is already rejected and owned by the given user in the given kermesse.
-     * Used for idempotency in rejectSignup(): a second POST after the slot was already freed
+     * Find a slot-signup that is already rejected and owned by the given user in the given kermesse.
+     * Used for idempotency in rejectSlotSignup(): a second POST after the slot was already freed
      * should return success rather than a confusing "not_found" error.
      */
     public function findRejectedOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
     {
         $userRow = $this->db->table('users')->select('email')->where('id', $userId)->get()->getRow();
 
-        $builder = $this->db->table($this->table . ' si')
-            ->select('si.id')
-            ->join('slots sl', 'sl.id = si.slot_id')
+        $builder = $this->db->table($this->table . ' ss')
+            ->select('ss.id')
+            ->join('slots sl', 'sl.id = ss.slot_id')
             ->join('stands st', 'st.id = sl.stand_id')
-            ->where('si.id', $signupId)
+            ->where('ss.id', $signupId)
             ->where('st.kermesse_id', $kermesseId)
-            ->where('si.rejected_at IS NOT NULL', null, false);
+            ->where('ss.rejected_at IS NOT NULL', null, false);
 
         if ($userRow !== null && $userRow->email !== '') {
             $builder->groupStart()
-                ->where('si.user_id', $userId)
-                ->orWhere('si.email', $userRow->email)
+                ->where('ss.user_id', $userId)
+                ->orWhere('ss.email', $userRow->email)
                 ->groupEnd();
         } else {
-            $builder->where('si.user_id', $userId);
+            $builder->where('ss.user_id', $userId);
         }
 
         $row = $builder->get()->getRowArray();
@@ -471,7 +477,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Transition an ACTIVE signup to CANCELLED by the volunteer (sets canceled_at,
+     * Transition an ACTIVE slot-signup to CANCELLED by the volunteer (sets canceled_at,
      * canceled_by = userId). Returns true only when exactly one active row flipped.
      */
     public function markCancelled(int $signupId, int $userId): bool
@@ -493,7 +499,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Mark a signup as accepted (certified) by the volunteer (Story 5.14 AC3).
+     * Mark a slot-signup as accepted (certified) by the volunteer (Story 5.14 AC3).
      * Sets accepted_at. Only applies when the signup has no accepted_at yet.
      */
     public function markAccepted(int $signupId, int $userId): bool
@@ -531,7 +537,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Mark a signup as rejected by the volunteer (Story 5.14 AC4).
+     * Mark a slot-signup as rejected by the volunteer (Story 5.14 AC4).
      * Sets rejected_at, which frees the slot capacity.
      * Requires accepted_at IS NULL — a certified signup cannot be rejected (P3).
      */
@@ -565,7 +571,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Attaches orphan signups to a user and stamps viewed_at for those not yet seen.
+     * Attaches orphan slot-signups to a user and stamps viewed_at for those not yet seen.
      *
      * @return int Number of rows attached (viewed_at updated)
      */
@@ -584,14 +590,14 @@ class SignupModel extends Model
     }
 
     /**
-     * Return the distinct kermesse IDs for all active signups belonging to a user.
+     * Return the distinct kermesse IDs for all active slot-signups belonging to a user.
      * Used by resolveOrphanSignups to insert benevole roles after orphan attachment.
      *
      * @return list<int>
      */
     public function findKermesseIdsForUser(int $userId): array
     {
-        $si = $this->db->prefixTable('signups');
+        $si = $this->db->prefixTable($this->table);
         $sl = $this->db->prefixTable('slots');
         $st = $this->db->prefixTable('stands');
 
@@ -610,7 +616,7 @@ class SignupModel extends Model
     }
 
     /**
-     * Stamp viewed_at for existing unconfirmed signups of a user that have not yet been seen.
+     * Stamp viewed_at for existing unconfirmed slot-signups of a user that have not yet been seen.
      * Called at login for signups already attached to the user but not yet acknowledged (AC1).
      *
      * @return int Number of rows updated

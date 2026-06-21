@@ -40,7 +40,7 @@ final class ManageStandsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -124,7 +124,7 @@ final class ManageStandsTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
@@ -233,7 +233,7 @@ final class ManageStandsTest extends CIUnitTestCase
     private function insertSignup(int $slotId, int $userId): int
     {
         $db = db_connect();
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
         ]);
@@ -508,12 +508,12 @@ final class ManageStandsTest extends CIUnitTestCase
 
         // Le nouveau stand part avec zéro inscrit : aucun signup ne pointe vers ses créneaux.
         $signupCount = (int) $db
-            ->query("SELECT COUNT(*) AS cnt FROM db_signups s JOIN db_slots sl ON sl.id = s.slot_id WHERE sl.stand_id = {$newStandId}")
+            ->query("SELECT COUNT(*) AS cnt FROM db_slot_signups s JOIN db_slots sl ON sl.id = s.slot_id WHERE sl.stand_id = {$newStandId}")
             ->getRowArray()['cnt'];
         $this->assertSame(0, $signupCount);
 
         // L'inscription d'origine reste intacte.
-        $totalSignups = (int) $db->query('SELECT COUNT(*) AS cnt FROM db_signups')->getRowArray()['cnt'];
+        $totalSignups = (int) $db->query('SELECT COUNT(*) AS cnt FROM db_slot_signups')->getRowArray()['cnt'];
         $this->assertSame(1, $totalSignups);
     }
 

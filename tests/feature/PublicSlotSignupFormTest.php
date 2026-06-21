@@ -1,5 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
@@ -12,7 +16,7 @@ use CodeIgniter\Test\FeatureTestTrait;
  *
  * @internal
  */
-final class PublicSignupFormTest extends CIUnitTestCase
+final class PublicSlotSignupFormTest extends CIUnitTestCase
 {
     use FeatureTestTrait;
 
@@ -86,11 +90,10 @@ final class PublicSignupFormTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,
-                status                    TEXT     NOT NULL DEFAULT \'active\',
                 deleted_at                DATETIME NULL DEFAULT NULL,
                 last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
                 last_modified_at          DATETIME NULL DEFAULT NULL,
@@ -143,7 +146,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
@@ -217,7 +220,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $body = $result->response()->getBody();
 
         $this->assertMatchesRegularExpression(
-            '#href="[^"]+/k/ecole-link/slots/' . $slotId . '/signup"#',
+            '#href="[^"]+/k/ecole-link/slots/' . $slotId . '/slot-signup"#',
             $body,
             'An available slot must link to its signup form URL',
         );
@@ -231,15 +234,15 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $db    = db_connect();
         $userIdFull = $this->insertUser('benevole@test.example', 'Test', 'Bénévole');
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$userIdFull}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, created_at, updated_at)
+            VALUES ({$slotId}, {$userIdFull}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         $result = $this->get('k/ecole-full-link');
         $body   = $result->response()->getBody();
 
         $this->assertStringContainsString('slot-row--full', $body);
         $this->assertStringContainsString('aria-disabled="true"', $body);
-        $this->assertStringNotContainsString('/signup', $body);
+        $this->assertStringNotContainsString('/slot-signup', $body);
     }
 
     // ------------------------------------------------------------------
@@ -252,7 +255,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId, 'Crêperie');
         $slotId     = $this->insertSlot($standId, 8);
 
-        $result = $this->get("k/ecole-form/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-form/slots/{$slotId}/slot-signup");
         $result->assertOK();
         $body = $result->response()->getBody();
 
@@ -282,7 +285,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-mobile-form/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-mobile-form/slots/{$slotId}/slot-signup");
         $body   = $result->response()->getBody();
 
         $this->assertStringContainsString('width=device-width', $body);
@@ -299,11 +302,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-post-err/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-post-err/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'not-an-email',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -321,11 +324,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-post-miss/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-post-miss/slots/{$slotId}/slot-signup", [
             'first_name' => '',
             'last_name'  => '',
             'email'      => 'valid@email.example',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -342,11 +345,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-summary/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-summary/slots/{$slotId}/slot-signup", [
             'first_name' => '',
             'last_name'  => '',
             'email'      => '',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -363,16 +366,16 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-phone-opt/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-phone-opt/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@exemple.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // Valid submit redirects to confirmation page (signup created in 3.3)
         $this->assertSame(302, $result->response()->getStatusCode());
-        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+        $this->assertStringContainsString('/slot-signup/confirmation', $result->response()->getHeaderLine('Location'));
     }
 
     // ------------------------------------------------------------------
@@ -381,7 +384,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
     public function testUnknownSlugReturnNeutral404OnGetForm(): void
     {
-        $result = $this->get('k/does-not-exist/slots/999/signup');
+        $result = $this->get('k/does-not-exist/slots/999/slot-signup');
         $this->assertSame(404, $result->response()->getStatusCode());
         $body = $result->response()->getBody();
         $this->assertStringNotContainsString('SELECT', $body);
@@ -393,7 +396,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $kermesseId = $this->insertKermesse('ecole-404-slot');
         $this->insertStand($kermesseId);
 
-        $result = $this->get('k/ecole-404-slot/slots/99999/signup');
+        $result = $this->get('k/ecole-404-slot/slots/99999/slot-signup');
         $this->assertSame(404, $result->response()->getStatusCode());
     }
 
@@ -403,7 +406,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId, 5, 'inactive');
 
-        $result = $this->get("k/ecole-inactive-slot/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-inactive-slot/slots/{$slotId}/slot-signup");
         $this->assertSame(404, $result->response()->getStatusCode());
     }
 
@@ -415,7 +418,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $slotB     = $this->insertSlot($standB);
 
         // Accessing slot from kermesse B via kermesse A's slug must 404
-        $result = $this->get("k/ecole-a/slots/{$slotB}/signup");
+        $result = $this->get("k/ecole-a/slots/{$slotB}/slot-signup");
         $this->assertSame(404, $result->response()->getStatusCode());
     }
 
@@ -425,7 +428,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-prep-form/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-prep-form/slots/{$slotId}/slot-signup");
         $this->assertSame(404, $result->response()->getStatusCode());
     }
 
@@ -435,7 +438,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId, 'Stand archivé', 'deactivated');
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-inactive-stand/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-inactive-stand/slots/{$slotId}/slot-signup");
         $this->assertSame(404, $result->response()->getStatusCode());
     }
 
@@ -449,7 +452,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-priv-form/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-priv-form/slots/{$slotId}/slot-signup");
         $result->assertOK();
         $body = $result->response()->getBody();
 
@@ -471,11 +474,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-create-user/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-create-user/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@exemple.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $db  = db_connect();
@@ -490,15 +493,15 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-create-signup/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-create-signup/slots/{$slotId}/slot-signup", [
             'first_name' => 'Jean',
             'last_name'  => 'Martin',
             'email'      => 'jean@martin.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $db    = db_connect();
-        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId}")->getRowArray()['cnt'];
+        $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_slot_signups WHERE slot_id = {$slotId}")->getRowArray()['cnt'];
 
         $this->assertSame(1, $count, 'One signup row must exist after successful POST');
     }
@@ -516,11 +519,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $db = db_connect(); $this->insertUser('reuse@exemple.fr', 'Marie', 'Dupont');
 
-        $this->csrfPost("k/ecole-reuse-user/slots/{$slotIdB}/signup", [
+        $this->csrfPost("k/ecole-reuse-user/slots/{$slotIdB}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'reuse@exemple.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $count = (int) $db->query("SELECT COUNT(*) AS cnt FROM db_users WHERE email = 'reuse@exemple.fr'")->getRowArray()['cnt'];
@@ -537,15 +540,15 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-case-norm/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-case-norm/slots/{$slotId}/slot-signup", [
             'first_name' => 'John',
             'last_name'  => 'Doe',
             'email'      => ' JOHN.Doe@Example.COM  ',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $signup = db_connect()->query(
-            "SELECT email FROM db_signups WHERE email = 'john.doe@example.com'"
+            "SELECT email FROM db_slot_signups WHERE email = 'john.doe@example.com'"
         )->getRowArray();
 
         $this->assertNotNull($signup);
@@ -562,16 +565,16 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-confirm/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-confirm/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'confirm@exemple.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $this->assertSame(302, $result->response()->getStatusCode());
         $this->assertStringContainsString(
-            "k/ecole-confirm/slots/{$slotId}/signup/confirmation",
+            "k/ecole-confirm/slots/{$slotId}/slot-signup/confirmation",
             $result->response()->getHeaderLine('Location'),
         );
     }
@@ -606,11 +609,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-confirm-flash/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-confirm-flash/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'flash@exemple.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // The flash must be scoped to the slot signed up, never a bare boolean:
@@ -707,11 +710,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-email-event/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-email-event/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'Marie@Event.FR',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // AC3: success or failure, the attempt must be traced with the normalized recipient
@@ -733,7 +736,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
 
         $fields = ['first_name' => 'Marie', 'last_name' => 'Dupont', 'email' => 'multi@event.fr', 'phone' => ''];
         $this->csrfPost("k/ecole-email-multi/slots/{$slotA}/signup", $fields);
-        $this->csrfPost("k/ecole-email-multi/slots/{$slotB}/signup", $fields);
+        $this->csrfPost("k/ecole-email-multi/slots/{$slotB}/slot-signup", $fields);
 
         // AC2: one distinct confirmation email attempt per accepted signup
         $count = (int) db_connect()->query(
@@ -749,11 +752,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-email-refused/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-email-refused/slots/{$slotId}/slot-signup", [
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'refused@event.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $count = (int) db_connect()->query(
@@ -787,11 +790,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-token-create/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-token-create/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@token.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // AC1: a magic_link token must be created for the volunteer's email
@@ -828,11 +831,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $this->csrfPost("k/ecole-session-save/slots/{$slotId}/signup", [
+        $this->csrfPost("k/ecole-session-save/slots/{$slotId}/slot-signup", [
             'first_name' => 'Hélène',
             'last_name'  => 'Bernard',
             'email'      => 'helene@session.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $identity = session()->get('volunteer_identity');
@@ -858,7 +861,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         ];
 
         $result = $this->withSession($sessionData)
-            ->get("k/ecole-prefill/slots/{$slotId}/signup");
+            ->get("k/ecole-prefill/slots/{$slotId}/slot-signup");
 
         $result->assertOK();
         $body = $result->response()->getBody();
@@ -874,7 +877,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-empty-fields/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-empty-fields/slots/{$slotId}/slot-signup");
         $result->assertOK();
         $body = $result->response()->getBody();
 
@@ -895,12 +898,12 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 'first_name' => 'Hélène',
                 'last_name'  => 'Bernard',
                 'email'      => 'helene@nophone.fr',
-                'phone'      => '0601020304', 
+                'phone'      => '0601020304',
             ],
         ];
 
         $result = $this->withSession($sessionData)
-            ->get("k/ecole-nophone/slots/{$slotId}/signup");
+            ->get("k/ecole-nophone/slots/{$slotId}/slot-signup");
 
         $body = $result->response()->getBody();
         $this->assertStringNotContainsString('0601020304', $body, 'Phone must not be pre-filled from session (privacy)');
@@ -923,7 +926,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
                 'last_name'  => 'Bernard',
                 'email'      => 'helene@forget.fr',
             ],
-        ])->get("k/ecole-forget-shown/slots/{$slotId}/signup");
+        ])->get("k/ecole-forget-shown/slots/{$slotId}/slot-signup");
 
         $result->assertOK();
         $body = $result->response()->getBody();
@@ -938,7 +941,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-forget-hidden/slots/{$slotId}/signup");
+        $result = $this->get("k/ecole-forget-hidden/slots/{$slotId}/slot-signup");
 
         $result->assertOK();
         $this->assertStringNotContainsString('Ce n\'est pas vous', $result->response()->getBody(), 'Sans pré-remplissage, pas d\'affordance d\'effacement');
@@ -958,7 +961,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
             ],
         ])->csrfPost("k/ecole-forget-post/slots/{$slotId}/signup/forget", []);
 
-        $result->assertRedirectTo(site_url("k/ecole-forget-post/slots/{$slotId}/signup"));
+        $result->assertRedirectTo(site_url("k/ecole-forget-post/slots/{$slotId}/slot-signup"));
         $this->assertNull(session()->get('volunteer_identity'), 'L\'identité de session doit être effacée');
     }
 
@@ -973,11 +976,10 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('marie@connected.fr', 'Marie', 'Dupont');
 
         $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
-            ->get("k/ecole-auth-get/slots/{$slotId}/signup");
+            ->get("k/ecole-auth-get/slots/{$slotId}/slot-signup");
 
         $result->assertOK();
         $body = $result->response()->getBody();
@@ -993,11 +995,10 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('btn@connected.fr', 'Sophie', 'Martin');
 
         $result = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
-            ->get("k/ecole-auth-btn/slots/{$slotId}/signup");
+            ->get("k/ecole-auth-btn/slots/{$slotId}/slot-signup");
 
         $body = $result->response()->getBody();
 
@@ -1012,7 +1013,6 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('db@priority.fr', 'DbPrenom', 'DbNom');
 
         $sessionData = [
@@ -1026,7 +1026,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         ];
 
         $result = $this->withSession($sessionData)
-            ->get("k/ecole-auth-precedence/slots/{$slotId}/signup");
+            ->get("k/ecole-auth-precedence/slots/{$slotId}/slot-signup");
 
         $body = $result->response()->getBody();
 
@@ -1046,20 +1046,19 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('auth@signup.fr', 'Auth', 'User');
 
         $security = service('security');
         $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
-            ->post("k/ecole-auth-submit/slots/{$slotId}/signup", [
+            ->post("k/ecole-auth-submit/slots/{$slotId}/slot-signup", [
                 $security->getTokenName() => $security->getHash(),
             ]);
 
         $this->assertSame(302, $result->response()->getStatusCode());
-        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+        $this->assertStringContainsString('/slot-signup/confirmation', $result->response()->getHeaderLine('Location'));
 
         $count = (int) db_connect()->query(
-            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId} AND status = 'active'"
+            "SELECT COUNT(*) AS cnt FROM db_slot_signups WHERE slot_id = {$slotId} AND user_id = {$userId} AND canceled_at IS NULL AND rejected_at IS NULL AND deleted_at IS NULL"
         )->getRowArray()['cnt'];
         $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur connecté');
     }
@@ -1070,17 +1069,16 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('real@user.fr', 'Real', 'User');
 
         $security = service('security');
         $result   = $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
-            ->post("k/ecole-auth-forge/slots/{$slotId}/signup", [
+            ->post("k/ecole-auth-forge/slots/{$slotId}/slot-signup", [
                 $security->getTokenName() => $security->getHash(),
                 'first_name' => 'Attaquant',
                 'last_name'  => 'Falsifié',
                 'email'      => 'forge@attaquant.fr',
-                'phone'      => '', 
+                'phone'      => '',
             ]);
 
         $this->assertSame(302, $result->response()->getStatusCode(), 'L\'inscription doit réussir avec les données DB, pas POST');
@@ -1091,7 +1089,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $this->assertNull($fakeUser, 'L\'email forgé ne doit pas créer de ligne utilisateur');
 
         $count = (int) db_connect()->query(
-            "SELECT COUNT(*) AS cnt FROM db_signups WHERE slot_id = {$slotId} AND user_id = {$userId}"
+            "SELECT COUNT(*) AS cnt FROM db_slot_signups WHERE slot_id = {$slotId} AND user_id = {$userId}"
         )->getRowArray()['cnt'];
         $this->assertSame(1, $count, 'L\'inscription doit être rattachée à l\'utilisateur réel, pas à l\'identité forgée');
     }
@@ -1102,12 +1100,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $db    = db_connect();
         $userId = $this->insertUser('nodiv@connected.fr', 'NoDiverg', 'User');
 
         $security = service('security');
         $this->withSession(['is_logged_in' => true, 'user_id' => $userId])
-            ->post("k/ecole-auth-nodiverg/slots/{$slotId}/signup", [
+            ->post("k/ecole-auth-nodiverg/slots/{$slotId}/slot-signup", [
                 $security->getTokenName() => $security->getHash(),
             ]);
 
@@ -1136,7 +1133,7 @@ final class PublicSignupFormTest extends CIUnitTestCase
     // ------------------------------------------------------------------
     // Story 3.4 — AC1: Slot capacity enforcement
     //
-    // The POST always reaches SignupService, which re-counts active signups
+    // The POST always reaches SlotSignupService, which re-counts active signups
     // under the slot FOR UPDATE lock and returns slot_full when the capacity
     // is reached; the controller re-renders the form with the exact AC1
     // message. (The GET form still redirects early when the summary says the
@@ -1155,14 +1152,14 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$aliceId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, created_at, updated_at)
+            VALUES ({$slotId}, {$aliceId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
-        $result = $this->csrfPost("k/ecole-slot-full/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-slot-full/slots/{$slotId}/slot-signup", [
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@new.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -1182,11 +1179,11 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->csrfPost("k/ecole-closed-post/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-closed-post/slots/{$slotId}/slot-signup", [
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@closed.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertRedirectTo(site_url('k/ecole-closed-post'));
@@ -1208,15 +1205,15 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $marieId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, created_at, updated_at)
+            VALUES ({$slotId}, {$marieId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Same email tries to sign up for the same slot again
-        $result = $this->csrfPost("k/ecole-dup-signup/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-dup-signup/slots/{$slotId}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@dup.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -1246,15 +1243,15 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Marie', 'Dupont', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $marieId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotA}, {$marieId}, 'active', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, created_at, updated_at)
+            VALUES ({$slotA}, {$marieId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Same email tries to sign up for slot B (overlapping)
-        $result = $this->csrfPost("k/ecole-overlap/slots/{$slotB}/signup", [
+        $result = $this->csrfPost("k/ecole-overlap/slots/{$slotB}/slot-signup", [
             'first_name' => 'Marie',
             'last_name'  => 'Dupont',
             'email'      => 'marie@overlap.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         $result->assertOK();
@@ -1282,19 +1279,19 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
             VALUES ({$slotId}, {$aliceId}, CURRENT_TIMESTAMP, {$aliceId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
-        $result = $this->csrfPost("k/ecole-cancelled-cap/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-cancelled-cap/slots/{$slotId}/slot-signup", [
             'first_name' => 'Bob',
             'last_name'  => 'Dupont',
             'email'      => 'bob@cancel.fr',
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // Capacity 1, cancelled signup = 0 active → signup must succeed
         $this->assertSame(302, $result->response()->getStatusCode(), 'Une inscription annulée ne doit pas bloquer la capacité');
-        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+        $this->assertStringContainsString('/slot-signup/confirmation', $result->response()->getHeaderLine('Location'));
     }
 
     public function testSameUserCanReSignUpAfterCancellation(): void
@@ -1309,20 +1306,20 @@ final class PublicSignupFormTest extends CIUnitTestCase
         $db->query("INSERT INTO db_users (email, email_hash, first_name, last_name, phone, created_at, updated_at)
             VALUES ('{$email}', '" . hash('sha256', $email) . "', 'Alice', 'Martin', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
         $aliceId = (int) $db->insertID();
-        $db->query("INSERT INTO db_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
+        $db->query("INSERT INTO db_slot_signups (slot_id, user_id, canceled_at, canceled_by, created_at, updated_at)
             VALUES ({$slotId}, {$aliceId}, CURRENT_TIMESTAMP, {$aliceId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
 
         // Alice soumet à nouveau le formulaire pour le même créneau.
-        $result = $this->csrfPost("k/ecole-resignup/slots/{$slotId}/signup", [
+        $result = $this->csrfPost("k/ecole-resignup/slots/{$slotId}/slot-signup", [
             'first_name' => 'Alice',
             'last_name'  => 'Martin',
             'email'      => $email,
-            'phone'      => '', 
+            'phone'      => '',
         ]);
 
         // Régression uq_signups_user_slot : l'inscription annulée ne doit pas bloquer
         // un second INSERT pour la même paire (user_id, slot_id).
         $this->assertSame(302, $result->response()->getStatusCode(), 'Un bénévole doit pouvoir se réinscrire après avoir annulé');
-        $this->assertStringContainsString('/signup/confirmation', $result->response()->getHeaderLine('Location'));
+        $this->assertStringContainsString('/slot-signup/confirmation', $result->response()->getHeaderLine('Location'));
     }
 }

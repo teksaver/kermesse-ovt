@@ -49,7 +49,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -136,7 +136,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
     public function testHistoricalSectionShowsRemovedVolunteerWithAdminBadge(): void
     {
         // Override Lefebvre's signup to 'removed' (admin suppression via canceled_by != user_id).
-        db_connect()->table('signups')
+        db_connect()->table('slot_signups')
             ->where('user_id', $this->annuleId)
             ->update(['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999]);
 
@@ -151,7 +151,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
     public function testHistoricalSectionAbsentWhenNoHistoricalSignups(): void
     {
         // Remove Lefebvre's signup entirely.
-        db_connect()->table('signups')
+        db_connect()->table('slot_signups')
             ->where('user_id', $this->annuleId)
             ->delete();
 
@@ -194,7 +194,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
     public function testAdminSeesModificationBadgeWhenSignupWasModified(): void
     {
         $db = db_connect();
-        $db->table('signups')
+        $db->table('slot_signups')
             ->where('slot_id', $this->buvetteSlot)
             ->where('user_id', $this->camilleId)
             ->update([
@@ -218,7 +218,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $db->table('users')
             ->where('id', $this->adminId)
             ->update(['first_name' => '']);
-        $db->table('signups')
+        $db->table('slot_signups')
             ->where('slot_id', $this->buvetteSlot)
             ->where('user_id', $this->camilleId)
             ->update([
@@ -345,7 +345,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
             'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
             default                  => [],
         };
-        db_connect()->table('signups')->insert($row);
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -429,7 +429,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

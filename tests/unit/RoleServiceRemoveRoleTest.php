@@ -32,7 +32,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -283,7 +283,7 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
             'removed'   => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
             default     => [],  // 'active', 'confirmed', or any other active-ish state
         };
-        $db->table('signups')->insert($row);
+        $db->table('slot_signups')->insert($row);
     }
 
     private function roleForUser(int $kermesseId, int $userId): ?string
@@ -368,8 +368,8 @@ final class RoleServiceRemoveRoleTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            DROP TABLE IF EXISTS db_signups;
-            CREATE TABLE IF NOT EXISTS db_signups (
+            DROP TABLE IF EXISTS db_slot_signups;
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

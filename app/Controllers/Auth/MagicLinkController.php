@@ -115,21 +115,21 @@ class MagicLinkController extends BaseController
         ]);
 
         // Story 5.14: Rapatrier les inscriptions orphelines (invités) et acter leur prise de connaissance.
-        $signupService = new \App\Services\SignupService(
-            userModel:     model(\App\Models\UserModel::class),
-            signupModel:   model(\App\Models\SignupModel::class),
-            kermesseModel: model(\App\Models\KermesseModel::class),
-            slotModel:     model(\App\Models\SlotModel::class),
-            db:            \Config\Database::connect(),
-            emailService:  new \App\Services\EmailService(),
-            standModel:    model(\App\Models\StandModel::class),
-            tokenService:  new \App\Services\TokenService(),
+        $slotSignupService = new \App\Services\SlotSignupService(
+            userModel:       model(\App\Models\UserModel::class),
+            slotSignupModel: model(\App\Models\SlotSignupModel::class),
+            kermesseModel:   model(\App\Models\KermesseModel::class),
+            slotModel:       model(\App\Models\SlotModel::class),
+            db:              \Config\Database::connect(),
+            emailService:    new \App\Services\EmailService(),
+            standModel:      model(\App\Models\StandModel::class),
+            tokenService:    new \App\Services\TokenService(),
         );
         try {
-            $signupService->resolveOrphanSignups($userRecord['email'], $userId);
+            $slotSignupService->resolveOrphanSlotSignups($userRecord['email'], $userId);
         } catch (\Throwable $e) {
             // Non-critical: a DB failure here must not block login.
-            log_message('error', 'MagicLink: orphan signup resolution failed for user ' . $userId . ': ' . $e->getMessage());
+            log_message('error', 'MagicLink: orphan slot-signup resolution failed for user ' . $userId . ': ' . $e->getMessage());
         }
 
         // Story 5.10 (Stateless): first login and returning logins are handled identically,

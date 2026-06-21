@@ -47,7 +47,7 @@
         </div>
 
         <form method="post"
-            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>">
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/slot-signup"), 'attr') ?>">
             <?= csrf_field() ?>
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">Confirmer l'inscription</button>
@@ -57,7 +57,7 @@
         <?php else: ?>
 
         <form method="post"
-            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup"), 'attr') ?>"
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/slot-signup"), 'attr') ?>"
             novalidate>
             <?= csrf_field() ?>
 
@@ -134,7 +134,7 @@
 
         <?php if ($isPrefilled ?? false): ?>
         <form method="post"
-            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/signup/forget"), 'attr') ?>"
+            action="<?= esc(site_url("k/{$summary['publicSlug']}/slots/{$summary['slotId']}/slot-signup/forget"), 'attr') ?>"
             class="signup-forget">
             <?= csrf_field() ?>
             <button type="submit" class="link-button">Ce n'est pas vous ? Effacer mes informations</button>

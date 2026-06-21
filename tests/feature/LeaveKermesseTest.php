@@ -41,7 +41,7 @@ final class LeaveKermesseTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -284,7 +284,7 @@ final class LeaveKermesseTest extends CIUnitTestCase
 
     private function insertActiveSignup(int $userId): void
     {
-        db_connect()->table('signups')->insert([
+        db_connect()->table('slot_signups')->insert([
             'slot_id' => $this->slotId,
             'user_id' => $userId,
         ]);
@@ -373,7 +373,7 @@ final class LeaveKermesseTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

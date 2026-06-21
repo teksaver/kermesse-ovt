@@ -82,7 +82,7 @@ class EmailService
         return $this->deliver(
             recipientEmail: $recipientEmail,
             subject: 'Votre inscription à « ' . $this->safeSubjectPart($kermesseName) . ' » est confirmée',
-            viewPath: 'emails/signup_confirmation',
+            viewPath: 'emails/slot_signup_confirmation',
             viewData: [
                 'firstName'    => $firstName,
                 'kermesseName' => $kermesseName,
@@ -165,7 +165,7 @@ class EmailService
         return $this->deliver(
             recipientEmail: $recipientEmail,
             subject: 'Votre inscription à « ' . $this->safeSubjectPart($kermesseName) . ' » a été annulée',
-            viewPath: 'emails/signup_cancellation',
+            viewPath: 'emails/slot_signup_cancellation',
             viewData: [
                 'firstName'    => $firstName,
                 'kermesseName' => $kermesseName,

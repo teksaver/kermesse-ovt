@@ -52,7 +52,7 @@ final class InviteRoleTest extends CIUnitTestCase
         $db = db_connect();
         $db->query('DELETE FROM db_email_events');
         $db->query('DELETE FROM db_access_tokens');
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -498,7 +498,7 @@ final class InviteRoleTest extends CIUnitTestCase
         ]);
         $slotId = (int) $db->insertID();
 
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
         ]);
@@ -640,7 +640,7 @@ final class InviteRoleTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
                 id                        INTEGER PRIMARY KEY AUTOINCREMENT,
                 slot_id                   INTEGER  NOT NULL,
                 user_id                   INTEGER  NULL,

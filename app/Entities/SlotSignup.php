@@ -7,16 +7,16 @@ namespace App\Entities;
 use CodeIgniter\Entity\Entity;
 
 /**
- * Signup entity — owns the state machine for timestamp-based status calculation.
+ * SlotSignup entity — owns the state machine for timestamp-based status calculation.
  *
- * computeStatus() is the canonical source of truth for signup state. All controllers,
+ * computeStatus() is the canonical source of truth for slot-signup state. All controllers,
  * services, and tests must derive status through this class; never inline the conditions.
- * SignupModel::getStatus() delegates here for backward-compatible static calls.
+ * SlotSignupModel::getStatus() delegates here for backward-compatible static calls.
  */
-class Signup extends Entity
+class SlotSignup extends Entity
 {
     /**
-     * Compute signup status from this entity's own timestamps.
+     * Compute slot-signup status from this entity's own timestamps.
      */
     public function getStatus(): string
     {
@@ -32,7 +32,7 @@ class Signup extends Entity
     }
 
     /**
-     * Compute signup status from a raw row array (static — usable without an instance).
+     * Compute slot-signup status from a raw row array (static — usable without an instance).
      *
      * Priority (highest to lowest):
      *   soft-deleted       → 'deactivated'  (system removal via stand/slot deletion)
