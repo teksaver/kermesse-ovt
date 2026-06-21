@@ -13,6 +13,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ─── Gate 1 : PHPUnit (SQLite) ────────────────────────────────────────────
   validate-and-test:
     runs-on: ubuntu-latest
 
@@ -49,9 +50,47 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
-      - name: Run tests
-        run: vendor/bin/phpunit --exclude-group mariadb
+      - name: Run PHPUnit (SQLite)
+        run: composer test:sqlite
 
+  # ─── Gate 2 : PHPStan static analysis ────────────────────────────────────
+  phpstan:
+    runs-on: ubuntu-latest
+
+    env:
+      PHP_VERSION: '8.3'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, xml, intl, json, mysqli, sqlite3
+          coverage: none
+
+      - name: Get Composer Cache Directory
+        id: composer-cache
+        run: |
+          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run PHPStan (level 5, with baseline)
+        run: composer analyse
+
+  # ─── Gate 3 : MariaDB schema validation + PHPUnit (MariaDB) ──────────────
   validate-mariadb:
     runs-on: ubuntu-latest
 
@@ -104,7 +143,7 @@ jobs:
       - name: Verify schema tables exist
         run: |
           TABLES=$(mysql -h 127.0.0.1 -u kermesse_ci -pci_password kermesse_test -N -e "SHOW TABLES;")
-          for expected in schema_versions ops_nonces kermesses access_tokens email_events stands slots users kermesse_user_roles profile_divergences signups; do
+          for expected in schema_versions ops_nonces kermesses access_tokens email_events stands slots slot_signups users kermesse_user_roles profile_divergences; do
             if echo "$TABLES" | grep -qw "$expected"; then
               echo "✓ Table $expected exists"
             else
@@ -144,11 +183,43 @@ jobs:
           kermesse.opsMigrationProductionOnly: 'false'
           kermesse.opsMigrationHmacSecret: ci_test_hmac_secret_32_bytes_min
           kermesse.opsMigrationLockName: kermesse_ci_migration_lock
-        run: vendor/bin/phpunit --testsuite Database --group mariadb
+        run: composer test:mariadb
 
-  deploy-rehearsal:
+      - name: Dump MariaDB logs on failure
+        if: failure()
+        run: docker ps -a -q --filter ancestor=mariadb:10.11 | xargs -r docker logs 2>&1 || true
+
+  # ─── Gate 4 : Playwright E2E — smoke tests (6.3) + parcours critiques ─────
+  #
+  # Runs the three Story-6.3 smoke regressions (add-slot, participations, team)
+  # and the full critical-path suite (6.4/6.5) via Docker Compose, matching the
+  # local `bash scripts/e2e.sh` flow.
+  # retries: 0 in playwright.config.ts ensures flakiness is visible, not silenced.
+  e2e-playwright:
     runs-on: ubuntu-latest
     needs: [validate-and-test, validate-mariadb]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Playwright E2E tests (Docker Compose)
+        run: bash scripts/e2e.sh
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # ─── Gate 5 : Deploy rehearsal ────────────────────────────────────────────
+  deploy-rehearsal:
+    runs-on: ubuntu-latest
+    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright]
 
     steps:
       - name: Checkout code
@@ -189,9 +260,17 @@ jobs:
         if: always()
         run: docker compose --profile rehearsal down --volumes 2>&1 || true
 
+  # ─── Gate 6 : Package deploy artifact ────────────────────────────────────
+  #
+  # Runs only on main branch or PRs targeting main.
+  # All five preceding gates must pass before the artifact is built.
+  # The artifact excludes Node, Playwright, tests, traces, and dev deps (AC8).
+  #
+  # Required checks for branch protection on main:
+  #   validate-and-test, phpstan, validate-mariadb, e2e-playwright, deploy-rehearsal, package-artifact
   package-artifact:
     runs-on: ubuntu-latest
-    needs: [validate-and-test, validate-mariadb, deploy-rehearsal]
+    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright, deploy-rehearsal]
     if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
 
     env:
@@ -229,6 +308,18 @@ jobs:
           tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging public
           test -f deploy-staging/public/.htaccess
           test -f deploy-staging/public/index.php
+
+      - name: Verify artifact excludes dev dependencies
+        run: |
+          set -euo pipefail
+          # Ensure Node, Playwright, PHPUnit tests and dev assets are not in the artifact
+          for forbidden in node_modules e2e playwright-report test-results tests; do
+            if tar -tzf build/kermesse-deploy.tar.gz | grep -qE "(^|\/)${forbidden}(\/|$)"; then
+              echo "::error::Artefact contient un dossier interdit: ${forbidden}"
+              exit 1
+            fi
+          done
+          echo "Artefact propre — aucune dépendance de développement incluse."
 
       - name: Upload main deploy artifact
         if: github.ref == 'refs/heads/main'

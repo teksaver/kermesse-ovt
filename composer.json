@@ -16,6 +16,7 @@
     "require-dev": {
         "fakerphp/faker": "^1.9",
         "mikey179/vfsstream": "^1.6",
+        "phpstan/phpstan": "^2.1",
         "phpunit/phpunit": "^10.5.16"
     },
     "autoload": {
@@ -38,6 +39,14 @@
         "sort-packages": true
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit --exclude-group mariadb",
+        "test:sqlite": "phpunit --exclude-group mariadb",
+        "test:mariadb": "phpunit --testsuite Database --group mariadb",
+        "analyse": "php -d memory_limit=512M vendor/bin/phpstan analyse",
+        "check-all": [
+            "@analyse",
+            "@test:sqlite",
+            "@test:mariadb"
+        ]
     }
 }

@@ -1,0 +1,319 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Strict comparison using \=\=\= between ''development'' and ''testing'' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Config/Database.php
+
+		-
+			message: '#^Left side of && is always true\.$#'
+			identifier: booleanAnd.leftAlwaysTrue
+			count: 1
+			path: app/Config/Events.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between ''development'' and ''testing'' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Config/Events.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between ''development'' and ''development'' will always evaluate to true\.$#'
+			identifier: identical.alwaysTrue
+			count: 1
+			path: app/Config/Events.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between ''development'' and ''production'' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Config/Logger.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between ''development'' and ''production'' will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Config/Security.php
+
+		-
+			message: '#^Offset ''move_targets'' does not exist on array\{slot_id\: int, starts_at\: string, ends_at\: string, date\: non\-falsy\-string, start_time\: non\-falsy\-string, end_time\: non\-falsy\-string, capacity\: int, occupied\: int\<0, max\>, \.\.\.\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/KermesseAdminController.php
+
+		-
+			message: '#^Offset ''status'' does not exist on array\{signup_id\: int, slot_id\: int, stand_id\: int, computed_status\: string, first_name\: string\|null, last_name\: string\|null, signup_first_name\: string\|null, signup_last_name\: string\|null, \.\.\.\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/KermesseAdminController.php
+
+		-
+			message: '#^Parameter \#2 \$message of method CodeIgniter\\HTTP\\RedirectResponse\:\:with\(\) expects array\|string, int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/SlotController.php
+
+		-
+			message: '#^Parameter \#2 \$message of method CodeIgniter\\HTTP\\RedirectResponse\:\:with\(\) expects array\|string, int\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/SlotController.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between decimal\-int\-string and '''' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/SlotController.php
+
+		-
+			message: '#^Parameter \#2 \$message of method CodeIgniter\\HTTP\\RedirectResponse\:\:with\(\) expects array\|string, int\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Controllers/Kermesse/Dashboard/StandController.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transComplete\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transRollback\(\)\.$#'
+			identifier: method.notFound
+			count: 6
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transStart\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transStatus\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Comparison operation "\>" between int\<1, max\> and 0 is always true\.$#'
+			identifier: greater.alwaysTrue
+			count: 1
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:prefixTable\(\)\.$#'
+			identifier: method.notFound
+			count: 4
+			path: app/Database/Migrations/2026-06-20-000000_RenameSignupsToSlotSignups.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$accepted_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$canceled_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$canceled_by\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$created_by\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$deleted_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$rejected_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Access to an undefined property App\\Entities\\SlotSignup\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Entities/SlotSignup.php
+
+		-
+			message: '#^Return type \(void\) of method App\\Filters\\AuthFilter\:\:after\(\) should be compatible with return type \(CodeIgniter\\HTTP\\ResponseInterface\|null\) of method CodeIgniter\\Filters\\FilterInterface\:\:after\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: app/Filters/AuthFilter.php
+
+		-
+			message: '#^Return type \(void\) of method App\\Filters\\OpsAuthFilter\:\:after\(\) should be compatible with return type \(CodeIgniter\\HTTP\\ResponseInterface\|null\) of method CodeIgniter\\Filters\\FilterInterface\:\:after\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: app/Filters/OpsAuthFilter.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between ''development'' and ''production'' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Filters/OpsAuthFilter.php
+
+		-
+			message: '#^Return type \(void\) of method App\\Filters\\PendingResolutionFilter\:\:after\(\) should be compatible with return type \(CodeIgniter\\HTTP\\ResponseInterface\|null\) of method CodeIgniter\\Filters\\FilterInterface\:\:after\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: app/Filters/PendingResolutionFilter.php
+
+		-
+			message: '#^Return type \(void\) of method App\\Filters\\RoleFilter\:\:after\(\) should be compatible with return type \(CodeIgniter\\HTTP\\ResponseInterface\|null\) of method CodeIgniter\\Filters\\FilterInterface\:\:after\(\)$#'
+			identifier: method.childReturnType
+			count: 1
+			path: app/Filters/RoleFilter.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:prefixTable\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/SlotModel.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:prefixTable\(\)\.$#'
+			identifier: method.notFound
+			count: 5
+			path: app/Models/SlotSignupModel.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:prefixTable\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/UserModel.php
+
+		-
+			message: '#^If condition is always true\.$#'
+			identifier: if.alwaysTrue
+			count: 1
+			path: app/Services/ReleaseActivationService.php
+
+		-
+			message: '#^Dead catch \- CodeIgniter\\Database\\Exceptions\\DatabaseException is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: app/Services/RoleService.php
+
+		-
+			message: '#^Method App\\Services\\RoleService\:\:isDuplicateKey\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/Services/RoleService.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transBegin\(\)\.$#'
+			identifier: method.notFound
+			count: 5
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transCommit\(\)\.$#'
+			identifier: method.notFound
+			count: 5
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Call to an undefined method CodeIgniter\\Database\\ConnectionInterface\:\:transRollback\(\)\.$#'
+			identifier: method.notFound
+			count: 16
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''accepted_at'' on array\{id\: int, user_id\: int, slot_id\: int\} in empty\(\) does not exist\.$#'
+			identifier: empty.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''ends_at'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''phone'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''signup_last_name'' does not exist on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''signup_last_name'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''signup_phone'' does not exist on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''signup_phone'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''stand_name'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Offset ''starts_at'' on array\{id\: int, user_id\: int\|null, slot_id\: int, email\: string\|null, first_name\: string\|null, last_name\: string\|null, signup_email\: string\|null, signup_first_name\: string\|null, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Property App\\Services\\SlotSignupService\:\:\$userRoleModel is never read, only written\.$#'
+			identifier: property.onlyWritten
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between '''' and '''' will always evaluate to false\.$#'
+			identifier: notIdentical.alwaysFalse
+			count: 2
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between App\\Models\\SlotSignupModel\|App\\Models\\UserModel and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\AccessTokenModel\:\:affectedRows\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: app/Services/TokenService.php
+
+		-
+			message: '#^Parameter \#2 \$tokenRow of class App\\Services\\TokenValidationResult constructor expects array\<string, mixed\>\|null, array\<int\|string, bool\|float\|int\|object\|string\|null\>\|ArrayAccess given\.$#'
+			identifier: argument.type
+			count: 9
+			path: app/Services/TokenService.php
