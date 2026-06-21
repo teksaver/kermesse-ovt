@@ -21,6 +21,13 @@ class MagicLinkController extends BaseController
     /** GET /auth/login — affiche le formulaire de demande de lien */
     public function showLoginForm(): mixed
     {
+        $redirectParam = $this->request->getGet('redirect');
+        if (is_string($redirectParam) && trim($redirectParam) !== '') {
+            // localRedirectTarget validates same-origin and converts relative paths.
+            // External URLs are silently demoted to site_url('/') (open-redirect protection).
+            session()->set('redirect_url', $this->localRedirectTarget($redirectParam));
+        }
+
         return view('auth/login', ['errors' => []]);
     }
 

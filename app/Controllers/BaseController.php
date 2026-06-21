@@ -55,7 +55,7 @@ abstract class BaseController extends Controller
 
         $candidate = trim($candidate);
         if (str_starts_with($candidate, '/') && ! str_starts_with($candidate, '//')) {
-            return site_url(ltrim($candidate, '/'));
+            return $this->isAuthRoute($candidate) ? $fallback : site_url(ltrim($candidate, '/'));
         }
 
         $baseParts      = parse_url(site_url('/'));
@@ -68,9 +68,18 @@ abstract class BaseController extends Controller
             && ($candidateParts['host'] ?? null) === ($baseParts['host'] ?? null)
             && ($candidateParts['port'] ?? null) === ($baseParts['port'] ?? null)
         ) {
-            return $candidate;
+            return $this->isAuthRoute($candidateParts['path'] ?? '') ? $fallback : $candidate;
         }
 
         return $fallback;
+    }
+
+    /**
+     * Reject redirect targets that point back at an auth route (login, magic-link).
+     * Resuming onto one after authentication would re-enter the login flow in a loop.
+     */
+    private function isAuthRoute(string $path): bool
+    {
+        return (bool) preg_match('#(^|/)auth(/|$)#', $path);
     }
 }
