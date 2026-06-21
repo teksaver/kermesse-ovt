@@ -6,6 +6,7 @@
 --   owner    -> e2e-magic-owner-01    hash: 430342030be549ef6787d76a2f43874484ef3bd2f357cbcc73164ad229f0b8b0
 --   admin    -> e2e-magic-admin-01    hash: 6312eaf920e18383e1ea309855c9ddf48ec74a005baa78e4000c5abd34877fd4
 --   benevole -> e2e-magic-benevole-01 hash: 27f2c891ac51a0a843910713b155b34827fb06e74b705669ac943b0aed0a8834
+-- Review tokens are separate and remain unused until a human opens a --keep URL.
 
 -- ----------------------------------------------------------------
 -- Cleanup (FK-safe order: most-dependent first)
@@ -213,6 +214,10 @@ INSERT INTO `slots` (`stand_id`, `starts_at`, `ends_at`, `capacity`) VALUES
 --   admin        -> e2e-magic-admin-01    hash: 6312eaf920e18383e1ea309855c9ddf48ec74a005baa78e4000c5abd34877fd4
 --   benevole     -> e2e-magic-benevole-01 hash: 27f2c891ac51a0a843910713b155b34827fb06e74b705669ac943b0aed0a8834
 --   gestionnaire -> e2e-magic-gestion-01  hash: f99e36f9410e637b579dedc469e0f0cf6c506ef85c381c3f680c1f65c90ccad0
+-- Review-only tokens (not consumed by global-setup.ts):
+--   owner        -> e2e-review-owner-01
+--   admin        -> e2e-review-admin-01
+--   gestionnaire -> e2e-review-gestion-01
 -- ----------------------------------------------------------------
 INSERT INTO `access_tokens` (`token_hash`, `token_type`, `user_id`, `email`, `expires_at`) VALUES
   ('430342030be549ef6787d76a2f43874484ef3bd2f357cbcc73164ad229f0b8b0',
@@ -222,6 +227,12 @@ INSERT INTO `access_tokens` (`token_hash`, `token_type`, `user_id`, `email`, `ex
   ('27f2c891ac51a0a843910713b155b34827fb06e74b705669ac943b0aed0a8834',
    'magic_link', @benevole_id, 'benevole@e2e.test',     DATE_ADD(NOW(), INTERVAL 1 YEAR)),
   ('f99e36f9410e637b579dedc469e0f0cf6c506ef85c381c3f680c1f65c90ccad0',
+   'magic_link', @gestion_id,  'gestionnaire@e2e.test', DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+  ('572622f1ca4c8100c56b9853bd242610fc7a1a91075fb746c545ffbc8ef5cbca',
+   'magic_link', @owner_id,    'owner@e2e.test',        DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+  ('ad309dfff30b6d11185ad9c5401d365e190b46b88164233aa62c0dcdd76e0cfb',
+   'magic_link', @admin_id,    'admin@e2e.test',        DATE_ADD(NOW(), INTERVAL 1 YEAR)),
+  ('cf7044266303ee8238d2b950ad81e924198eadc0e1eb79627291b923b1e7138a',
    'magic_link', @gestion_id,  'gestionnaire@e2e.test', DATE_ADD(NOW(), INTERVAL 1 YEAR));
 
 -- ----------------------------------------------------------------

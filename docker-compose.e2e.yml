@@ -1,5 +1,7 @@
 # E2E override: makes all site_url() calls generate http://app/ (Docker-internal) URLs
-# so that server-side 302 redirects are reachable from inside the Playwright container.
+# by default so that server-side 302 redirects are reachable from Playwright. With
+# scripts/e2e.sh --keep, E2E_APP_BASE_URL is changed only after the automated run
+# and the app container is recreated for review from the host browser.
 #
 # IMPORTANT: do NOT set CI_ENVIRONMENT=testing here. That would cause CodeIgniter's
 # Database config to switch defaultGroup to 'tests' (SQLite3), breaking all DB queries.
@@ -19,8 +21,8 @@
 services:
   app:
     environment:
-      app.baseURL: "http://app/"
-      kermesse.publicBaseURL: "http://app/"
+      app.baseURL: "${E2E_APP_BASE_URL:-http://app/}"
+      kermesse.publicBaseURL: "${E2E_APP_BASE_URL:-http://app/}"
       database.default.database: "kermesse_e2e"
       # Disable CI4 Debug Bar: its XHR gets rewritten by page.route() in Playwright,
       # causing the toolbar JSON (with SQL queries/routes) to be injected into the DOM
