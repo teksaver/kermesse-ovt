@@ -286,3 +286,25 @@ INSERT INTO `slot_signups` (`slot_id`, `user_id`, `created_by`, `accepted_at`) V
 -- 19:00-20:00) even before the cancel/move tests run.
 INSERT INTO `slots` (`stand_id`, `starts_at`, `ends_at`, `capacity`) VALUES
   (@org_stand_id, @event_date + INTERVAL 22 HOUR, @event_date + INTERVAL 23 HOUR, 5);
+
+-- Slot 5 (13:00–14:00): admin edit/correct test — admin-created signup for dup-test@e2e.test.
+-- Time 13:00 chosen specifically to avoid collision with adjacent slots whose *end* times would
+-- otherwise create hasText('18:00') or hasText('19:00') ambiguity in Playwright filters.
+-- dup-test@e2e.test has no kermesse role (first_access_at = NULL, last_login_at = NULL) so
+-- locked = false and the "Modifier la fiche" form is editable.
+INSERT INTO `slots` (`stand_id`, `starts_at`, `ends_at`, `capacity`) VALUES
+  (@org_stand_id, @event_date + INTERVAL 13 HOUR, @event_date + INTERVAL 14 HOUR, 5);
+SET @slot_org_edit = LAST_INSERT_ID();
+INSERT INTO `slot_signups` (`slot_id`, `user_id`, `created_by`, `accepted_at`, `first_name`, `last_name`, `email`)
+VALUES
+  (@slot_org_edit, @dup_id, @admin_id, NOW(), 'Frank', 'DupTest', 'dup-test@e2e.test');
+
+-- Revokable user: dedicated gestionnaire who can be safely revoked in the revoke E2E test
+-- without affecting the other gestionnaire tests (which use gestionnaire@e2e.test).
+INSERT INTO `users` (`email`, `email_hash`, `first_name`, `last_name`, `phone`) VALUES
+  ('revoke-me@e2e.test', SHA2('revoke-me@e2e.test', 256), 'Revoke', 'Me', '');
+SET @revoke_id = (SELECT `id` FROM `users` WHERE `email` = 'revoke-me@e2e.test');
+INSERT INTO `kermesse_user_roles`
+  (`kermesse_id`, `user_id`, `role`, `invited_by`, `accepted_at`, `first_access_at`)
+VALUES
+  (@kermesse_id, @revoke_id, 'gestionnaire', @owner_id, NOW(), NOW());

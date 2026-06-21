@@ -2,10 +2,12 @@
  * Story 6.5 — Parcours critiques des organisateurs (E2E)
  *
  * Covers:
+ *   AC1  — Stand + créneau : Owner crée un stand et un créneau, les voit persistés.
  *   AC2  — Lifecycle kermesse : ouvrir depuis preparation, fermer depuis open.
  *   AC3  — Gestionnaire : onglets autorisés visibles, onglets non autorisés absents.
- *   AC4  — Admin : ajouter / annuler / déplacer une inscription via les `<dialog>` et `<details>`.
- *   AC5  — Équipe : inviter un nouveau membre, relancer une invitation en attente.
+ *   AC4  — Admin : ajouter / annuler / déplacer / corriger une inscription.
+ *   AC5  — Équipe : inviter un nouveau membre, relancer une invitation, révoquer un rôle.
+ *   AC6  — Identification de l'utilisateur courant (badge « Vous ») et protection auto-révocation.
  *   AC7  — Protection Owner : aucun bouton de révocation sur la ligne Owner.
  *
  * Coverage strategy: PHPUnit already covers server-side invariants (403, capacity, duplicates,
@@ -14,12 +16,17 @@
  *
  * State-mutating tests are marked desktop-only (skip on mobile) to prevent data contamination
  * when both profiles run sequentially in a single worker.
+ *
+ * [P1] waitForLoadState('networkidle') replaced throughout with content-based assertions:
+ *      after page.goto() — wait for a stable anchor element; after form submit — wait for the
+ *      resulting flash or redirected-page element. This eliminates unreliable timing dependencies.
  */
 import { expect, Page } from '@playwright/test';
 import { test, storageStateFor, watchConsoleErrors } from '../helpers/fixtures';
 
 const KERMESSE_NAME    = 'Kermesse E2E';
 const LIFECYCLE_NAME   = 'Kermesse Lifecycle E2E';
+const PREP_NAME        = 'Kermesse Préparation E2E';
 const ORG_STAND_NAME   = 'Stand Organisateurs E2E';
 
 // ---------------------------------------------------------------------------
@@ -28,19 +35,20 @@ const ORG_STAND_NAME   = 'Stand Organisateurs E2E';
 
 async function goToDashboard(page: Page, kermesseName: string): Promise<void> {
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  // Wait for at least one kermesse card — confirms home page rendered.
   const card = page.locator('.kermesse-card').filter({ has: page.getByText(kermesseName) });
+  await expect(card).toBeVisible();
   await card.getByRole('link', { name: 'Administration' }).click();
-  await page.waitForLoadState('networkidle');
+  // Wait for any tab button — signals dashboard HTML is fully rendered.
+  await expect(page.locator('[data-tab]:visible').first()).toBeVisible();
 }
 
 async function openInscritsTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
+  // Always assert visibility before clicking — avoids racy conditional isVisible() patterns.
   const inscritsBtn = page.locator('[data-tab="inscrits"]:visible').first();
-  if (await inscritsBtn.isVisible()) {
-    await inscritsBtn.click();
-    await page.waitForLoadState('networkidle');
-  }
+  await expect(inscritsBtn).toBeVisible();
+  await inscritsBtn.click();
   await expect(page.locator('#tab-panel-inscrits')).toHaveClass(/is-open/);
 }
 
@@ -49,7 +57,6 @@ async function openEquipeTab(page: Page, kermesseName: string): Promise<void> {
   const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
   await expect(equipeBtn).toBeVisible();
   await equipeBtn.click();
-  await page.waitForLoadState('networkidle');
   await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
 }
 
@@ -119,10 +126,11 @@ test.describe('Gestionnaire — restrictions de rôle (AC3)', () => {
 
     await goToDashboard(page, KERMESSE_NAME);
 
-    await expect(page.locator('body')).toHaveClass(/js-active/, { timeout: 10_000 });
+    await expect(page.locator('body')).toHaveClass(/js-active/);
 
+    /* Round both sides to absorb sub-pixel rendering differences. */
     const hasOverflow = await page.evaluate(() =>
-      document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      Math.ceil(document.documentElement.scrollWidth) > Math.ceil(window.innerWidth),
     );
     expect(hasOverflow, 'Horizontal scroll detected at 320px on gestionnaire dashboard').toBe(false);
 
@@ -143,14 +151,56 @@ test.describe('Équipe — protection de l\'Owner (AC7)', () => {
 
     await openEquipeTab(page, KERMESSE_NAME);
 
-    /* Find the Owner group section — contains "Propriétaire" heading. */
+    /* Find the Owner group section — contains "Alice Owner". */
     const ownerSection = page.locator('.participants-list').filter({
       has: page.getByText('Alice Owner'),
     });
     await expect(ownerSection).toBeVisible();
 
-    /* No revoke button (aria-label "Révoquer le rôle") on the owner row. */
+    /* No revoke button on the owner row. */
     await expect(ownerSection.getByRole('button', { name: /révoquer/i })).toHaveCount(0);
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC6 — Identification de l'utilisateur courant et protection auto-révocation
+// (read-only, both viewports)
+//
+// Note: The "Vous" badge is only rendered for non-owner roles (the view suppresses
+// it for the 'owner' role by design). Tests use admin session so the badge is visible.
+// Complements team.spec.ts smoke tests by placing these assertions in the
+// organizer-dashboard context.
+// ---------------------------------------------------------------------------
+
+test.describe('Équipe — badge « Vous » et protection auto-révocation (AC6)', () => {
+  test.use({ storageState: storageStateFor('admin') });
+
+  test('l\'admin voit le badge « Vous » sur sa propre ligne', async ({ page }) => {
+    const errors = watchConsoleErrors(page);
+
+    await openEquipeTab(page, KERMESSE_NAME);
+
+    const adminRow = page.locator('.participants-list__item').filter({
+      has: page.getByText('admin@e2e.test'),
+    });
+    await expect(adminRow).toBeVisible();
+    await expect(adminRow.getByText('Vous', { exact: true })).toBeVisible();
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
+
+  test('aucun bouton de révocation sur sa propre ligne', async ({ page }) => {
+    const errors = watchConsoleErrors(page);
+
+    await openEquipeTab(page, KERMESSE_NAME);
+
+    const adminRow = page.locator('.participants-list__item').filter({
+      has: page.getByText('admin@e2e.test'),
+    });
+    await expect(adminRow).toBeVisible();
+    await expect(adminRow.getByRole('button', { name: /révoquer/i })).toHaveCount(0);
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -170,38 +220,99 @@ test.describe('Owner — cycle de vie de la kermesse (AC2)', () => {
 
     /* Step 1: Open kermesse-e2e-lifecycle from 'preparation' → 'open'. */
     await goToDashboard(page, LIFECYCLE_NAME);
-    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
+    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
 
     const openBtn = page.getByRole('button', { name: 'Ouvrir les inscriptions' });
     await expect(openBtn).toBeVisible();
     await openBtn.click();
-    await page.waitForLoadState('networkidle');
 
-    /* Success flash confirms the transition. */
+    /* Success flash confirms the transition (replaces networkidle wait). */
     await expect(page.locator('.form-success')).toContainText('La kermesse est ouverte.');
 
     /* Public volunteer page now shows available slots. */
     await page.goto('/k/kermesse-e2e-lifecycle');
-    await page.waitForLoadState('networkidle');
     await expect(page.locator('.stand-group').first()).toBeVisible();
     await expect(page.locator('.slot-row--available').first()).toBeVisible();
 
     /* Step 2: Close the kermesse → 'closed'. */
     await goToDashboard(page, LIFECYCLE_NAME);
-    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
+    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
 
     const closeBtn = page.getByRole('button', { name: 'Fermer les inscriptions' });
     await expect(closeBtn).toBeVisible();
     await closeBtn.click();
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('.form-success')).toContainText('La kermesse est fermée.');
 
     /* Public page now shows the closed message and no signup links. */
     await page.goto('/k/kermesse-e2e-lifecycle');
-    await page.waitForLoadState('networkidle');
     await expect(page.getByText('Les inscriptions sont clôturées')).toBeVisible();
     await expect(page.locator('.slot-row--available')).toHaveCount(0);
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC1 — Stand + créneau : Owner crée un stand et un créneau (state-mutating — desktop only)
+// Uses kermesse-e2e-prep (stays in preparation throughout the test suite).
+// ---------------------------------------------------------------------------
+
+test.describe('Owner — créer un stand et un créneau (AC1)', () => {
+  test.use({ storageState: storageStateFor('owner') });
+
+  test('Owner crée un stand puis un créneau, les voit persistés après rechargement', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'State-mutating — runs once on desktop only');
+    const errors = watchConsoleErrors(page);
+
+    await goToDashboard(page, PREP_NAME);
+
+    /* Owner's default tab on a preparation kermesse is "Modification". */
+    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
+
+    /* Open the "Ajouter un stand" dialog. */
+    await page.getByRole('button', { name: 'Ajouter un stand' }).click();
+    const addStandDialog = page.locator('#modal-stand-add');
+    await expect(addStandDialog).toBeVisible({ timeout: 5_000 });
+
+    await addStandDialog.locator('#stand-name').fill('Stand Création Test E2E');
+    await addStandDialog.getByRole('button', { name: 'Créer le stand' }).click();
+
+    /* PRG: flash confirms the stand was created. */
+    await expect(page.locator('.form-success')).toContainText(/ajouté/i);
+
+    /* The new stand section must appear in the modification panel. */
+    const newStandSection = page.locator('[id^="slots-stand-"]').filter({
+      has: page.getByText('Stand Création Test E2E'),
+    });
+    await expect(newStandSection).toBeVisible();
+
+    /* Now add a slot to the new stand. */
+    const addSlotBtn = newStandSection.getByRole('button', { name: 'Ajouter un créneau' });
+    await expect(addSlotBtn).toBeVisible();
+    await addSlotBtn.click();
+
+    const addSlotDialog = page.locator('dialog[id^="modal-slot-add-"][open]');
+    await expect(addSlotDialog).toBeVisible({ timeout: 5_000 });
+
+    await addSlotDialog.locator('input[name="starts_at"]').fill('10:00');
+    await addSlotDialog.locator('input[name="ends_at"]').fill('12:00');
+    await addSlotDialog.locator('input[name="capacity"]').fill('3');
+    await addSlotDialog.getByRole('button', { name: 'Ajouter' }).click();
+
+    /* PRG: flash confirms the slot was created. */
+    await expect(page.locator('.form-success')).toContainText('Créneau ajouté avec succès.');
+
+    /* Reload confirms persistence. */
+    await page.reload();
+    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
+
+    const reloadedSection = page.locator('[id^="slots-stand-"]').filter({
+      has: page.getByText('Stand Création Test E2E'),
+    });
+    await expect(reloadedSection).toBeVisible();
+    await expect(reloadedSection.getByText('10:00').first()).toBeVisible();
+    await expect(reloadedSection.getByText('12:00').first()).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -229,10 +340,13 @@ test.describe('Admin — ajouter une inscription via modale (AC4)', () => {
     const orgStand = panel.locator('.participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
     await expect(orgStand).toBeVisible();
 
-    /* Find the add-slot at 17:00 (Slot 2 — 2nd slot in Stand Organisateurs E2E).
-     * Cannot filter by "17:00" alone: Slot 1 ends at 17:00, making the time filter ambiguous.
-     * Use .nth(1) to reliably target the second slot. */
-    const addSlot = orgStand.locator('.participants-slot').nth(1);
+    /* Find the add-slot at 17:00 (slot starting at 17:00, ending at 18:00).
+     * Regex matching both boundary times uniquely identifies this slot even if an adjacent
+     * slot ends at 17:00 (16:00–17:00) and would match a plain '17:00' filter.
+     * .nth(N) is avoided because inserting new slots at lower times shifts all indices. */
+    const addSlot = orgStand.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: /17:00.+18:00/ }),
+    }).first();
     await expect(addSlot).toBeVisible();
 
     /* Click "+ Ajouter un bénévole" to open the <dialog>. */
@@ -246,16 +360,18 @@ test.describe('Admin — ajouter une inscription via modale (AC4)', () => {
     });
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
+    /* Submit button must be DISABLED before required fields are filled (JS validation). */
+    const submitBtn = dialog.getByRole('button', { name: 'Inscrire' });
+    await expect(submitBtn).toBeDisabled();
+
     /* Fill the required fields. */
     await dialog.locator('input[name="first_name"]').fill('Henri');
     await dialog.locator('input[name="last_name"]').fill('AjoutTest');
     await dialog.locator('input[name="email"]').fill('admin-added@e2e.test');
 
-    /* The submit button becomes enabled once the form is valid (JS sync function). */
-    const submitBtn = dialog.getByRole('button', { name: 'Inscrire' });
+    /* Submit button becomes enabled once the form is valid (JS sync function). */
     await expect(submitBtn).toBeEnabled();
     await submitBtn.click();
-    await page.waitForLoadState('networkidle');
 
     /* PRG redirect back to the inscrits tab with a success flash. */
     await expect(page.locator('.form-success[role="status"]')).toContainText(
@@ -264,14 +380,18 @@ test.describe('Admin — ajouter une inscription via modale (AC4)', () => {
 
     /* The new volunteer must appear in the 17:00 slot after the redirect. */
     const orgStandAfter = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
-    const addSlotAfter = orgStandAfter.locator('.participants-slot').nth(1);
+    const addSlotAfter = orgStandAfter.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: /17:00.+18:00/ }),
+    }).first();
     await expect(addSlotAfter.locator('.participants-list__name', { hasText: 'AjoutTest' })).toBeVisible();
 
     /* Reload confirms the signup is persisted server-side. */
     await page.reload();
-    await page.waitForLoadState('networkidle');
     const orgStandReload = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
-    await expect(orgStandReload.locator('.participants-slot').nth(1).locator('.participants-list__name', { hasText: 'AjoutTest' })).toBeVisible();
+    const addSlotReload = orgStandReload.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: /17:00.+18:00/ }),
+    }).first();
+    await expect(addSlotReload.locator('.participants-list__name', { hasText: 'AjoutTest' })).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -317,14 +437,12 @@ test.describe('Admin — annuler une inscription (AC4)', () => {
 
     /* Submit without notification. */
     await confirmPanel.getByRole('button', { name: 'Confirmer' }).click();
-    await page.waitForLoadState('networkidle');
 
-    /* Success flash confirms the cancellation. */
+    /* Success flash confirms the cancellation (replaces networkidle wait). */
     await expect(page.locator('.form-success[role="status"]')).toContainText(/a été annulée/i);
 
     /* After reload the volunteer should no longer appear in the active list. */
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const orgStandAfter = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
     const cancelSlotAfter = orgStandAfter.locator('.participants-slot').filter({
@@ -377,8 +495,8 @@ test.describe('Admin — déplacer une inscription (AC4)', () => {
     await expect(movePanel).toBeVisible();
 
     /* Select the move target: the 22:00 slot (Stand Organisateurs E2E Slot 4).
-     * selectOption({ label: regex }) is not supported — find the option by text, then
-     * select by its value attribute (the slot ID). */
+     * selectOption({ label: regex }) is not supported — find the option by text,
+     * assert it exists (guarding against a null value attribute), then select by value. */
     const targetSelect = movePanel.locator('select[name="target_slot_id"]');
     await expect(targetSelect).toBeVisible();
     /* Use Stand name + start time to disambiguate: "21:00–22:00" (Confirmations end time)
@@ -386,19 +504,19 @@ test.describe('Admin — déplacer une inscription (AC4)', () => {
     const targetOption = targetSelect.locator('option').filter({
       hasText: /Stand Organisateurs.*22:00/,
     }).first();
+    await expect(targetOption).toBeAttached();
     const targetSlotId = await targetOption.getAttribute('value');
+    expect(targetSlotId, 'Target slot option is missing its value attribute').not.toBeNull();
     await targetSelect.selectOption(targetSlotId!);
 
     /* Submit the move. */
     await movePanel.getByRole('button', { name: 'Confirmer le déplacement' }).click();
-    await page.waitForLoadState('networkidle');
 
-    /* Success flash confirms the move. */
+    /* Success flash confirms the move (replaces networkidle wait). */
     await expect(page.locator('.form-success[role="status"]')).toContainText(/a été déplacée/i);
 
     /* After reload: source slot should be empty, target slot should contain the volunteer. */
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     const orgStandAfter = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
 
@@ -415,6 +533,77 @@ test.describe('Admin — déplacer une inscription (AC4)', () => {
       has: page.locator('.participants-slot__when', { hasText: '22:00' }),
     }).first();
     await expect(targetSlotAfter.locator('.participants-list__name', { hasText: 'Other' })).toBeVisible();
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC4 — Admin : corriger la fiche d'une inscription via <details>
+// (state-mutating — desktop only)
+// Uses Slot 5 (18:00–19:00) in Stand Organisateurs E2E — admin-created signup for
+// Frank DupTest (locked = false because dup-test@e2e.test has no kermesse role and
+// last_login_at = NULL).
+// ---------------------------------------------------------------------------
+
+test.describe('Admin — corriger une inscription (AC4)', () => {
+  test.use({ storageState: storageStateFor('admin') });
+
+  test('l\'admin modifie le prénom d\'un bénévole et le voit persisté', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'State-mutating — runs once on desktop only');
+    const errors = watchConsoleErrors(page);
+
+    await openInscritsTab(page, KERMESSE_NAME);
+
+    const panel = page.locator('#tab-panel-inscrits');
+    const orgStand = panel.locator('.participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
+
+    /* Find the edit slot (13:00–14:00). Time chosen to avoid hasText ambiguity:
+     * adjacent slots ending at 13:00 or 14:00 don't exist so '13:00' uniquely
+     * matches the start time in ".participants-slot__when". */
+    const editSlot = orgStand.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: '13:00' }),
+    }).first();
+    await expect(editSlot).toBeVisible();
+
+    /* Frank DupTest row — admin-created signup with stored name. */
+    const frankRow = editSlot.locator('.participants-list__item').first();
+    await expect(frankRow).toBeVisible();
+    await expect(frankRow.locator('.participants-list__name', { hasText: 'DupTest' })).toBeVisible();
+
+    /* Expand "Modifier la fiche". */
+    const editDetails = frankRow.locator('details.admin-edit-details');
+    await expect(editDetails).toBeVisible();
+    await editDetails.locator('summary').click();
+
+    const editPanel = editDetails.locator('.admin-edit-details__panel');
+    await expect(editPanel).toBeVisible();
+
+    /* First name field must be editable (locked = false). */
+    const firstNameInput = editPanel.locator('input[name="first_name"]');
+    await expect(firstNameInput).toBeEditable();
+    await firstNameInput.fill('François');
+
+    await editPanel.getByRole('button', { name: 'Enregistrer' }).click();
+
+    /* Flash confirms the update. */
+    await expect(page.locator('.form-success[role="status"]')).toContainText(
+      'La fiche d\'inscription a été mise à jour.',
+    );
+
+    /* After reload, the updated name must persist. */
+    await page.reload();
+
+    /* Inscrits tab re-opens via hash redirect (#inscrits). */
+    await expect(page.locator('#tab-panel-inscrits')).toHaveClass(/is-open/);
+
+    const reloadedOrgStand = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
+    const reloadedEditSlot = reloadedOrgStand.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: '13:00' }),
+    }).first();
+    await expect(
+      reloadedEditSlot.locator('.participants-list__name', { hasText: 'François' }),
+    ).toBeVisible();
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
@@ -443,13 +632,14 @@ test.describe('Équipe — invitations (AC5)', () => {
     await inviteForm.locator('#invite-role').selectOption('gestionnaire');
 
     await inviteForm.getByRole('button', { name: "Envoyer l'invitation" }).click();
-    await page.waitForLoadState('networkidle');
 
     /* PRG redirects to #participants (not a valid tab id) so JS opens the default tab.
-     * Re-open the Équipe tab so the invite_success flash inside it becomes visible. */
+     * Re-open the Équipe tab so the invite_success flash inside it becomes visible.
+     * Always assert + click unconditionally to avoid racy isVisible() conditionals. */
     const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
-    if (await equipeBtn.isVisible()) { await equipeBtn.click(); }
-    await page.waitForLoadState('networkidle');
+    await expect(equipeBtn).toBeVisible();
+    await equipeBtn.click();
+    await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
 
     /* In the Docker E2E environment SMTP is not configured, so the controller sets
      * invite_warning ("rôle attribué, email non envoyé") instead of invite_success.
@@ -483,20 +673,68 @@ test.describe('Équipe — invitations (AC5)', () => {
     /* The "Invitation envoyée" badge must be visible (confirms this is a pending row). */
     await expect(pendingRow.getByText('Invitation envoyée')).toBeVisible();
 
-    /* Click the resend button (🔄 — aria-label "Relancer l'invitation"). */
+    /* Click the resend button. */
     await pendingRow.getByRole('button', { name: /relancer/i }).click();
-    await page.waitForLoadState('networkidle');
 
-    /* PRG redirects to #participants (invalid tab id) → default tab opens.
-     * Re-open Équipe tab so the invite_success flash inside it is visible. */
+    /* PRG redirects to #participants → re-open Équipe tab unconditionally. */
     const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
-    if (await equipeBtn.isVisible()) { await equipeBtn.click(); }
-    await page.waitForLoadState('networkidle');
+    await expect(equipeBtn).toBeVisible();
+    await equipeBtn.click();
+    await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
 
     /* Success flash confirms the invitation was resent. */
     await expect(page.locator('.form-success[role="status"]')).toContainText(
       'Invitation relancée avec succès.',
     );
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AC5 — Équipe : révoquer un rôle (state-mutating — desktop only)
+// Uses the dedicated revoke-me@e2e.test gestionnaire to avoid breaking other
+// gestionnaire tests that depend on gestionnaire@e2e.test remaining active.
+// ---------------------------------------------------------------------------
+
+test.describe('Équipe — révoquer un rôle (AC5)', () => {
+  test.use({ storageState: storageStateFor('owner') });
+
+  test('l\'Owner révoque un gestionnaire et le voit disparaître de l\'équipe', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'State-mutating — runs once on desktop only');
+    const errors = watchConsoleErrors(page);
+
+    await openEquipeTab(page, KERMESSE_NAME);
+
+    /* Find the revoke-me@e2e.test row. */
+    const revokeRow = page.locator('.participants-list__item').filter({
+      has: page.getByText('revoke-me@e2e.test'),
+    });
+    await expect(revokeRow).toBeVisible();
+
+    /* Revoke button must be present on a non-owner row. */
+    const revokeBtn = revokeRow.getByRole('button', { name: /révoquer/i });
+    await expect(revokeBtn).toBeVisible();
+
+    /* The revoke form uses onsubmit="return confirm(...)" — accept the native dialog. */
+    page.once('dialog', dialog => dialog.accept());
+    await revokeBtn.click();
+
+    /* PRG redirects to #participants → re-open Équipe tab unconditionally. */
+    const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
+    await expect(equipeBtn).toBeVisible();
+    await equipeBtn.click();
+    await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
+
+    /* Success flash confirms the revocation. */
+    await expect(page.locator('.form-success[role="status"]')).toContainText(
+      'Membre révoqué avec succès.',
+    );
+
+    /* The revoked user must no longer appear in the team list. */
+    await expect(page.locator('.participants-list__item').filter({
+      has: page.getByText('revoke-me@e2e.test'),
+    })).toHaveCount(0);
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });

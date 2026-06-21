@@ -1,7 +1,7 @@
 # Story 6.5 : Automatiser les parcours critiques des organisateurs
 
 ---
-status: review
+status: done
 epic: 6
 baseline_commit: d70a0bdce9d640de4c2f8dc6f70b88f15537e0dc
 ---
@@ -125,6 +125,23 @@ Insight: The E2E Playwright infrastructure is fully solid with over 78 tests pas
   - [x] T4.1 — Lancer `bash scripts/e2e.sh` et vérifier que les anciens tests passent
   - [x] T4.2 — Vérifier que les nouveaux tests organisateurs passent
 
+### Review Findings
+
+- [x] [Review][Patch] Missing E2E test for stand and slot creation flow [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Missing E2E test for editing/correcting a signup [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Missing E2E test for revoking a team member [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Missing current user identification & self-revocation protection [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Abuse of waitForLoadState('networkidle') [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Race Conditions by Conditional Logic (isVisible) [e2e/tests/organizer-dashboard.spec.ts:844]
+- [x] [Review][Patch] Naive Overflow Assertions [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Suspicious Hardcoded Timeouts [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Brittle Locator Strategies [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Incomplete Form Validation Testing [e2e/tests/organizer-dashboard.spec.ts]
+- [x] [Review][Patch] Edge case: value attribute missing on target option [e2e/tests/organizer-dashboard.spec.ts:783]
+- [x] [Review][Defer] App Bug: PRG redirects to invalid tab id [e2e/tests/organizer-dashboard.spec.ts] — deferred, pre-existing
+- [x] [Review][Defer] Unscalable Magic Link Fixtures [e2e-setup.sql] — deferred, pre-existing
+- [x] [Review][Defer] Fragile SQL Teardown Scripts [e2e-setup.sql] — deferred, pre-existing
+
 ## 🗂 File List
 
 - `e2e/fixtures/e2e-setup.sql` (modified)
@@ -155,6 +172,49 @@ Les règles serveur (403 inter-kermesse, invariants de capacité/doublon/chevauc
 - Correction régression story 5.13 : URL `/signup/confirmation` → `/slot-signup/confirmation` dans `visitor-signup.spec.ts`
 - `invite_warning` vs `invite_success` : dans l'env Docker sans SMTP, l'email échoue silencieusement → le contrôleur flashe `invite_warning` ; le test accepte les deux classes de flash
 
+## Suggested Review Order
+
+**Infrastructure E2E — entrée de lecture**
+
+- Navigation helpers `goToDashboard` / `openInscritsTab` / `openEquipeTab` : assert-based waits replacing `networkidle`
+  [`organizer-dashboard.spec.ts:36`](../../e2e/tests/organizer-dashboard.spec.ts#L36)
+
+**Nouvelles fixtures SQL (story 6.5)**
+
+- Slot édit 13:00–14:00, user `revoke-me@e2e.test` : données isolées pour les tests mutants AC4/AC5
+  [`e2e-setup.sql:228`](../../e2e/fixtures/e2e-setup.sql#L228)
+
+**Nouveaux tests — ACs manquants**
+
+- AC1 : création stand + créneau dans `kermesse-e2e-prep` (Owner, desktop)
+  [`organizer-dashboard.spec.ts:261`](../../e2e/tests/organizer-dashboard.spec.ts#L261)
+
+- AC4 : correction d'une fiche d'inscription via `<details class="admin-edit-details">`
+  [`organizer-dashboard.spec.ts:549`](../../e2e/tests/organizer-dashboard.spec.ts#L549)
+
+- AC5 : révocation d'un rôle avec acceptance du `confirm()` natif via `page.once('dialog', ...)`
+  [`organizer-dashboard.spec.ts:700`](../../e2e/tests/organizer-dashboard.spec.ts#L700)
+
+- AC6 : badge « Vous » et absence de bouton auto-révocation (session admin)
+  [`organizer-dashboard.spec.ts:177`](../../e2e/tests/organizer-dashboard.spec.ts#L177)
+
+**Patches qualité — tests existants**
+
+- AC4 add : `submitBtn` désactivé avant remplissage ; filtre `/17:00.+18:00/` remplace `.nth(1)` brittle
+  [`organizer-dashboard.spec.ts:326`](../../e2e/tests/organizer-dashboard.spec.ts#L326)
+
+- AC4 move : `expect(targetOption).toBeAttached()` + guard null avant `selectOption`
+  [`organizer-dashboard.spec.ts:466`](../../e2e/tests/organizer-dashboard.spec.ts#L466)
+
+- AC3 overflow : `Math.ceil(scrollWidth) > Math.ceil(window.innerWidth)` pour absorber les différences sub-pixel
+  [`organizer-dashboard.spec.ts:124`](../../e2e/tests/organizer-dashboard.spec.ts#L124)
+
+**Infrastructure helper + global-setup**
+
+- `storageStateFor('gestionnaire')` : ajout du type + session gestionnaire dans global-setup
+  [`fixtures.ts:1`](../../e2e/helpers/fixtures.ts#L1)
+
 ## 📅 Change Log
 - 2026-06-20: Story créée et implémentée (baseline: d70a0bd)
 - 2026-06-20: Tests corrigés — 80/80 verts (suite de la session)
+- 2026-06-21: 11 patches de revue appliqués — 87 tests verts (4 nouveaux tests AC1/AC4/AC5/AC6 + 7 corrections qualité)

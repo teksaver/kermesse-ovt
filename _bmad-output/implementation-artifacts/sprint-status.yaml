@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-20T18:43:50+0200
+last_updated: 2026-06-20T17:36:00+0200
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
