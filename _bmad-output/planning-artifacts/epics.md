@@ -1191,6 +1191,29 @@ So that je sois redirigé vers la connexion Magic Link et ramené à ma page une
 **Then** les scénarios GET expiré, POST expiré et open redirect sont couverts en feature tests,
 **And** les tests s'exécutent sous SQLite sans dépendance à Ouvaton.
 
+### Story 6.8bis : Résoudre la dette technique CI (Deferred Findings de la Story 6.7)
+
+As an équipe de livraison,
+I want traiter la dette technique de l'infrastructure CI identifiée lors de la Story 6.7 (PHPStan & E2E),
+So that la pipeline de validation soit stricte et ne masque aucune anomalie réelle avant la release.
+
+**Acceptance Criteria:**
+
+**Given** le script d'exécution des tests bout-en-bout (`scripts/e2e.sh`),
+**When** les tests Playwright s'exécutent via Docker,
+**Then** le script ne fait pas une confiance aveugle aux codes de retour s'il y a un crash sous-jacent ("Blind Trust in E2E Script Exit Codes"),
+**And** tout échec interne est propagé correctement à la CI.
+
+**Given** la configuration de l'analyse statique (`phpstan.neon.dist`),
+**When** PHPStan s'exécute,
+**Then** le niveau d'analyse est augmenté ("PHPStan Level too low"),
+**And** le problème de pollution par le fichier de bootstrap ("PHPStan bootstrap poisoning") est corrigé.
+
+**Given** la baseline PHPStan (`phpstan-baseline.neon`),
+**When** l'analyse est lancée,
+**Then** les vraies anomalies masquées par la baseline sont résolues ("Baseline hides real issues"),
+**And** la baseline est drastiquement réduite ou supprimée.
+
 ### Story 6.9 : Qualifier et déployer la release candidate
 
 As an organisateur responsable de la mise en production,
@@ -1520,3 +1543,37 @@ So that la base de code ne contienne plus de chemins non utilisés qui créent d
 **Then** tout code zombie identifié (méthodes, tables, colonnes, vues) est supprimé proprement,
 **And** les tests couvrant le comportement supprimé sont mis à jour ou retirés,
 **And** aucune régression fonctionnelle n'est introduite.
+
+### Story 7.3 : Corriger l'incohérence d'état d'invitation de l'onglet « Équipe » `[DÉFÉRÉ — Candidat Epic 7 Tech-Debt]`
+
+> **Décision (2026-06-21)** : bug découvert lors du checkpoint manuel de la Story 6.8 (expiration de session). Hors-périmètre de la 6.8 ; isolé en backlog Epic 7 (dette technique) pour ne pas élargir la clôture de l'Epic 6. Touche les stories 5.5 (onglet Équipe) et 5.8.
+
+As an Owner/Admin,
+I want que l'état d'une invitation soit cohérent entre la liste de l'équipe, la modale d'édition et l'action « Relancer »,
+So that je ne voie plus un membre déjà connecté affiché « Invitation envoyée » avec un bouton « Relancer » qui n'envoie aucun email.
+
+**Contexte — trois symptômes, deux causes :**
+
+Le cycle d'une invitation a **quatre jalons** en base : `invited_at` (envoi) → `accepted_at` (clic Magic Link, `MagicLinkController:115`) → `last_login_at` (1ʳᵉ connexion confirmée, `ProfileService:48`) → `first_access_at` (1ʳᵉ ouverture du dashboard de *cette* kermesse, `RoleService:62`). Trois écrans répondent à « cette personne a-t-elle pris en main son compte ? » en lisant **trois colonnes différentes** :
+- Badge liste « Invitation envoyée » → `first_access_at IS NULL` (`RoleService::getTeamMembersGroupedByStatus`, ligne ~507).
+- Modale d'édition « gère son propre compte » → `accepted_at !== null` (JS `openEditMemberModal`, `dashboard.php:985`).
+- Garde de « Relancer » → `accepted_at !== null && last_login_at !== null` (`RoleService::resendInvitation`, ligne ~236).
+
+**Acceptance Criteria:**
+
+**Given** un membre ayant cliqué le Magic Link **et** confirmé sa connexion (`accepted_at` et `last_login_at` renseignés) mais n'ayant pas encore ouvert le dashboard de cette kermesse (`first_access_at IS NULL`),
+**When** l'onglet « Équipe » s'affiche,
+**Then** ce membre n'apparaît **plus** comme « Invitation envoyée » (il est traité comme actif), en alignant la classification sur la définition métier unique `accepted_at !== null && last_login_at !== null` — tout en préservant le cas Owner (`invited_at IS NULL` reste actif).
+
+**Given** la modale d'édition d'un membre,
+**When** elle s'ouvre,
+**Then** son verrouillage des champs et son message « gère son propre compte » utilisent **la même** condition que la classification de la liste (ajouter `u.last_login_at` au SELECT de `UserRoleModel::findTeamMembers`).
+
+**Given** une action de l'onglet « Équipe » (relancer, éditer, inviter, révoquer),
+**When** elle aboutit et redirige,
+**Then** l'utilisateur **reste sur l'onglet concerné** (ancre `#equipe` ou `#inscrits` selon l'action) et **voit le flash** — au lieu de l'ancre obsolète `#participants` qui le renvoie sur l'onglet Modification (`KermesseAdminController` lignes ~550, 621, 635, 639, 665 ; mapper chaque redirection au bon onglet).
+
+**Given** les corrections ci-dessus,
+**When** la suite PHPUnit est exécutée,
+**Then** des feature tests couvrent (a) le membre connecté qui ne doit plus être « en attente », (b) le comportement de « Relancer » sur ce membre, (c) la redirection post-action vers le bon onglet,
+**And** la suite est verte et PHPStan sans ajout au baseline.

@@ -1,5 +1,5 @@
 # generated: 2026-06-19T18:32:48+0200
-# last_updated: 2026-06-22
+# last_updated: 2026-06-21
 # project: Kermesse
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-22
+last_updated: 2026-06-21
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
@@ -95,11 +95,13 @@ development_status:
   6-5-automatiser-les-parcours-critiques-des-organisateurs: done
   6-6-fiabiliser-les-preuves-mariadb-des-parcours-critiques: done
   6-7-installer-les-gates-ci-de-preparation-a-la-production: done
-  6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: backlog
+  6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: done
+  6-8bis-resoudre-la-dette-technique-ci-deferred-findings-de-la-story-6-7: backlog
   6-9-qualifier-et-deployer-la-release-candidate: backlog
   6-10-securiser-le-deploiement-des-migrations-incompatibles: backlog
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog
   7-2-nettoyage-du-code-zombie-de-resolution-de-profil-defere-candidat-epic-7-tech-debt: backlog
+  7-3-corriger-l-incoherence-d-etat-d-invitation-de-l-onglet-equipe-defere-candidat-epic-7-tech-debt: backlog
   epic-7-retrospective: optional
