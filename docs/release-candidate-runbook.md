@@ -23,9 +23,25 @@
 
 ## 2. Checklist Go/No-Go
 
+### 2.0 Variables GitHub à positionner avant tout Go
+
+Ces variables doivent être configurées dans **Settings → Environments → production → Variables** du dépôt GitHub :
+
+| Variable | Valeur requise | Quand la positionner |
+|----------|---------------|----------------------|
+| `DEPLOY_PRODUCTION_GO` | `true` | Après validation Go/No-Go humaine — à remettre à `false` après chaque déploiement |
+| `STORY_610_DONE` | `true` | Après que la Story 6.10 soit marquée `done` et verte en CI |
+
+> **Important** : Le workflow `deploy-ouvaton.yml` refuse tout déploiement automatique
+> (`workflow_run`) si `DEPLOY_PRODUCTION_GO != 'true'`. Ce garde-fou est intentionnel :
+> chaque déploiement en production nécessite un Go humain explicite.
+>
+> La précondition `STORY_610_DONE` bloque l'étape de déploiement même pour les
+> déclenchements manuels (`workflow_dispatch`) tant que 6.10 n'est pas validée.
+
 ### 2.1 Préconditions obligatoires (toutes doivent être ✅ avant le Go)
 
-- [ ] **6.10 terminée et verte** — drift checksum résolu, migration `signups → slot_signups` validée
+- [ ] **6.10 terminée et verte** — drift checksum résolu, migration `signups → slot_signups` validée — `vars.STORY_610_DONE = 'true'`
 - [ ] **Manifeste RC vérifié** — `commit_sha`, `archive_sha256` et `ci_run_id` cohérents entre CI, sidecar et manifeste
 - [ ] **Archive immuable** — aucun rebuild entre CI et production ; l'archive promue est identique (même SHA-256) à celle qualifiée
 - [ ] **CI verte sur `main`** — les 6 gates (PHPUnit SQLite, PHPStan, MariaDB, E2E Playwright, rehearsal, package) ont toutes passé pour le commit candidat

@@ -216,61 +216,17 @@ jobs:
             test-results/
           retention-days: 7
 
-  # ─── Gate 5 : Deploy rehearsal ────────────────────────────────────────────
-  deploy-rehearsal:
-    runs-on: ubuntu-latest
-    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Start rehearsal environment
-        run: docker compose --profile rehearsal up -d
-
-      - name: Wait for deploy-web to be ready
-        run: |
-          timeout 300 bash -c '
-            while true; do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8081/ 2>/dev/null || echo "000")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then break; fi
-              echo "deploy-web not ready (HTTP_CODE=$HTTP_CODE), retrying..."
-              sleep 5
-            done
-          '
-
-      - name: Run deploy rehearsal
-        env:
-          TARGET_HOST: deploy-target
-          TARGET_PORT: "22"
-          TARGET_PROTO: sftp
-          TARGET_USER: deploy
-          TARGET_PASS: deploy_rehearsal
-          REMOTE_STAGING: staging
-          BASE_URL: "http://deploy-web"
-          OPS_HMAC_SECRET: local_dev_ops_secret_32_bytes_minimum
-          TARGET_SFTP_SKIP_HOST_CHECK: "true"
-        run: bash scripts/deploy-rehearsal.sh
-
-      - name: Dump Docker logs on failure
-        if: failure()
-        run: docker compose --profile rehearsal logs --no-color 2>&1 || true
-
-      - name: Teardown environment
-        if: always()
-        run: docker compose --profile rehearsal down --volumes 2>&1 || true
-
-  # ─── Gate 6 : Package deploy artifact ────────────────────────────────────
+  # ─── Gate 5 : Package deploy artifact ────────────────────────────────────
   #
   # Runs only on main branch or PRs targeting main.
-  # All five preceding gates must pass before the artifact is built.
+  # Must complete BEFORE deploy-rehearsal so the rehearsal uses the exact packaged artifact.
   # The artifact excludes Node, Playwright, tests, traces, and dev deps (AC8).
   #
   # Required checks for branch protection on main:
   #   validate-and-test, phpstan, validate-mariadb, e2e-playwright, deploy-rehearsal, package-artifact
   package-artifact:
     runs-on: ubuntu-latest
-    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright, deploy-rehearsal]
+    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright]
     if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
 
     env:
@@ -353,14 +309,23 @@ jobs:
             build/kermesse-deploy-manifest.json
           retention-days: 14
 
-      - name: Log artifact identity
+      - name: Record artifact identity
         if: github.ref == 'refs/heads/main'
         run: |
-          echo "Artifact ID   : ${{ steps.upload-main-artifact.outputs.artifact-id }}"
-          echo "Artifact URL  : ${{ steps.upload-main-artifact.outputs.artifact-url }}"
-          echo "Archive SHA256: ${{ steps.rc-manifest.outputs.archive_sha256 }}"
-          echo "Commit SHA    : ${{ github.sha }}"
-          echo "CI Run ID     : ${{ github.run_id }}"
+          set -euo pipefail
+          ARCHIVE_SHA256="${{ steps.rc-manifest.outputs.archive_sha256 }}"
+          cat > build/rc-identity.json <<EOF
+          {
+            "artifact_id": "${{ steps.upload-main-artifact.outputs.artifact-id }}",
+            "artifact_url": "${{ steps.upload-main-artifact.outputs.artifact-url }}",
+            "artifact_digest": "${{ steps.upload-main-artifact.outputs.artifact-digest }}",
+            "archive_sha256": "${ARCHIVE_SHA256}",
+            "commit_sha": "${{ github.sha }}",
+            "ci_run_id": "${{ github.run_id }}"
+          }
+          EOF
+          echo "RC identity:"
+          cat build/rc-identity.json
 
       - name: Upload pull request deploy artifact
         if: github.event_name == 'pull_request'
@@ -373,8 +338,64 @@ jobs:
             build/kermesse-deploy-manifest.json
           retention-days: 7
 
+  # ─── Gate 6 : Deploy rehearsal ────────────────────────────────────────────
+  #
+  # Runs only on main branch or PRs targeting main (same condition as package-artifact).
+  # Depends on package-artifact to rehearse the EXACT packaged binary, not a rebuilt artifact.
+  deploy-rehearsal:
+    runs-on: ubuntu-latest
+    needs: [validate-and-test, validate-mariadb, phpstan, e2e-playwright, package-artifact]
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start rehearsal environment
+        run: docker compose --profile rehearsal up -d
+
+      - name: Wait for deploy-web to be ready
+        run: |
+          timeout 300 bash -c '
+            while true; do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:8081/ 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then break; fi
+              echo "deploy-web not ready (HTTP_CODE=$HTTP_CODE), retrying..."
+              sleep 5
+            done
+          '
+
+      - name: Download packaged artifact for rehearsal
+        uses: actions/download-artifact@v4
+        with:
+          name: kermesse-deploy
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: build/
+
+      - name: Run deploy rehearsal
+        env:
+          TARGET_HOST: deploy-target
+          TARGET_PORT: "22"
+          TARGET_PROTO: sftp
+          TARGET_USER: deploy
+          TARGET_PASS: deploy_rehearsal
+          REMOTE_STAGING: staging
+          BASE_URL: "http://deploy-web"
+          OPS_HMAC_SECRET: local_dev_ops_secret_32_bytes_minimum
+          TARGET_SFTP_SKIP_HOST_CHECK: "true"
+        run: bash scripts/deploy-rehearsal.sh --use-existing-artifact
+
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose --profile rehearsal logs --no-color 2>&1 || true
+
+      - name: Teardown environment
+        if: always()
+        run: docker compose --profile rehearsal down --volumes 2>&1 || true
+
       - name: Upload RC evidence placeholder
-        # Publie le manifeste comme point d'ancrage des preuves RC.
+        # Publie le manifeste et l'identité RC comme point d'ancrage des preuves RC.
         # Les preuves complètes (smoke tests, rehearsal log) sont générées par
         # scripts/qualify-release-candidate.sh et archivées séparément.
         if: github.ref == 'refs/heads/main'
@@ -383,4 +404,5 @@ jobs:
           name: rc-evidence-${{ github.run_id }}
           path: |
             build/kermesse-deploy-manifest.json
+            build/rc-identity.json
           retention-days: 30

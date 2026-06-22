@@ -138,6 +138,67 @@ assert_not_contains "deploy: plus de Composer install dans build job" 'Install d
 assert_not_contains "deploy: plus de PHPUnit dans build job" 'vendor/bin/phpunit' "${DEPLOY_WORKFLOW}"
 assert_not_contains "deploy: plus de packaging dans build job" 'package-deploy-artifact.sh' "${DEPLOY_WORKFLOW}"
 
+# ─── Nouvelles assertions (patches 6.9 review) ──────────────────────────────
+
+# Item 1 : déploiement bloqué sans Go explicite
+assert_contains "deploy: DEPLOY_PRODUCTION_GO requis pour auto-deploy" 'DEPLOY_PRODUCTION_GO' "${DEPLOY_WORKFLOW}"
+assert_contains "deploy: STORY_610_DONE requis" 'STORY_610_DONE' "${DEPLOY_WORKFLOW}"
+
+# Item 2 : deploy-rehearsal dépend de package-artifact
+assert_contains "ci: deploy-rehearsal utilise --use-existing-artifact en CI" '--use-existing-artifact' "${CI_WORKFLOW}"
+assert_contains "ci: deploy-rehearsal télécharge l'artefact package-artifact" 'download-artifact' "${CI_WORKFLOW}"
+
+# Item 3 : enregistrer artifact-id, digest, url
+assert_contains "ci: enregistre artifact-id dans preuves RC" 'artifact-id' "${CI_WORKFLOW}"
+assert_contains "ci: enregistre artifact-url dans preuves RC" 'artifact-url' "${CI_WORKFLOW}"
+assert_contains "ci: rc-identity.json généré" 'rc-identity.json' "${CI_WORKFLOW}"
+
+# Item 4 : valider artifact_name dans manifeste
+assert_contains "deploy: valide artifact_name = kermesse-deploy" "kermesse-deploy" "${DEPLOY_WORKFLOW}"
+assert_contains "deploy: artifact_name inattendu bloque" 'artifact_name inattendu' "${DEPLOY_WORKFLOW}"
+
+# Item 5 : parsing jq, dossier build/rc-evidence
+assert_contains "qualify: parse manifeste avec jq (pas grep)" 'jq -r' "${QUALIFY_SCRIPT}"
+assert_contains "qualify: RC_EVIDENCE_DIR dans build/" 'build/rc-evidence' "${QUALIFY_SCRIPT}"
+
+# Item 6 : préflight migration
+assert_contains "rehearsal: préflight ops/migrate/status avant migration" 'Préflight' "${REHEARSAL_SCRIPT}"
+assert_contains "rehearsal: refuse si failed non vide au préflight" 'Résolvez les migrations en échec' "${REHEARSAL_SCRIPT}"
+
+# Item 7 : preuve que seconde migration = no-op
+assert_contains "rehearsal: vérifie pending=0 avant seconde migration" 'PENDING_BEFORE_SECOND' "${REHEARSAL_SCRIPT}"
+
+# Item 8 : backup/restore intégré dans qualify
+assert_contains "qualify: intègre la répétition sauvegarde/restauration" 'rehearsal-backup-restore.sh' "${QUALIFY_SCRIPT}"
+assert_contains "qualify: log sauvegarde/restauration archivé" 'backup-restore.log' "${QUALIFY_SCRIPT}"
+
+# Item 9 : fixtures obligatoires
+assert_contains "backup: refuse si fixtures absentes (pas de fallback silencieux)" 'Les fixtures représentatives sont obligatoires' "${BACKUP_SCRIPT}"
+
+# Item 10 : sécurité base de restauration
+assert_contains "backup: refuse DB_RESTORE_NAME == DB_NAME" 'ne peut pas être identique' "${BACKUP_SCRIPT}"
+assert_contains "backup: FK slot_signups → users vérifiée" 'users' "${BACKUP_SCRIPT}"
+
+# Item 11 : Playwright local
+assert_contains "qualify: utilise le Playwright local (node_modules)" 'node_modules/.bin/playwright' "${QUALIFY_SCRIPT}"
+assert_contains "qualify: vérifie Playwright installé avant smoke" 'Playwright non installé' "${QUALIFY_SCRIPT}"
+
+# Item 12 : pas de QUALIFICATION OK si smokes sautés
+assert_contains "qualify: QUALIFICATION PARTIELLE si smokes sautés" 'QUALIFICATION PARTIELLE' "${QUALIFY_SCRIPT}"
+
+# Item 13 : postflight et health check production
+assert_contains "deploy: health check post-déploiement" 'Post-deploy health check' "${DEPLOY_WORKFLOW}"
+assert_contains "deploy: health check vérifie HTTP code" 'health_check_http_code' "${DEPLOY_WORKFLOW}"
+
+# Item 14 : rc-evidence archive complète
+assert_contains "ci: rc-identity.json dans rc-evidence" 'rc-identity.json' "${CI_WORKFLOW}"
+
+# Item 15 : runbook à jour
+RUNBOOK="${PROJECT_ROOT}/docs/release-candidate-runbook.md"
+assert_file_exists "runbook RC existe" "${RUNBOOK}"
+assert_contains "runbook: mentionne DEPLOY_PRODUCTION_GO" 'DEPLOY_PRODUCTION_GO' "${RUNBOOK}"
+assert_contains "runbook: mentionne STORY_610_DONE" 'STORY_610_DONE' "${RUNBOOK}"
+
 if [ "${fail}" -ne 0 ]; then
     echo "ÉCHEC : tests du pipeline qualify/backup/RC échoués." >&2
     exit 1

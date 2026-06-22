@@ -497,6 +497,46 @@ call_migrate_endpoint() {
     echo "  ${label} [OK] — aucun échec détecté"
 }
 
+# ── Préflight migration : état des migrations avant toute exécution ───────────
+# Lecture seule via ops/migrate/status — vérifie qu'aucune migration n'est en échec.
+# Si failed[] non vide, le déploiement est bloqué : résoudre avant de continuer.
+CURRENT_STEP="preflight-migration"
+echo ""
+echo "-- Préflight : vérification de l'état des migrations (lecture seule)"
+PREFLIGHT_RESPONSE_FILE="$(mktemp)"
+ops_sign "ops/migrate/status"
+PREFLIGHT_HTTP=$(curl --max-time 30 -sS -X POST "${BASE_URL%/}/ops/migrate/status" \
+    -H "Content-Type: application/json" \
+    -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+    -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+    -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+    -w "%{http_code}" -o "${PREFLIGHT_RESPONSE_FILE}" \
+    -d '{}')
+PREFLIGHT_BODY="$(cat "${PREFLIGHT_RESPONSE_FILE}")"
+rm -f "${PREFLIGHT_RESPONSE_FILE}"
+
+if [[ "${PREFLIGHT_HTTP}" != "200" ]]; then
+    echo "ERREUR : Préflight ops/migrate/status a retourné HTTP ${PREFLIGHT_HTTP} (attendu 200)" >&2
+    exit 1
+fi
+
+if command -v jq >/dev/null 2>&1; then
+    PREFLIGHT_FAILED="$(echo "${PREFLIGHT_BODY}" | jq -r 'if .failed then (.failed | length) else 0 end' 2>/dev/null || echo "0")"
+    PREFLIGHT_PENDING="$(echo "${PREFLIGHT_BODY}" | jq -r 'if .pending then (.pending | length) else 0 end' 2>/dev/null || echo "0")"
+else
+    PREFLIGHT_FAILED="0"
+    PREFLIGHT_PENDING="0"
+    if echo "${PREFLIGHT_BODY}" | grep -qE '"failed"\s*:\s*\[.+\]'; then PREFLIGHT_FAILED="1"; fi
+fi
+
+if [[ "${PREFLIGHT_FAILED}" != "0" && "${PREFLIGHT_FAILED}" != "" ]]; then
+    echo "ERREUR : Résolvez les migrations en échec avant de tenter une nouvelle exécution (failed=${PREFLIGHT_FAILED})" >&2
+    echo "Corps : ${PREFLIGHT_BODY}" >&2
+    exit 1
+fi
+echo "  Préflight OK — failed=[] ; migrations en attente avant exécution : ${PREFLIGHT_PENDING}"
+echo ""
+
 # ── Étape 4/5 : Migration base de données ────────────────────────────────────
 CURRENT_STEP="migration"
 echo ""
@@ -505,8 +545,42 @@ call_migrate_endpoint "Webhook de migration" "ops/migrate"
 echo ""
 
 # ── Preuve d'idempotence : ré-exécution = no-op ──────────────────────────────
+# Capturer PENDING_BEFORE_SECOND avant la seconde exécution pour prouver qu'elle ne peut
+# rien appliquer : si pending=0 avant, la seconde migration est nécessairement un no-op.
 CURRENT_STEP="migration-idempotence"
 echo "-- Preuve d'idempotence : seconde migration (doit être no-op)"
+IDEMPOTENCE_STATUS_FILE="$(mktemp)"
+ops_sign "ops/migrate/status"
+IDEMPOTENCE_HTTP=$(curl --max-time 30 -sS -X POST "${BASE_URL%/}/ops/migrate/status" \
+    -H "Content-Type: application/json" \
+    -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+    -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+    -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+    -w "%{http_code}" -o "${IDEMPOTENCE_STATUS_FILE}" \
+    -d '{}')
+IDEMPOTENCE_STATUS_BODY="$(cat "${IDEMPOTENCE_STATUS_FILE}")"
+rm -f "${IDEMPOTENCE_STATUS_FILE}"
+
+if [[ "${IDEMPOTENCE_HTTP}" != "200" ]]; then
+    echo "ERREUR : Statut avant seconde migration : HTTP ${IDEMPOTENCE_HTTP}" >&2
+    exit 1
+fi
+
+if command -v jq >/dev/null 2>&1; then
+    PENDING_BEFORE_SECOND="$(echo "${IDEMPOTENCE_STATUS_BODY}" | jq -r 'if .pending then (.pending | length) else 0 end' 2>/dev/null || echo "0")"
+else
+    PENDING_BEFORE_SECOND="0"
+    if echo "${IDEMPOTENCE_STATUS_BODY}" | grep -qE '"pending"\s*:\s*\[.+\]'; then PENDING_BEFORE_SECOND="1"; fi
+fi
+
+echo "  Migrations en attente avant seconde exécution : PENDING_BEFORE_SECOND=${PENDING_BEFORE_SECOND}"
+if [[ "${PENDING_BEFORE_SECOND}" != "0" && "${PENDING_BEFORE_SECOND}" != "" ]]; then
+    echo "ERREUR : Idempotence impossible — migrations encore en attente (PENDING_BEFORE_SECOND=${PENDING_BEFORE_SECOND})" >&2
+    echo "La première migration n'a pas appliqué toutes les migrations attendues." >&2
+    exit 1
+fi
+echo "  PENDING_BEFORE_SECOND=0 — la seconde migration ne peut appliquer aucune migration."
+
 call_migrate_endpoint "Seconde migration (idempotence)" "ops/migrate"
 echo ""
 
@@ -574,6 +648,6 @@ fi
 echo "  Transfert            [OK]"
 echo "  Activation           [OK]"
 echo "  Migration            [OK]"
-echo "  Idempotence          [OK]"
+echo "  Idempotence          [OK] — PENDING_BEFORE_SECOND=${PENDING_BEFORE_SECOND} (no-op prouvé)"
 echo "  Postflight statut    [OK]"
 echo ""

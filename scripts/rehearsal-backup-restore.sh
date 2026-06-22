@@ -71,6 +71,14 @@ echo "Source  : ${DB_HOST}:${DB_PORT}/${DB_NAME}"
 echo "Cible   : ${DB_HOST}:${DB_PORT}/${DB_RESTORE_NAME}"
 echo ""
 
+# Vérification de sécurité : la base de restauration ne peut pas être identique à la source.
+# Protège contre une restauration accidentelle qui écraserait les données de qualification.
+if [[ "${DB_RESTORE_NAME}" == "${DB_NAME}" ]]; then
+    echo "ERREUR : DB_RESTORE_NAME (${DB_RESTORE_NAME}) ne peut pas être identique à DB_NAME (${DB_NAME})." >&2
+    echo "Utilisez une base de restauration isolée distincte de la base source." >&2
+    exit 1
+fi
+
 BACKUP_FILE="$(mktemp /tmp/kermesse-backup-XXXXXX.sql)"
 TIMING_BACKUP_START=""
 TIMING_BACKUP_END=""
@@ -81,6 +89,11 @@ cleanup_backup() {
     if [[ -f "${BACKUP_FILE}" ]]; then
         rm -f "${BACKUP_FILE}"
     fi
+    # Nettoyage garanti de la base de restauration même en cas d'erreur.
+    # MYSQL_PWD utilisé pour éviter l'avertissement sur la ligne de commande.
+    MYSQL_PWD="${DB_PASS}" mariadb --skip-ssl \
+        -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" \
+        -e "DROP DATABASE IF EXISTS \`${DB_RESTORE_NAME}\`;" 2>/dev/null || true
 }
 trap cleanup_backup EXIT INT TERM
 
@@ -89,8 +102,10 @@ if [[ "${SKIP_FIXTURES}" != true ]]; then
     echo "-- Étape 1/5 : Chargement des fixtures synthétiques (état pré-release)"
     FIXTURES_SQL="${PROJECT_ROOT}/tests/fixtures/rehearsal-state.sql"
     if [[ ! -f "${FIXTURES_SQL}" ]]; then
-        echo "  Aucun fichier de fixtures trouvé à ${FIXTURES_SQL}."
-        echo "  Poursuite avec l'état actuel de la base (--skip-fixtures implicite)."
+        echo "ERREUR : fichier de fixtures absent : ${FIXTURES_SQL}" >&2
+        echo "Les fixtures représentatives sont obligatoires pour la qualification RC." >&2
+        echo "Pour utiliser l'état courant (déconseillé) : passer --skip-fixtures explicitement." >&2
+        exit 1
     else
         MYSQL_PWD="${DB_PASS}" mariadb --skip-ssl \
             -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" "${DB_NAME}" \
@@ -205,11 +220,18 @@ else
     exit 1
 fi
 
-# Nettoyage de la base de restauration (isolée, pas de données persistantes).
-MYSQL_PWD="${DB_PASS}" mariadb --skip-ssl \
-    -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" \
-    -e "DROP DATABASE IF EXISTS \`${DB_RESTORE_NAME}\`;" 2>/dev/null || true
-echo "  Base de restauration supprimée."
+FK_USERS_VIOLATIONS="$(MYSQL_PWD="${DB_PASS}" mariadb --skip-ssl \
+    -h "${DB_HOST}" -P "${DB_PORT}" -u "${DB_USER}" "${DB_RESTORE_NAME}" \
+    -N -e "SELECT COUNT(*) FROM slot_signups ss LEFT JOIN users u ON ss.user_id = u.id WHERE u.id IS NULL;" 2>/dev/null || echo "ERR")"
+if [[ "${FK_USERS_VIOLATIONS}" == "0" ]]; then
+    echo "  ✓ FK slot_signups → users : aucune violation"
+else
+    echo "ERREUR : violations FK slot_signups → users après restauration : ${FK_USERS_VIOLATIONS}" >&2
+    exit 1
+fi
+
+# La base de restauration est supprimée via le trap cleanup_backup (EXIT).
+echo "  Base de restauration sera supprimée à la fin (trap EXIT)."
 
 # ── Rapport final ─────────────────────────────────────────────────────────────
 echo ""

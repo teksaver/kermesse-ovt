@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Variables ─────────────────────────────────────────────────────────────────
-RC_EVIDENCE_DIR="${RC_EVIDENCE_DIR:-${PROJECT_ROOT}/rc-evidence}"
+RC_EVIDENCE_DIR="${RC_EVIDENCE_DIR:-${PROJECT_ROOT}/build/rc-evidence}"
 RC_COMMIT_SHA="${RC_COMMIT_SHA:-}"
 QUALIFICATION_START="$(date +%s)"
 QUALIFICATION_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -69,10 +69,15 @@ if [[ ! -f "${MANIFEST_PATH}" ]]; then
     exit 1
 fi
 
-MANIFEST_SHA="$(grep -o '"commit_sha"[[:space:]]*:[[:space:]]*"[^"]*"' "${MANIFEST_PATH}" | grep -o '"[^"]*"$' | tr -d '"')"
-MANIFEST_RUN_ID="$(grep -o '"ci_run_id"[[:space:]]*:[[:space:]]*"[^"]*"' "${MANIFEST_PATH}" | grep -o '"[^"]*"$' | tr -d '"')"
-MANIFEST_ARCHIVE_SHA256="$(grep -o '"archive_sha256"[[:space:]]*:[[:space:]]*"[^"]*"' "${MANIFEST_PATH}" | grep -o '"[^"]*"$' | tr -d '"')"
-MANIFEST_TIMESTAMP="$(grep -o '"timestamp_utc"[[:space:]]*:[[:space:]]*"[^"]*"' "${MANIFEST_PATH}" | grep -o '"[^"]*"$' | tr -d '"')"
+if ! command -v jq >/dev/null 2>&1; then
+    echo "ERREUR : jq est requis pour la qualification RC." >&2
+    exit 1
+fi
+MANIFEST_SHA="$(jq -r '.commit_sha' "${MANIFEST_PATH}")"
+MANIFEST_RUN_ID="$(jq -r '.ci_run_id' "${MANIFEST_PATH}")"
+MANIFEST_ARCHIVE_SHA256="$(jq -r '.archive_sha256' "${MANIFEST_PATH}")"
+MANIFEST_TIMESTAMP="$(jq -r '.timestamp_utc' "${MANIFEST_PATH}")"
+MANIFEST_ARTIFACT_NAME="$(jq -r '.artifact_name // "unknown"' "${MANIFEST_PATH}")"
 
 echo "  Commit SHA     : ${MANIFEST_SHA}"
 echo "  CI Run ID      : ${MANIFEST_RUN_ID}"
@@ -127,6 +132,21 @@ fi
 echo "  ✓ Répétition réussie"
 echo ""
 
+# ── Étape 2bis : Répétition sauvegarde/restauration ─────────────────────────
+echo "-- Étape 2bis/4 : Répétition sauvegarde/restauration"
+BACKUP_LOG="${RC_EVIDENCE_DIR}/backup-restore.log"
+set +e
+bash "${SCRIPT_DIR}/rehearsal-backup-restore.sh" 2>&1 | tee "${BACKUP_LOG}"
+BACKUP_EXIT=$?
+set -e
+if [[ "${BACKUP_EXIT}" -ne 0 ]]; then
+    echo "ERREUR : répétition sauvegarde/restauration échouée (code ${BACKUP_EXIT}) — voir ${BACKUP_LOG}" >&2
+    echo "QUALIFICATION ÉCHOUÉE — sauvegarde/restauration" >&2
+    exit 1
+fi
+echo "  ✓ Sauvegarde/restauration réussie"
+echo ""
+
 # ── Étape 3 : Smoke tests Playwright ─────────────────────────────────────────
 SMOKE_STATUS="skipped"
 if [[ "${SKIP_SMOKE}" != true ]]; then
@@ -136,23 +156,30 @@ if [[ "${SKIP_SMOKE}" != true ]]; then
 
     # Les smoke tests s'exécutent sur l'environnement rehearsal déjà actif.
     # On passe BASE_URL qui pointe vers deploy-web (accessible depuis l'hôte via le port publié).
+    if [[ ! -x "${PROJECT_ROOT}/node_modules/.bin/playwright" ]]; then
+        echo "ERREUR : Playwright non installé. Lancez 'npm install' avant la qualification." >&2
+        exit 1
+    fi
     set +e
     PLAYWRIGHT_HTML_REPORT=0 \
     BASE_URL="http://localhost:8081" \
-        npx --yes playwright test \
+        "${PROJECT_ROOT}/node_modules/.bin/playwright" test \
         --reporter=list,json \
         --output="${RC_EVIDENCE_DIR}/test-results" \
         2>&1 | tee "${SMOKE_LOG}"
     SMOKE_EXIT=$?
     set -e
 
-    # Archiver le rapport Playwright (uniquement en cas d'échec pour économiser l'espace).
+    # Archiver les traces toujours (pas seulement en cas d'échec) — preuves RC complètes.
+    if [[ -d "test-results" ]]; then
+        cp -r "test-results" "${RC_EVIDENCE_DIR}/test-results" 2>/dev/null || true
+    fi
+    if [[ -d "playwright-report" ]]; then
+        cp -r "playwright-report" "${RC_EVIDENCE_DIR}/playwright-report" 2>/dev/null || true
+    fi
+
     if [[ "${SMOKE_EXIT}" -ne 0 ]]; then
         echo "ERREUR : smoke tests échoués (code ${SMOKE_EXIT}) — voir ${SMOKE_LOG}" >&2
-        # Conserver les traces pour diagnostic.
-        if [[ -d "test-results" ]]; then
-            cp -r "test-results" "${RC_EVIDENCE_DIR}/test-results-failed" 2>/dev/null || true
-        fi
         echo "QUALIFICATION ÉCHOUÉE — smoke tests" >&2
         exit 1
     fi
@@ -167,6 +194,11 @@ echo ""
 echo "-- Étape 4/4 : Génération du rapport de preuves RC"
 QUALIFICATION_END="$(date +%s)"
 QUALIFICATION_DURATION="$((QUALIFICATION_END - QUALIFICATION_START))"
+
+RC_DECISION="PENDING"
+if [[ "${SMOKE_STATUS}" == "skipped" ]]; then
+    RC_DECISION="INCOMPLETE"
+fi
 
 cat > "${RC_EVIDENCE_DIR}/rc-qualification-report.json" <<EOF
 {
@@ -183,7 +215,7 @@ cat > "${RC_EVIDENCE_DIR}/rc-qualification-report.json" <<EOF
     "rehearsal_passed": true,
     "smoke_tests": "${SMOKE_STATUS}"
   },
-  "decision": "PENDING",
+  "decision": "${RC_DECISION}",
   "notes": "Remplir avant le Go : responsable déploiement, décideur rollback, seuils Stop/Rollback, RTO max."
 }
 EOF
@@ -191,21 +223,37 @@ EOF
 echo "  Rapport RC : ${RC_EVIDENCE_DIR}/rc-qualification-report.json"
 echo ""
 
-echo "=========================================="
-echo "QUALIFICATION OK"
-echo "=========================================="
-echo "  Manifeste vérifié    [OK]"
-echo "  Répétition           [OK]"
-if [[ "${SMOKE_STATUS}" = "passed" ]]; then
+if [[ "${SMOKE_STATUS}" == "passed" ]]; then
+    echo "=========================================="
+    echo "QUALIFICATION OK"
+    echo "=========================================="
+    echo "  Manifeste vérifié    [OK]"
+    echo "  Répétition           [OK]"
+    echo "  Sauvegarde/restore   [OK]"
     echo "  Smoke tests          [OK]"
-elif [[ "${SMOKE_STATUS}" = "skipped" ]]; then
+    echo ""
+    echo "  Durée totale         : ${QUALIFICATION_DURATION}s"
+    echo "  Commit candidat      : ${MANIFEST_SHA}"
+    echo "  CI Run               : ${MANIFEST_RUN_ID}"
+    echo ""
+    echo "PROCHAINE ÉTAPE : compléter la revue Go/No-Go"
+    echo "  docs/release-candidate-runbook.md"
+    echo ""
+elif [[ "${SMOKE_STATUS}" == "skipped" ]]; then
+    echo "=========================================="
+    echo "QUALIFICATION PARTIELLE"
+    echo "=========================================="
+    echo "  Manifeste vérifié    [OK]"
+    echo "  Répétition           [OK]"
+    echo "  Sauvegarde/restore   [OK]"
     echo "  Smoke tests          [SAUTÉ — relancer sans --skip-smoke pour une qualification complète]"
+    echo ""
+    echo "  AVERTISSEMENT : les smoke tests sont obligatoires pour le Go en production."
+    echo "  Relancer sans --skip-smoke avant toute décision de déploiement."
+    echo "  decision: INCOMPLETE — le Go ne peut pas être accordé sans smoke tests verts."
+    echo ""
+    echo "  Durée totale         : ${QUALIFICATION_DURATION}s"
+    echo "  Commit candidat      : ${MANIFEST_SHA}"
+    echo "  CI Run               : ${MANIFEST_RUN_ID}"
+    echo ""
 fi
-echo ""
-echo "  Durée totale         : ${QUALIFICATION_DURATION}s"
-echo "  Commit candidat      : ${MANIFEST_SHA}"
-echo "  CI Run               : ${MANIFEST_RUN_ID}"
-echo ""
-echo "PROCHAINE ÉTAPE : compléter la revue Go/No-Go"
-echo "  docs/release-candidate-runbook.md"
-echo ""

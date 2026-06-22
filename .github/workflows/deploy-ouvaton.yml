@@ -29,10 +29,13 @@ env:
 
 jobs:
   download-and-verify:
-    # Auto-deploy only when CI succeeds on main; manual dispatch is always allowed.
+    # Auto-deploy only when CI succeeds on main AND operator has explicitly set DEPLOY_PRODUCTION_GO=true.
+    # Manual dispatch is always allowed (operator must set the Go explicitly via workflow_dispatch).
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       vars.DEPLOY_PRODUCTION_GO == 'true')
     runs-on: ubuntu-latest
     environment: production
 
@@ -130,6 +133,12 @@ jobs:
           MANIFEST_ARCHIVE_SHA256="$(jq -r '.archive_sha256' "${MANIFEST}")"
           MANIFEST_ARTIFACT_NAME="$(jq -r '.artifact_name' "${MANIFEST}")"
 
+          # Verify artifact_name matches the expected artifact identifier.
+          if [ "${MANIFEST_ARTIFACT_NAME}" != "kermesse-deploy" ]; then
+            echo "::error::artifact_name inattendu dans le manifeste : '${MANIFEST_ARTIFACT_NAME}' (attendu : 'kermesse-deploy')."
+            exit 1
+          fi
+
           # Verify commit SHA matches the triggering CI run.
           if [ -n "${EXPECTED_SHA}" ] && [ "${MANIFEST_SHA}" != "${EXPECTED_SHA}" ]; then
             echo "::error::Manifeste SHA (${MANIFEST_SHA}) ≠ SHA attendu (${EXPECTED_SHA}). Promotion refusée."
@@ -199,6 +208,20 @@ jobs:
         with:
           ref: ${{ needs.download-and-verify.outputs.candidate_sha }}
           persist-credentials: false
+
+      - name: Vérifier les préconditions Go/No-Go
+        # STORY_610_DONE doit être positionné à 'true' dans GitHub vars après validation de Story 6.10.
+        # Ce blocage est intentionnel : un déploiement sans 6.10 terminée est interdit.
+        run: |
+          set -euo pipefail
+          if [ "${STORY_610_DONE:-false}" != "true" ]; then
+            echo "::error::STORY_610_DONE n'est pas positionné à 'true'. La Story 6.10 doit être terminée et validée avant tout déploiement en production."
+            echo "::error::Positionner vars.STORY_610_DONE = 'true' dans les paramètres GitHub de l'environnement production après validation de Story 6.10."
+            exit 1
+          fi
+          echo "Précondition Go/No-Go validée : STORY_610_DONE=true"
+        env:
+          STORY_610_DONE: ${{ vars.STORY_610_DONE }}
 
       - name: Install transfer client
         run: sudo apt-get update && sudo apt-get install -y lftp
@@ -514,6 +537,35 @@ jobs:
             echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
             exit 1
           fi
+
+      - name: Post-deploy health check
+        run: |
+          set -euo pipefail
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+          echo "Contrôle de santé post-déploiement : ${BASE_URL}/"
+          HTTP_CODE=$(curl --max-time 30 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} \
+            -o /dev/null -w "%{http_code}" "${BASE_URL}/")
+          if [[ "${HTTP_CODE}" -lt 200 || "${HTTP_CODE}" -ge 500 ]]; then
+            echo "::error::Contrôle de santé post-déploiement échoué (HTTP ${HTTP_CODE}). Déclencher la procédure Stop/Rollback."
+            exit 1
+          fi
+          echo "Contrôle de santé OK : HTTP ${HTTP_CODE}"
+          echo "health_check_status=ok" >> "${GITHUB_OUTPUT}"
+          # Archiver le résultat du postflight
+          cat > "${RUNNER_TEMP:-/tmp}/postflight-report.json" <<POSTFLIGHT
+          {
+            "health_check_http_code": ${HTTP_CODE},
+            "health_check_status": "ok",
+            "candidate_sha": "${{ needs.download-and-verify.outputs.candidate_sha }}",
+            "archive_sha256": "${{ needs.download-and-verify.outputs.archive_sha256 }}"
+          }
+          POSTFLIGHT
+          echo "Rapport postflight écrit."
 
       - name: Fetch production log tail on deploy failure
         if: failure()
