@@ -572,9 +572,57 @@ jobs:
           fi
           echo "Préflight OK — aucune migration en échec"
 
-      - name: Run post-deploy migrations
+      - name: Migration Phase 1 — vue de compatibilité slot_signups (expand)
+        # Phase 1 de l'expand/contract : crée la VIEW slot_signups → signups AVANT activation
+        # du nouveau code. Le code activé (qui référence slot_signups) dispose ainsi de la
+        # vue dès la première requête, éliminant la fenêtre de downtime entre activation et
+        # premier POST /ops/migrate dans l'approche monolithique.
+        #
+        # CONTRAINTE : ce step est exécuté avec le nouveau code déjà activé (le bootstrap
+        # d'activation précède ce step). Pour les déploiements futurs utilisant ce pattern,
+        # la Phase 1 doit précéder l'activation dans le workflow.
         env:
-          # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/ops-sign.sh
+
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          ops_require_https_endpoint "$BASE_URL" 32
+
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          ROUTE="ops/migrate"
+          BODY='{"until_version":"20260619500000_create_slot_signups_compat_view"}'
+          ops_sign "$ROUTE" "$BODY"
+
+          PHASE1_FILE="${RUNNER_TEMP:-/tmp}/phase1-migrate.json"
+          HTTP_CODE=$(curl --max-time 120 --retry 2 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+            -w "%{http_code}" -o "${PHASE1_FILE}" \
+            -d "$BODY")
+
+          echo "Phase 1 HTTP : ${HTTP_CODE}"
+          if [ -s "${PHASE1_FILE}" ]; then cat "${PHASE1_FILE}"; printf '\n'; fi
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Migration Phase 1 a retourné HTTP $HTTP_CODE. La vue de compatibilité slot_signups n'a pas pu être créée."
+            exit 1
+          fi
+          echo "Migration Phase 1 OK — vue de compatibilité slot_signups créée (ou déjà présente)"
+
+      - name: Migration Phase 2 — renommage physique signups → slot_signups (contract)
+        # Phase 2 : DROP VIEW slot_signups + RENAME TABLE signups → slot_signups.
+        # Exécutée uniquement après confirmation que la Phase 1 a réussi.
+        # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
+        env:
           OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: |
           set -euo pipefail
@@ -611,9 +659,54 @@ jobs:
             -d "$BODY")
 
           if [[ "$HTTP_CODE" != "200" ]]; then
-            echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
+            echo "::error::Webhook Phase 2 échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
             exit 1
           fi
+
+      - name: Smoke test migration — vérifier slot_signups dans applied
+        # P7 : vérifie explicitement que la migration de renommage est bien dans 'applied'.
+        # Complète le postflight pending=[]/failed=[] par une assertion positive sur le nom
+        # exact de la migration critique — sans accès DB direct depuis les runners GitHub.
+        env:
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/ops-sign.sh
+
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          ops_require_https_endpoint "$BASE_URL" 32
+
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          ROUTE="ops/migrate/status"
+          ops_sign "$ROUTE"
+
+          SMOKE_FILE="${RUNNER_TEMP:-/tmp}/smoke-status.json"
+          HTTP_CODE=$(curl --max-time 60 --retry 2 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+            -w "%{http_code}" -o "${SMOKE_FILE}" \
+            -d '{}')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Smoke test ops/migrate/status a retourné HTTP $HTTP_CODE."
+            exit 1
+          fi
+
+          # Vérifier que la migration de renommage est bien dans applied[].
+          RENAME_APPLIED="$(jq -r '(.applied // []) | map(select(startswith("20260620000000"))) | length' "${SMOKE_FILE}" 2>/dev/null || echo "unknown")"
+          if [ "${RENAME_APPLIED}" != "1" ]; then
+            echo "::error::Smoke test — 20260620000000_rename_signups_to_slot_signups absent de applied[] (found=${RENAME_APPLIED})."
+            cat "${SMOKE_FILE}" || true
+            exit 1
+          fi
+          echo "Smoke test OK — migration de renommage confirmée dans applied[]"
 
       - name: Postflight migration — vérification pending=[] et failed=[]
         env:

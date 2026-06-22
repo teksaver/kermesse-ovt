@@ -3,4 +3,10 @@
 -- canonique (SlotSignupModel) fonctionne avant le renommage physique.
 -- Une vue MariaDB de sélection simple est updatable (INSERT/UPDATE/DELETE autorisés).
 -- La vue est supprimée par la migration 20260620000000 avant le RENAME TABLE.
+--
+-- SELECT * est intentionnel : la vue est transiente (existe seulement pendant la fenêtre
+-- expand/contract, entre ce déploiement et 20260620000000). Aucune nouvelle colonne
+-- n'est ajoutée à `signups` pendant cette fenêtre, donc la résolution de * au moment
+-- de la création est stable. Une vue à colonnes explicites serait fragile ici (liste de
+-- ~25 colonnes à maintenir en sync avec la table).
 CREATE OR REPLACE VIEW `slot_signups` AS SELECT * FROM `signups`;

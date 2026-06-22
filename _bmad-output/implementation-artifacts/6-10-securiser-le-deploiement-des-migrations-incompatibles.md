@@ -1,12 +1,12 @@
 ---
 baseline_commit: 6ea8a9147e03cd998b30edbbd806a8e801b702ef
 story_key: 6-10-securiser-le-deploiement-des-migrations-incompatibles
-status: review
+status: in-review
 ---
 
 # Story 6.10 : Sécuriser le déploiement des migrations incompatibles
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -107,6 +107,18 @@ So that une migration échouée ou partiellement appliquée ne rende jamais la p
 - `profile_divergences` était incorrectement dans `expectedTables` de `FullMigrationStackMariaDBTest` — droppée par migration 20260617000000 (corrigé, 4 erreurs PHPUnit disparues).
 - La route `ops/fix-drift` nécessitait une exclusion CSRF explicite dans `Filters.php` (302 → 403 corrigé en test feature).
 
+#### Flaw architectural — fenêtre expand/contract nulle [documenté post-review, à corriger par quick-dev]
+
+La stratégie expand/contract implémentée ne crée **aucune fenêtre de compatibilité réelle**, pour deux raisons cumulatives :
+
+1. **Enchaînement immédiat VIEW → RENAME** : `MigrationRunnerService::run()` applique toutes les migrations pending en une seule passe. Les migrations `20260619500000` (CREATE VIEW `slot_signups`) et `20260620000000` (DROP VIEW + RENAME TABLE) s'exécutent dos à dos sans interruption — la VIEW existe quelques millisecondes, aucun trafic applicatif n'en bénéficie.
+
+2. **Downtime entre activation et VIEW** : le pipeline `deploy-ouvaton.yml` téléverse et active le nouveau code **avant** d'exécuter les migrations. Entre l'instant d'activation (code référençant `slot_signups`) et la fin de la migration `20260619500000`, toute requête SQL échoue avec `Table 'slot_signups' doesn't exist`.
+
+**Correction attendue (quick-dev) :** scinder le pipeline en deux phases ordonnées :
+- **Phase 1 (pré-activation)** : exécuter uniquement `20260619500000_create_slot_signups_compat_view.sql` via `POST /ops/migrate` dédié, *avant* le déploiement du nouveau code. La table physique `signups` reste en place ; la VIEW `slot_signups` permet au nouveau code de fonctionner dès son activation.
+- **Phase 2 (post-activation)** : exécuter `20260620000000_rename_signups_to_slot_signups.sql` via `POST /ops/migrate` après validation du smoke test sur la VIEW. La contraction (DROP VIEW + RENAME) se fait sans downtime, ancien et nouveau code étant compatibles pendant toute la fenêtre intermédiaire.
+
 ### Completion Notes
 
 - **Fichiers créés** : `app/Controllers/Ops/DriftController.php`, `database/migrations_sql/20260619500000_create_slot_signups_compat_view.sql`, `tests/database/MigrationDriftReconcileMariaDBTest.php`, `tests/feature/OpsDriftFixEndpointTest.php`
@@ -132,7 +144,25 @@ So that une migration échouée ou partiellement appliquée ne rende jamais la p
 ## Change Log
 
 - 2026-06-22 : Implémentation complète story 6.10 — drift remédiation, expand/contract VIEW, renommage SQL, préflight/postflight pipeline, tests CI
+- 2026-06-22 : Application des 13 patches de la revue de code — path traversal, TOCTOU, hardcoded logic, affectedRows, pipeline expand/contract splitté (Phase 1 + smoke + Phase 2), test data-survival corrigé, teardown hygiene, smoke test prod, bash stderr suppression
+
+### Review Findings
+- [x] [Review][Patch] Application Downtime / Flawed Expand-Contract Execution Strategy — Pipeline splitté en Phase 1 (until_version compat view) + smoke test + Phase 2 (run all). runUpTo() ajouté à MigrationRunnerService. MigrationController accepte until_version. deploy-rehearsal.sh et deploy-ouvaton.yml restructurés.
+- [x] [Review][Patch] Path Traversal Vulnerability in DriftController — Validation regex ^\d{14}_[a-z0-9_]+$ ajoutée avant construction du chemin fichier.
+- [x] [Review][Patch] Hardcoded Business Logic in MigrationRunnerService — DRIFT_SCHEMA_VERIFIERS const array data-driven extrait ; logique de vérification column/table générique.
+- [x] [Review][Patch] UPDATE query affects 0 rows reporting success — affectedRows() vérifié après UPDATE dans reconcileChecksum ; retourne error si 0 rows.
+- [x] [Review][Patch] Broken Rollback Strategy / Missing Reverse Compatibility View — Procédure de rollback documentée en commentaire SQL dans 20260620000000.
+- [x] [Review][Patch] Invalid Test Logic for Data Survival — testDataInsertedViaCompatViewSurvivesRename corrigé : Phase 1 via runUpTo(), INSERT via VIEW, Phase 2 via run(), assertions sur survie des données et absence de la vue après rename.
+- [x] [Review][Patch] Missing SQL Smoke Test in Production Pipeline — Step "Smoke test migration" ajouté dans deploy-ouvaton.yml : vérifie que 20260620000000 est dans applied[] via ops/migrate/status.
+- [x] [Review][Patch] Suppressed curl Errors in Bash Scripts — 2>/dev/null supprimé des appels mysql dans le smoke test de deploy-rehearsal.sh.
+- [x] [Review][Patch] Dangerous Assumption in Smoke Test — Messages d'erreur enrichis pour distinguer connexion DB échouée vs table absente vs droits DML manquants.
+- [x] [Review][Patch] TOCTOU Flaw in DriftController::fixDrift — Guard TOCTOU ajouté dans reconcileChecksum : re-lecture du fichier sur disque avant UPDATE pour détecter un remplacement concurrent.
+- [x] [Review][Patch] Unsafe View Expansion — Commentaire explicatif ajouté dans 20260619500000 : SELECT * intentionnel pour vue transiente, justification de l'absence de liste explicite de colonnes.
+- [x] [Review][Patch] Information Leakage via Unsanitized Input Reflection — Couvert par la validation regex P2 : seules les versions conformes au format atteignent la réflexion JSON.
+- [x] [Review][Patch] Incomplete Test Teardown Hygiene — tearDown de MigrationDriftReconcileMariaDBTest enveloppé en try/finally ; glob() null-checked ; commentaire sur les tables droppées.
+- [x] [Review][Defer] Missing Test Coverage for Infrastructure Failures [tests/database/MigrationDriftReconcileMariaDBTest.php] — deferred, pre-existing
+- [x] [Review][Defer] Absence of Rate Limiting or Brute Force Protection [app/Controllers/Ops/DriftController.php] — deferred, pre-existing
 
 ## Completion Status
 
-Status: review
+Status: in-review — 13 patches appliqués le 2026-06-22

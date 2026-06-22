@@ -56,19 +56,28 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
 
     protected function tearDown(): void
     {
-        $db = db_connect('tests');
-        $db->query('SET FOREIGN_KEY_CHECKS = 0');
-        $db->query('DROP TABLE IF EXISTS `schema_versions`');
-        $db->query('DROP TABLE IF EXISTS `ops_nonces`');
-        $db->query('DROP TABLE IF EXISTS `users`');
-        $db->query('SET FOREIGN_KEY_CHECKS = 1');
+        try {
+            $db = db_connect('tests');
+            $db->query('SET FOREIGN_KEY_CHECKS = 0');
+            // Drop every table the tests may have created — schema_versions and ops_nonces
+            // are always present (bootstrapped by MigrationRunnerService), users is created
+            // by the drift-test fixtures. FK_CHECKS=0 makes order irrelevant.
+            $db->query('DROP TABLE IF EXISTS `schema_versions`');
+            $db->query('DROP TABLE IF EXISTS `ops_nonces`');
+            $db->query('DROP TABLE IF EXISTS `users`');
+            $db->query('SET FOREIGN_KEY_CHECKS = 1');
+        } finally {
+            // Temp directory cleanup must always run, even if DB teardown throws.
+            if (is_dir($this->tempMigrationsDir)) {
+                $sqlFiles = glob($this->tempMigrationsDir . '/*.sql');
+                if ($sqlFiles !== false) {
+                    array_map('unlink', $sqlFiles);
+                }
+                rmdir($this->tempMigrationsDir);
+            }
 
-        if (is_dir($this->tempMigrationsDir)) {
-            array_map('unlink', glob($this->tempMigrationsDir . '/*.sql'));
-            rmdir($this->tempMigrationsDir);
+            parent::tearDown();
         }
-
-        parent::tearDown();
     }
 
     private function makeRunner(): MigrationRunnerService

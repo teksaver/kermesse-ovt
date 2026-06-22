@@ -53,12 +53,37 @@ class MigrationController extends BaseController
      *
      * Runs pending SQL migrations and returns a minimal JSON summary.
      * Never exposes raw SQL, stack traces, secrets or environment variables.
+     *
+     * Optional JSON body parameter:
+     *   until_version (string) — run only migrations up to and including this version key.
+     *                            Used to implement phased expand/contract deployments:
+     *                            Phase 1 (compat view) before activation, Phase 2 (rename) after.
      */
     public function migrate(): ResponseInterface
     {
         try {
+            $body         = $this->request->getJSON(true) ?? [];
+            $untilVersion = isset($body['until_version']) ? trim((string) $body['until_version']) : null;
+
+            if ($untilVersion !== null) {
+                if ($untilVersion === '') {
+                    return $this->response
+                        ->setStatusCode(400)
+                        ->setJSON(['ok' => false, 'error' => 'until_version_empty']);
+                }
+
+                // Validate format: <14-digit timestamp>_<slug> — same rule as version in DriftController.
+                if (!preg_match('/^\d{14}_[a-z0-9_]+$/', $untilVersion)) {
+                    return $this->response
+                        ->setStatusCode(400)
+                        ->setJSON(['ok' => false, 'error' => 'until_version_invalid_format']);
+                }
+            }
+
             $runner = new MigrationRunnerService();
-            $result = $runner->run();
+            $result = $untilVersion !== null
+                ? $runner->runUpTo($untilVersion)
+                : $runner->run();
 
             $statusCode = $result['ok'] ? 200 : 500;
 

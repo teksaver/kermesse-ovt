@@ -299,16 +299,25 @@ final class FullMigrationStackMariaDBTest extends CIUnitTestCase
         $db     = db_connect('tests');
         $runner = new MigrationRunnerService($db);
 
-        // Run all migrations up to (and including) the compat view but NOT the rename.
-        // We achieve this by running the full stack, which applies migrations in order.
-        // The test here verifies the outcome: data integrity after RENAME TABLE.
+        // ── Phase 1 : appliquer uniquement la vue de compatibilité ────────────
+        // runUpTo() arrête APRÈS 20260619500000 — la migration de renommage 20260620000000
+        // n'est PAS encore appliquée. L'ancienne table physique `signups` existe.
+        // La vue `slot_signups` existe et pointe vers `signups`.
+        $phase1 = $runner->runUpTo('20260619500000_create_slot_signups_compat_view');
+        $this->assertTrue($phase1['ok'],
+            'Phase 1 migrations must succeed. Failed: ' . implode(', ', $phase1['failed'] ?? []));
 
-        // 1. Apply full migration stack (includes compat view + rename)
-        $result = $runner->run();
-        $this->assertTrue($result['ok'], 'Full migration stack must succeed');
+        // Vérifier que signups (table physique) existe et que slot_signups est une VIEW.
+        $signsupTableExists = $db->query('SHOW TABLES LIKE "signups"')->getResultArray();
+        $this->assertNotEmpty($signsupTableExists, 'signups table must exist after Phase 1 (before rename)');
+        $viewCheck = $db->query(
+            "SHOW FULL TABLES WHERE TABLE_TYPE = 'VIEW' AND Tables_in_" . $db->getDatabase() . " = 'slot_signups'"
+        )->getResultArray();
+        $this->assertNotEmpty($viewCheck, 'slot_signups must be a VIEW after Phase 1');
 
-        // 2. Insert a row into slot_signups (now the real table after rename)
-        // Requires a valid slot_id — insert parent records first
+        // ── Insérer via la VIEW de compatibilité ──────────────────────────────
+        // Le code applicatif référence slot_signups : l'INSERT passe par la vue,
+        // qui délègue à signups (table physique).
         $db->query("INSERT INTO `users` (email, created_at, updated_at) VALUES ('test-upgrade@kermesse.test', NOW(), NOW())");
         $userId = (int) $db->insertID();
 
@@ -324,23 +333,50 @@ final class FullMigrationStackMariaDBTest extends CIUnitTestCase
             VALUES (?, 'Créneau 1', 5, NOW(), NOW(), NOW(), NOW())", [$standId]);
         $slotId = (int) $db->insertID();
 
+        // INSERT via la VIEW slot_signups — délègue à la table physique signups.
         $db->query("INSERT INTO `slot_signups` (slot_id, user_id, email, first_name, last_name, created_at, updated_at)
             VALUES (?, ?, 'test-upgrade@kermesse.test', 'Alice', 'Test', NOW(), NOW())", [$slotId, $userId]);
         $signupId = (int) $db->insertID();
 
-        // 3. Verify the row exists in slot_signups with correct data
+        // Confirmer que la donnée est visible via la vue ET via la table physique.
+        $viaView = $db->query(
+            'SELECT id, email, first_name FROM `slot_signups` WHERE id = ?',
+            [$signupId]
+        )->getRowArray();
+        $this->assertNotNull($viaView, 'Row inserted via VIEW must be findable through slot_signups');
+        $this->assertSame('Alice', $viaView['first_name']);
+
+        $viaTable = $db->query(
+            'SELECT id FROM `signups` WHERE id = ?',
+            [$signupId]
+        )->getRowArray();
+        $this->assertNotNull($viaTable, 'Row inserted via VIEW must be stored in the physical signups table');
+
+        // ── Phase 2 : appliquer le renommage physique ─────────────────────────
+        // DROP VIEW slot_signups + RENAME TABLE signups → slot_signups.
+        $phase2 = $runner->run();
+        $this->assertTrue($phase2['ok'],
+            'Phase 2 (rename) must succeed. Failed: ' . implode(', ', $phase2['failed'] ?? []));
+
+        // ── Vérifier la survie des données après renommage ────────────────────
         $row = $db->query(
-            'SELECT id, email, first_name FROM slot_signups WHERE id = ?',
+            'SELECT id, email, first_name FROM `slot_signups` WHERE id = ?',
             [$signupId]
         )->getRowArray();
 
-        $this->assertNotNull($row, 'Inserted row must be findable in slot_signups');
+        $this->assertNotNull($row, 'Row inserted via VIEW must survive the RENAME TABLE migration');
         $this->assertSame('Alice', $row['first_name']);
         $this->assertSame('test-upgrade@kermesse.test', $row['email']);
 
-        // 4. Verify signups table does not exist
+        // La table physique signups n'existe plus.
         $oldTable = $db->query('SHOW TABLES LIKE "signups"')->getResultArray();
-        $this->assertEmpty($oldTable, 'signups table must not exist after rename');
+        $this->assertEmpty($oldTable, 'signups table must not exist after Phase 2 rename');
+
+        // La vue slot_signups n'existe plus (remplacée par la table physique).
+        $viewAfterRename = $db->query(
+            "SHOW FULL TABLES WHERE TABLE_TYPE = 'VIEW' AND Tables_in_" . $db->getDatabase() . " = 'slot_signups'"
+        )->getResultArray();
+        $this->assertEmpty($viewAfterRename, 'slot_signups VIEW must be dropped by Phase 2 — only the real table must remain');
     }
 
     // ------------------------------------------------------------------

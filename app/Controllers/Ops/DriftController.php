@@ -35,6 +35,14 @@ class DriftController extends BaseController
                     ->setJSON(['ok' => false, 'error' => 'version_required']);
             }
 
+            // Prevent path traversal: version must be exactly <14-digit timestamp>_<slug>.
+            // This ensures no ../  or absolute paths can escape the migrations directory.
+            if (!preg_match('/^\d{14}_[a-z0-9_]+$/', $version)) {
+                return $this->response
+                    ->setStatusCode(400)
+                    ->setJSON(['ok' => false, 'error' => 'version_invalid_format']);
+            }
+
             $config = config(Kermesse::class);
             $migrationsPath = $config->opsMigrationPath !== ''
                 ? $config->opsMigrationPath

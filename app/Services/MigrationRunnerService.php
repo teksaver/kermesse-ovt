@@ -102,6 +102,35 @@ class MigrationRunnerService
      */
     public function run(): array
     {
+        return $this->executeMigrations(null);
+    }
+
+    /**
+     * Run pending migrations up to and including $untilVersion (lexical order).
+     *
+     * Used to split the expand/contract pipeline into two phases:
+     *   Phase 1: runUpTo('20260619500000_create_slot_signups_compat_view') — before new code is activated
+     *   Phase 2: run() — after the new code is live and the compat view is validated
+     *
+     * Migrations with a version key > $untilVersion (string comparison) are not applied.
+     * If $untilVersion is not discovered among the SQL files, the method applies nothing
+     * and returns ok=false with error 'until_version_not_found'.
+     *
+     * @return array{ok: bool, applied: list<string>, skipped: list<string>, failed: list<string>}
+     */
+    public function runUpTo(string $untilVersion): array
+    {
+        return $this->executeMigrations($untilVersion);
+    }
+
+    /**
+     * Core migration loop shared by run() and runUpTo().
+     *
+     * @param  string|null $untilVersion  Stop after applying/skipping this version; null = run all.
+     * @return array{ok: bool, applied: list<string>, skipped: list<string>, failed: list<string>}
+     */
+    private function executeMigrations(?string $untilVersion): array
+    {
         $result = [
             'ok'      => true,
             'applied' => [],
@@ -120,8 +149,19 @@ class MigrationRunnerService
         }
 
         try {
-            $migrations = $this->discoverMigrations();
+            $migrations      = $this->discoverMigrations();
             $appliedVersions = $this->getAppliedVersions();
+
+            // When a target version is specified, verify it exists in the discovered set
+            // before starting — prevents silent no-ops from a typo in until_version.
+            if ($untilVersion !== null) {
+                $knownVersions = array_column($migrations, 'version');
+                if (!in_array($untilVersion, $knownVersions, true)) {
+                    $result['ok'] = false;
+                    $result['failed'][] = 'until_version_not_found';
+                    return $result;
+                }
+            }
 
             foreach ($migrations as $migration) {
                 $version  = $migration['version'];
@@ -145,21 +185,34 @@ class MigrationRunnerService
                         }
 
                         $result['skipped'][] = $version;
-                        continue;
                     }
+                    // Previously failed → fall through to applyMigration (retry)
+                    else {
+                        $applyResult = $this->applyMigration($version, $checksum, $filePath);
+                        if ($applyResult['ok']) {
+                            $result['applied'][] = $version;
+                        } else {
+                            $result['ok'] = false;
+                            $result['failed'][] = $version;
+                            break;
+                        }
+                    }
+                } else {
+                    // Apply migration
+                    $applyResult = $this->applyMigration($version, $checksum, $filePath);
 
-                    // Previously failed → retry allowed
+                    if ($applyResult['ok']) {
+                        $result['applied'][] = $version;
+                    } else {
+                        $result['ok'] = false;
+                        $result['failed'][] = $version;
+                        break; // Stop on first failure
+                    }
                 }
 
-                // Apply migration
-                $applyResult = $this->applyMigration($version, $checksum, $filePath);
-
-                if ($applyResult['ok']) {
-                    $result['applied'][] = $version;
-                } else {
-                    $result['ok'] = false;
-                    $result['failed'][] = $version;
-                    break; // Stop on first failure
+                // Stop after the target version when running a phased migration.
+                if ($untilVersion !== null && $version === $untilVersion) {
+                    break;
                 }
             }
         } finally {
@@ -420,6 +473,20 @@ class MigrationRunnerService
     }
 
     /**
+     * Maps known drift versions to a schema verification query that must return cnt >= 1
+     * before the checksum can be reconciled. Avoids hardcoded version strings in the
+     * reconcileChecksum method body — add entries here for future known drifts.
+     *
+     * @var array<string, array{table: string, column: string}>
+     */
+    private const DRIFT_SCHEMA_VERIFIERS = [
+        '20260614121500_add_last_login_at_to_users' => [
+            'table'  => 'users',
+            'column' => 'last_login_at',
+        ],
+    ];
+
+    /**
      * Reconcile a known checksum drift for a specific migration version.
      *
      * Used when a migration file was patched after being successfully applied in
@@ -453,21 +520,39 @@ class MigrationRunnerService
             return ['ok' => true, 'action' => 'already_reconciled'];
         }
 
-        // For known drift on last_login_at: verify the column actually exists before updating.
-        if ($version === '20260614121500_add_last_login_at_to_users') {
-            $result = $this->db->query(
-                "SELECT COUNT(*) AS cnt
+        // TOCTOU guard: re-read the file on disk and verify the checksum the caller observed
+        // is still current. Migration files are immutable in production, but this prevents a
+        // race where a concurrent deploy replaces the file between the caller's read and this update.
+        $filePath = rtrim($this->migrationsPath, '/') . '/' . $version . '.sql';
+        if (is_file($filePath)) {
+            $onDiskContent = file_get_contents($filePath);
+            if ($onDiskContent !== false && hash('sha256', $onDiskContent) !== $currentChecksum) {
+                return [
+                    'ok'     => false,
+                    'action' => 'error',
+                    'error'  => 'checksum_changed_during_reconciliation',
+                ];
+            }
+        }
+
+        // For versions with a registered schema verifier, confirm the expected schema effect
+        // is present before trusting the checksum reconciliation.
+        if (isset(self::DRIFT_SCHEMA_VERIFIERS[$version])) {
+            $verifier = self::DRIFT_SCHEMA_VERIFIERS[$version];
+            $result   = $this->db->query(
+                'SELECT COUNT(*) AS cnt
                  FROM information_schema.COLUMNS
                  WHERE TABLE_SCHEMA = DATABASE()
-                   AND TABLE_NAME = 'users'
-                   AND COLUMN_NAME = 'last_login_at'"
+                   AND TABLE_NAME   = ?
+                   AND COLUMN_NAME  = ?',
+                [$verifier['table'], $verifier['column']]
             )->getRowArray();
 
             if ((int) ($result['cnt'] ?? 0) === 0) {
                 return [
                     'ok'     => false,
                     'action' => 'schema_mismatch',
-                    'error'  => 'last_login_at column absent from users table',
+                    'error'  => $verifier['column'] . ' column absent from ' . $verifier['table'] . ' table',
                 ];
             }
         }
@@ -479,6 +564,15 @@ class MigrationRunnerService
              WHERE `version` = ? AND `status` = ?',
             [$currentChecksum, 'Checksum reconciled after file patch', $now, $version, 'success']
         );
+
+        // P4: verify the UPDATE actually matched the row (concurrent status change guard).
+        if ($this->db->affectedRows() === 0) {
+            return [
+                'ok'     => false,
+                'action' => 'error',
+                'error'  => 'update_affected_no_rows',
+            ];
+        }
 
         return ['ok' => true, 'action' => 'reconciled'];
     }

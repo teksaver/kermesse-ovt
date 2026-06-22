@@ -568,11 +568,73 @@ fi
 echo "  Préflight OK — failed=[] ; migrations en attente avant exécution : ${PREFLIGHT_PENDING}"
 echo ""
 
-# ── Étape 4/5 : Migration base de données ────────────────────────────────────
-CURRENT_STEP="migration"
+# ── Étape 4/5 : Migration en deux phases (expand/contract) ───────────────────
+# Phase 1 : créer la vue de compatibilité AVANT d'activer le nouveau code.
+# Phase 2 : renommage physique APRÈS validation de la vue.
+#
+# CONTRAINTE ARCHITECTURALE :
+# Dans ce pipeline, l'activation (Étape 3) précède les deux phases de migration.
+# Pour ce déploiement spécifique, une fenêtre de downtime très courte existe entre
+# l'activation et la fin de la Phase 1 (création de la vue slot_signups).
+# Ce pipeline garantit néanmoins que la Phase 2 (RENAME TABLE) ne s'exécute
+# qu'après validation de la vue, ce qui est impossible avec un run() monolithique.
+CURRENT_STEP="migration-phase1"
 echo ""
-echo "-- Étape 4/5 : Migration de la base de données"
-call_migrate_endpoint "Webhook de migration" "ops/migrate"
+echo "-- Étape 4/5 : Migration Phase 1 — vue de compatibilité slot_signups (expand)"
+PHASE1_BODY='{"until_version":"20260619500000_create_slot_signups_compat_view"}'
+ops_sign "ops/migrate" "${PHASE1_BODY}"
+PHASE1_RESPONSE_FILE="$(mktemp)"
+PHASE1_HTTP=$(curl --max-time 60 -sS -X POST "${BASE_URL%/}/ops/migrate" \
+    -H "Content-Type: application/json" \
+    -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+    -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+    -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+    -w "%{http_code}" -o "${PHASE1_RESPONSE_FILE}" \
+    -d "${PHASE1_BODY}")
+PHASE1_BODY_RESPONSE="$(cat "${PHASE1_RESPONSE_FILE}")"
+rm -f "${PHASE1_RESPONSE_FILE}"
+echo "  Réponse HTTP Phase 1 : ${PHASE1_HTTP}"
+if [[ -n "${PHASE1_BODY_RESPONSE}" ]]; then echo "  Corps : ${PHASE1_BODY_RESPONSE}"; fi
+if [[ "${PHASE1_HTTP}" != "200" ]]; then
+    echo "ERREUR : Migration Phase 1 a retourné HTTP ${PHASE1_HTTP} (attendu 200)" >&2
+    exit 1
+fi
+echo "  Phase 1 [OK] — vue de compatibilité créée"
+
+# ── Smoke test Phase 1 : lecture + écriture sur slot_signups (vue) ─────────────
+# Exécuté DANS le conteneur deploy-client (accès direct au service MariaDB).
+# Vérifie que la vue slot_signups est accessible en lecture ET en écriture DML
+# avant de procéder au renommage physique (Phase 2).
+# L'UPDATE WHERE id = 0 ne modifie aucune ligne — il vérifie uniquement que
+# la vue/table existe et accepte des requêtes DML (écriture sans mutation de données).
+CURRENT_STEP="smoke-slot-signups-phase1"
+echo ""
+echo "-- Smoke test Phase 1 : lecture/écriture sur slot_signups (vue de compatibilité)"
+READ_COUNT=$(MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+    -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
+    -N -e "SELECT COUNT(*) FROM \`slot_signups\`;") || {
+    echo "ERREUR : Lecture sur slot_signups échouée — la table est absente, inaccessible, ou la connexion DB a échoué" >&2
+    exit 1
+}
+echo "  Lecture slot_signups [OK] — ${READ_COUNT} lignes"
+
+# UPDATE no-op (WHERE id = 0 ne modifie aucune ligne) : vérifie que le DML
+# est accepté sur la table (droits + syntaxe + existence de la colonne updated_at).
+MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+    -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
+    -e "UPDATE \`slot_signups\` SET \`updated_at\` = \`updated_at\` WHERE \`id\` = 0;" || {
+    echo "ERREUR : Écriture sur slot_signups échouée — vérifier les droits DML ou l'existence de la colonne updated_at" >&2
+    exit 1
+}
+echo "  Écriture slot_signups [OK] — UPDATE no-op exécuté (via vue de compatibilité)"
+
+# ── Migration Phase 2 : renommage physique (contraction) ─────────────────────
+# Exécuté APRÈS validation de la vue : garantit que slot_signups était accessible
+# avant de DROP VIEW + RENAME TABLE.
+CURRENT_STEP="migration-phase2"
+echo ""
+echo "-- Migration Phase 2 — renommage physique signups → slot_signups (contract)"
+call_migrate_endpoint "Webhook migration Phase 2 (rename)" "ops/migrate"
 echo ""
 
 # ── Preuve d'idempotence : ré-exécution = no-op ──────────────────────────────
@@ -615,30 +677,26 @@ echo "  PENDING_BEFORE_SECOND=0 — la seconde migration ne peut appliquer aucun
 call_migrate_endpoint "Seconde migration (idempotence)" "ops/migrate"
 echo ""
 
-# ── Smoke test slot_signups : lecture + écriture no-op ───────────────────────
-# Exécuté DANS le conteneur deploy-client (accès direct au service MariaDB).
-# L'UPDATE WHERE id = 0 ne modifie aucune ligne — il vérifie uniquement que
-# la table existe et accepte des requêtes DML (écriture sans mutation de données).
-CURRENT_STEP="smoke-slot-signups"
+# ── Smoke test Post-Phase 2 : lecture + écriture sur slot_signups (table réelle) ──
+CURRENT_STEP="smoke-slot-signups-phase2"
 echo ""
-echo "-- Smoke test : lecture/écriture sur slot_signups"
-READ_COUNT=$(MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+echo "-- Smoke test Phase 2 : lecture/écriture sur slot_signups (table physique après RENAME)"
+READ_COUNT_P2=$(MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
     -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
-    -N -e "SELECT COUNT(*) FROM \`slot_signups\`;" 2>/dev/null) || {
-    echo "ERREUR : Lecture sur slot_signups échouée — la table est absente ou inaccessible" >&2
+    -N -e "SELECT COUNT(*) FROM \`slot_signups\`;") || {
+    echo "ERREUR : Lecture sur slot_signups (table physique) échouée après RENAME TABLE" >&2
     exit 1
 }
-echo "  Lecture slot_signups [OK] — ${READ_COUNT} lignes"
+echo "  Lecture slot_signups [OK] — ${READ_COUNT_P2} lignes (table physique)"
 
 MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
     -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
-    -e "UPDATE \`slot_signups\` SET \`updated_at\` = \`updated_at\` WHERE \`id\` = 0;" 2>/dev/null || {
-    echo "ERREUR : Écriture sur slot_signups échouée" >&2
+    -e "UPDATE \`slot_signups\` SET \`updated_at\` = \`updated_at\` WHERE \`id\` = 0;" || {
+    echo "ERREUR : Écriture sur slot_signups (table physique) échouée" >&2
     exit 1
 }
-echo "  Écriture slot_signups [OK] — UPDATE no-op exécuté"
+echo "  Écriture slot_signups [OK] — UPDATE no-op exécuté (table physique confirmée)"
 
-# ── Étape 5/5 : Vérification de l'état des migrations (postflight) ───────────
 CURRENT_STEP="verification-etat"
 echo ""
 echo "-- Étape 5/5 : Postflight — vérification de l'état des migrations"
@@ -702,8 +760,10 @@ fi
 echo "  Transfert            [OK]"
 echo "  Activation           [OK]"
 echo "  Drift-fix            [OK] — checksum réconcilié"
-echo "  Migration            [OK]"
-echo "  Smoke slot_signups   [OK] — lecture et écriture no-op confirmées"
+echo "  Migration Phase 1    [OK] — vue de compatibilité slot_signups créée"
+echo "  Smoke Phase 1        [OK] — lecture et écriture sur vue confirmées"
+echo "  Migration Phase 2    [OK] — RENAME TABLE signups → slot_signups"
+echo "  Smoke Phase 2        [OK] — lecture et écriture sur table physique confirmées"
 echo "  Idempotence          [OK] — PENDING_BEFORE_SECOND=${PENDING_BEFORE_SECOND} (no-op prouvé)"
 echo "  Postflight statut    [OK]"
 echo ""
