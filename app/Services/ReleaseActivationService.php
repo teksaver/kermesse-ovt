@@ -184,9 +184,10 @@ class ReleaseActivationService
         // AC-6 — prune old releases; shared/ is never scanned here
         $pruned = $this->pruneOldReleases($releasesDir, $releaseName, $this->releasesRetention);
 
-        // Clean up the staging artifact (readability confirmed at entry — files exist)
-        unlink($archivePath);
-        unlink($checksumPath);
+        // Clean up the staging artifact; guard against a prior partial activation
+        // where the files were already removed (idempotent retry safety).
+        is_file($archivePath) && unlink($archivePath);
+        is_file($checksumPath) && unlink($checksumPath);
 
         return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned];
     }

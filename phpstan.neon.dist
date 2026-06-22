@@ -18,3 +18,10 @@ parameters:
     dynamicConstantNames:
         - ENVIRONMENT
         - CI_DEBUG
+    ignoreErrors:
+        # CI4's Model::insert() lacks @throws in its stubs, so PHPStan cannot see that
+        # DatabaseException is thrown at runtime when DBDebug=true. The catch is real and
+        # necessary to distinguish a unique-constraint violation from other insertion errors.
+        -
+            identifier: catch.neverThrown
+            path: app/Services/RoleService.php

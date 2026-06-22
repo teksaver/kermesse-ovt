@@ -280,13 +280,22 @@ class RoleService
             return;
         }
 
-        $inserted = $this->userRoleModel->insert([
-            'kermesse_id' => $kermesseId,
-            'user_id'     => $userId,
-            'role'        => $role,
-            'invited_by'  => $invitedBy,
-            'invited_at'  => $now,
-        ]);
+        try {
+            $inserted = $this->userRoleModel->insert([
+                'kermesse_id' => $kermesseId,
+                'user_id'     => $userId,
+                'role'        => $role,
+                'invited_by'  => $invitedBy,
+                'invited_at'  => $now,
+            ]);
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            // Under DBDebug=true a unique constraint violation throws instead of returning false.
+            // Any other insertion error must propagate so it is not silently ignored.
+            if (!str_contains($e->getMessage(), '1062')) {
+                throw $e;
+            }
+            $inserted = false;
+        }
 
         if ($inserted === false) {
             // Concurrent invite already created the row: re-read and update so the
