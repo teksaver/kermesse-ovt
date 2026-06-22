@@ -1274,6 +1274,21 @@ So that la mise en production puisse être décidée et exécutée avec un risqu
 **Then** les résultats, durées, décisions et risques résiduels sont archivés,
 **And** l'Epic 7 peut quitter son état gelé.
 
+**Dev Note — pré-condition bloquante (trouvée en checkpoint 6.8bis, 2026-06-22) :**
+
+La migration `20260614121500_add_last_login_at_to_users` a subi un **drift de checksum** : le fichier SQL a été modifié après son application en production (commit `ff9fd93` — suppression du `UPDATE` de backfill qui neutralisait la Story 5.4). Le `MigrationRunnerService` détecte ce drift et fait un `break` immédiat — **les 9 migrations en attente ne tourneront pas** tant que ce drift n'est pas corrigé.
+
+Avant tout déclenchement de `POST /ops/migrate`, exécuter manuellement sur la prod :
+
+```sql
+UPDATE `schema_versions`
+SET `checksum` = 'b7831e1a50c2a85628c86a49c1d2679d0fa06a774515a540f281273d679e04d7'
+WHERE `version` = '20260614121500_add_last_login_at_to_users'
+  AND `status`  = 'success';
+```
+
+Ce UPDATE est sans risque : la colonne `last_login_at` existe déjà en prod, le `UPDATE` de backfill supprimé avait déjà tourné, aucune donnée n'est perdue. Il aligne simplement le checksum enregistré sur le fichier tel qu'il est aujourd'hui.
+
 ### Story 6.10 : Sécuriser le déploiement des migrations incompatibles
 
 As a responsable de la mise en production,
