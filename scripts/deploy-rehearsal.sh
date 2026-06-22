@@ -10,7 +10,7 @@
 # conteneur ; les mêmes scripts/*.sh que la CI y sont montés sans fork.
 #
 # Usage :
-#   bash scripts/deploy-rehearsal.sh [--inject <cas>]
+#   bash scripts/deploy-rehearsal.sh [--inject <cas>] [--use-existing-artifact]
 #   bash scripts/deploy-rehearsal.sh --reset
 #
 # Mode reset :
@@ -18,6 +18,13 @@
 #             puis tronque les tables techniques de test (schema_versions, ops_nonces).
 #             Idempotent : aucune erreur si les dossiers/tables sont déjà vides ou absents.
 #             Requiert que les conteneurs Docker du profil rehearsal soient démarrés.
+#
+# Mode artefact existant :
+#   --use-existing-artifact   Saute le packaging (étape 1/5) et exige que build/kermesse-deploy.tar.gz
+#                             + build/kermesse-deploy.tar.gz.sha256 soient déjà présents.
+#                             Utilisé par le job de qualification RC pour déployer le binaire exact qualifié.
+#                             Le mode de packaging local pour la boucle développeur est toujours disponible
+#                             en n'utilisant pas ce flag.
 #
 # Modes d'injection (test uniquement) :
 #   --inject truncated-transfer  Tronque l'archive sur la cible après transfert
@@ -57,13 +64,15 @@ if [[ "${KERMESSE_REHEARSAL_CONTAINER:-}" != "1" ]]; then
     REEXEC_ENV=()
     for _v in TARGET_HOST TARGET_PORT TARGET_PROTO TARGET_USER TARGET_PASS \
               TARGET_SFTP_SKIP_HOST_CHECK REMOTE_STAGING BASE_URL OPS_HMAC_SECRET \
-              DB_RESET_HOST DB_RESET_USER DB_RESET_PASS DB_RESET_NAME; do
+              DB_RESET_HOST DB_RESET_USER DB_RESET_PASS DB_RESET_NAME \
+              KERMESSE_REHEARSAL_CONTAINER; do
         # On vérifie si la variable est définie (+x), même si elle est vide,
         # pour propager les valeurs vides explicites au conteneur.
         if eval "[ -n \"\${${_v}+x}\" ]"; then
             REEXEC_ENV+=(-e "${_v}")
         fi
     done
+    # "$@" already includes --use-existing-artifact if provided; pass verbatim.
     exec docker compose --profile rehearsal run --rm -T \
         ${REEXEC_ENV[@]+"${REEXEC_ENV[@]}"} \
         deploy-client bash scripts/deploy-rehearsal.sh "$@"
@@ -72,6 +81,7 @@ fi
 # ── Analyse des arguments ─────────────────────────────────────────────────────
 INJECT_MODE=""
 RESET_MODE=false
+USE_EXISTING_ARTIFACT=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --inject)
@@ -90,6 +100,10 @@ while [[ $# -gt 0 ]]; do
             RESET_MODE=true
             shift
             ;;
+        --use-existing-artifact)
+            USE_EXISTING_ARTIFACT=true
+            shift
+            ;;
         *)
             echo "ERREUR : argument inconnu : $1" >&2
             exit 1
@@ -99,6 +113,11 @@ done
 
 if [[ "${RESET_MODE}" == true && -n "${INJECT_MODE}" ]]; then
     echo "ERREUR : --reset et --inject sont mutuellement exclusifs" >&2
+    exit 1
+fi
+
+if [[ "${USE_EXISTING_ARTIFACT}" == true && -n "${INJECT_MODE}" ]]; then
+    echo "ERREUR : --use-existing-artifact et --inject sont mutuellement exclusifs" >&2
     exit 1
 fi
 
@@ -120,9 +139,16 @@ if [[ "${RESET_MODE}" == true ]]; then
     hash mysql || { echo "ERREUR : dépendance système manquante (client mysql/mariadb)" >&2; exit 1; }
 else
     hash curl awk openssl lftp || { echo "ERREUR : dépendances système manquantes (curl, awk, openssl, lftp)" >&2; exit 1; }
-    if [[ ! -x "${SCRIPT_DIR}/package-deploy-artifact.sh" || ! -x "${SCRIPT_DIR}/transfer-archive.sh" ]]; then
-        echo "ERREUR : sous-scripts introuvables ou non exécutables dans ${SCRIPT_DIR}" >&2
+    if [[ ! -x "${SCRIPT_DIR}/transfer-archive.sh" ]]; then
+        echo "ERREUR : transfer-archive.sh introuvable ou non exécutable dans ${SCRIPT_DIR}" >&2
         exit 1
+    fi
+    # package-deploy-artifact.sh n'est requis qu'en mode packaging local (pas --use-existing-artifact).
+    if [[ "${USE_EXISTING_ARTIFACT}" != true ]]; then
+        if [[ ! -x "${SCRIPT_DIR}/package-deploy-artifact.sh" ]]; then
+            echo "ERREUR : package-deploy-artifact.sh introuvable ou non exécutable dans ${SCRIPT_DIR}" >&2
+            exit 1
+        fi
     fi
 fi
 
@@ -311,6 +337,10 @@ if [[ -n "${INJECT_MODE}" ]]; then
     echo "[INJECT] Mode d'injection : ${INJECT_MODE}"
     echo ""
 fi
+if [[ "${USE_EXISTING_ARTIFACT}" == true ]]; then
+    echo "[RC] Mode : artefact préexistant (binaire qualifié — pas de packaging)"
+    echo ""
+fi
 echo "Cible   : ${TARGET_PROTO}://${TARGET_HOST}:${TARGET_PORT}"
 echo "App     : ${BASE_URL}"
 echo ""
@@ -328,10 +358,34 @@ if [[ "${INJECT_MODE}" == "failing-migration" ]]; then
     echo ""
 fi
 
-# ── Étape 1/5 : Packaging ────────────────────────────────────────────────────
+# ── Étape 1/5 : Packaging (ou vérification de l'artefact préexistant) ────────
 CURRENT_STEP="packaging"
-echo "-- Étape 1/5 : Packaging de l'artefact"
-bash "${SCRIPT_DIR}/package-deploy-artifact.sh"
+if [[ "${USE_EXISTING_ARTIFACT}" == true ]]; then
+    echo "-- Étape 1/5 : Vérification de l'artefact préexistant (mode RC)"
+    # En mode qualification RC, l'archive doit déjà être dans build/ (téléchargée depuis CI).
+    # On vérifie sa présence et son intégrité sans reconstruire.
+    source "${SCRIPT_DIR}/lib/artifact.sh"
+    ARTIFACT_PATH="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}"
+    SIDECAR_PATH="${PROJECT_ROOT}/build/${KERMESSE_ARTIFACT_NAME}.sha256"
+    if [[ ! -f "${ARTIFACT_PATH}" ]]; then
+        echo "ERREUR : artefact préexistant absent : ${ARTIFACT_PATH}" >&2
+        echo "Téléchargez l'artefact CI dans build/ avant d'utiliser --use-existing-artifact." >&2
+        exit 1
+    fi
+    if [[ ! -f "${SIDECAR_PATH}" ]]; then
+        echo "ERREUR : sidecar SHA256 absent : ${SIDECAR_PATH}" >&2
+        exit 1
+    fi
+    ( cd "${PROJECT_ROOT}/build" && sha256sum -c "$(basename "${SIDECAR_PATH}")" ) || {
+        echo "ERREUR : checksum de l'artefact préexistant invalide." >&2
+        exit 1
+    }
+    echo "[RC] Artefact vérifié : $(awk '{print $1}' "${SIDECAR_PATH}")"
+    echo "[RC] Packaging sauté — promotion du binaire qualifié."
+else
+    echo "-- Étape 1/5 : Packaging de l'artefact"
+    bash "${SCRIPT_DIR}/package-deploy-artifact.sh"
+fi
 
 # ── Étape 2/5 : Transfert ────────────────────────────────────────────────────
 CURRENT_STEP="transfert"
@@ -389,42 +443,122 @@ if [[ "$HTTP_CODE" != "200" ]]; then
 fi
 echo ""
 
+# ── Helper : appeler ops/migrate ou ops/migrate/status et valider la réponse JSON ──
+# $1 = étiquette d'affichage, $2 = route
+# Vérifie HTTP 200, capture le corps JSON, échoue si failed[] non vide.
+call_migrate_endpoint() {
+    local label="$1"
+    local route="$2"
+    local response_file
+    response_file="$(mktemp)"
+
+    ops_sign "${route}"
+    local http_code
+    http_code=$(curl --max-time 60 -sS -X POST "${BASE_URL%/}/${route}" \
+        -H "Content-Type: application/json" \
+        -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+        -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+        -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+        -w "%{http_code}" -o "${response_file}" \
+        -d '{}')
+
+    local response_body
+    response_body="$(cat "${response_file}")"
+    rm -f "${response_file}"
+
+    echo "  Réponse HTTP : ${http_code}"
+    if [[ -n "${response_body}" ]]; then
+        echo "  Corps : ${response_body}"
+    fi
+
+    if [[ "${http_code}" != "200" ]]; then
+        echo "ERREUR : ${label} a retourné HTTP ${http_code} (attendu 200)" >&2
+        exit 1
+    fi
+
+    # Valider le JSON : failed[] doit être vide pour un état sain.
+    # On utilise grep/awk si jq n'est pas disponible dans le conteneur.
+    if command -v jq >/dev/null 2>&1; then
+        local failed_count
+        failed_count="$(echo "${response_body}" | jq -r 'if .failed then (.failed | length) else 0 end' 2>/dev/null || echo "0")"
+        if [[ "${failed_count}" != "0" && "${failed_count}" != "" ]]; then
+            echo "ERREUR : ${label} — migrations en échec détectées (failed=${failed_count})" >&2
+            echo "Corps : ${response_body}" >&2
+            exit 1
+        fi
+    else
+        # Fallback sans jq : rejeter si "failed" contient autre chose que [].
+        if echo "${response_body}" | grep -qE '"failed"\s*:\s*\[.+\]'; then
+            echo "ERREUR : ${label} — migrations en échec détectées dans la réponse" >&2
+            echo "Corps : ${response_body}" >&2
+            exit 1
+        fi
+    fi
+    echo "  ${label} [OK] — aucun échec détecté"
+}
+
 # ── Étape 4/5 : Migration base de données ────────────────────────────────────
 CURRENT_STEP="migration"
 echo ""
 echo "-- Étape 4/5 : Migration de la base de données"
-MIGRATE_ROUTE="ops/migrate"
-ops_sign "${MIGRATE_ROUTE}"
-HTTP_CODE=$(curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${MIGRATE_ROUTE}" \
-    -H "Content-Type: application/json" \
-    -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
-    -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
-    -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-    -w "%{http_code}" -o /dev/stderr \
-    -d '{}')
-if [[ "$HTTP_CODE" != "200" ]]; then
-    echo "ERREUR : Webhook de migration a retourné HTTP $HTTP_CODE (attendu 200)" >&2
-    exit 1
-fi
+call_migrate_endpoint "Webhook de migration" "ops/migrate"
 echo ""
 
-# ── Étape 5/5 : Vérification de l'état des migrations ───────────────────────
+# ── Preuve d'idempotence : ré-exécution = no-op ──────────────────────────────
+CURRENT_STEP="migration-idempotence"
+echo "-- Preuve d'idempotence : seconde migration (doit être no-op)"
+call_migrate_endpoint "Seconde migration (idempotence)" "ops/migrate"
+echo ""
+
+# ── Étape 5/5 : Vérification de l'état des migrations (postflight) ───────────
 CURRENT_STEP="verification-etat"
 echo ""
-echo "-- Étape 5/5 : Vérification de l'état des migrations"
+echo "-- Étape 5/5 : Postflight — vérification de l'état des migrations"
 STATUS_ROUTE="ops/migrate/status"
 ops_sign "${STATUS_ROUTE}"
-HTTP_CODE=$(curl --max-time 30 --fail-with-body -sS -X POST "${BASE_URL%/}/${STATUS_ROUTE}" \
+STATUS_RESPONSE_FILE="$(mktemp)"
+HTTP_CODE=$(curl --max-time 30 -sS -X POST "${BASE_URL%/}/${STATUS_ROUTE}" \
     -H "Content-Type: application/json" \
     -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
     -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
     -H "X-Kermesse-Signature: ${SIGN_SIG}" \
-    -w "%{http_code}" -o /dev/stderr \
+    -w "%{http_code}" -o "${STATUS_RESPONSE_FILE}" \
     -d '{}')
-if [[ "$HTTP_CODE" != "200" ]]; then
-    echo "ERREUR : Webhook de statut a retourné HTTP $HTTP_CODE (attendu 200)" >&2
+STATUS_BODY="$(cat "${STATUS_RESPONSE_FILE}")"
+rm -f "${STATUS_RESPONSE_FILE}"
+
+if [[ "${HTTP_CODE}" != "200" ]]; then
+    echo "ERREUR : Webhook de statut a retourné HTTP ${HTTP_CODE} (attendu 200)" >&2
     exit 1
 fi
+echo "  Statut HTTP : ${HTTP_CODE}"
+if [[ -n "${STATUS_BODY}" ]]; then
+    echo "  Statut complet : ${STATUS_BODY}"
+fi
+
+# Postflight strict : pending[] ET failed[] doivent être vides.
+if command -v jq >/dev/null 2>&1; then
+    PENDING_COUNT="$(echo "${STATUS_BODY}" | jq -r 'if .pending then (.pending | length) else 0 end' 2>/dev/null || echo "0")"
+    FAILED_COUNT="$(echo "${STATUS_BODY}"  | jq -r 'if .failed  then (.failed  | length) else 0 end' 2>/dev/null || echo "0")"
+    if [[ "${PENDING_COUNT}" != "0" ]]; then
+        echo "ERREUR : Postflight — migrations encore en attente (pending=${PENDING_COUNT})" >&2
+        exit 1
+    fi
+    if [[ "${FAILED_COUNT}" != "0" ]]; then
+        echo "ERREUR : Postflight — migrations en échec (failed=${FAILED_COUNT})" >&2
+        exit 1
+    fi
+else
+    if echo "${STATUS_BODY}" | grep -qE '"pending"\s*:\s*\[.+\]'; then
+        echo "ERREUR : Postflight — migrations encore en attente" >&2
+        exit 1
+    fi
+    if echo "${STATUS_BODY}" | grep -qE '"failed"\s*:\s*\[.+\]'; then
+        echo "ERREUR : Postflight — migrations en échec" >&2
+        exit 1
+    fi
+fi
+echo "  Postflight OK — pending=[] et failed=[]"
 echo ""
 
 # ── Résumé ───────────────────────────────────────────────────────────────────
@@ -432,9 +566,14 @@ echo ""
 echo "=========================================="
 echo "REHEARSAL OK"
 echo "=========================================="
-echo "  Packaging            [OK]"
+if [[ "${USE_EXISTING_ARTIFACT}" == true ]]; then
+    echo "  Artefact préexistant [OK]"
+else
+    echo "  Packaging            [OK]"
+fi
 echo "  Transfert            [OK]"
 echo "  Activation           [OK]"
 echo "  Migration            [OK]"
-echo "  Vérification état    [OK]"
+echo "  Idempotence          [OK]"
+echo "  Postflight statut    [OK]"
 echo ""

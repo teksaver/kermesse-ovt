@@ -90,9 +90,9 @@ Chaque parcours est décrit selon la formule :
 | 2.11 | Token stocké haché en base (jamais en clair) | P0 | ✅ couvert | `TokenServiceTest::testRawTokenIsNeverStoredInInsertData` |
 | 2.12 | Flux complet Magic Link en MariaDB réel | P0 | ❌ manquant | → Story **6.6** (validation schéma FK tokens/users) |
 | 2.13 | Déconnexion POST `/auth/logout` avec session active → session détruite, redirection accueil public (CSRF obligatoire) | P0 | ✅ couvert | `ConnectedHomeTest::testLogoutRedirectsToRoot`, `testLogoutWithoutSessionStillRedirectsToRoot` |
-| 2.14 | **[Session expirée — GET]** Accès à une route authentifiée avec session expirée → redirection vers `/auth/request?redirect=<url>`, puis retour sur la page après connexion | P1 | ❌ manquant | → Story **6.9** |
-| 2.15 | **[Session expirée — POST]** Soumission d'un formulaire POST (ex. inviter un admin, accepter une inscription) avec session expirée → CodeIgniter lève `SecurityException` (CSRF hash perdu avec la session) avant que le filtre d'auth s'exécute → gestionnaire d'exceptions intercepte et redirige vers `/auth/request` avec flash, sans page d'erreur 403 | P1 | ❌ manquant | → Story **6.9** |
-| 2.16 | **[Open redirect]** Paramètre `redirect` après reconnexion validé same-origin → URL externe rejetée | P0 | ❌ manquant | → Story **6.9** |
+| 2.14 | **[Session expirée — GET]** Accès à une route authentifiée avec session expirée → redirection vers `/auth/request?redirect=<url>`, puis retour sur la page après connexion | P1 | ✅ couvert | `SessionExpirationTest::testExpiredSessionOnGetRouteRedirectsToLoginWithRedirectParam`, `testExpiredSessionReturnUrlIsPreservedAfterLogin` |
+| 2.15 | **[Session expirée — POST]** Soumission d'un formulaire POST (ex. inviter un admin, accepter une inscription) avec session expirée → CodeIgniter lève `SecurityException` (CSRF hash perdu avec la session) avant que le filtre d'auth s'exécute → gestionnaire d'exceptions intercepte et redirige vers `/auth/request` avec flash, sans page d'erreur 403 | P1 | ✅ couvert | `SessionExpirationTest::testExpiredSessionOnPostRouteShowsFlashAndRedirectsToLogin`, `testExpiredSessionPostDoesNotReturn403OrPhpError` |
+| 2.16 | **[Open redirect]** Paramètre `redirect` après reconnexion validé same-origin → URL externe rejetée | P0 | ✅ couvert | `SessionExpirationTest::testOpenRedirectIsRejectedForExternalUrl`, `testOpenRedirectIsRejectedForAbsoluteExternalUrl` |
 
 ---
 
@@ -449,9 +449,9 @@ Chaque parcours est décrit selon la formule :
 | G21 | LEFT JOIN inscriptions orphelines (`user_id=NULL`) validé en MariaDB | P0 | ⚠️ partiel | **6.6** | Story 6.6 | Test database MariaDB |
 | G22 | Réassignment `user_id` lors d'une correction admin d'email | P0 | ⚠️ partiel | **6.5** | Story 6.5 | Test feature PHPUnit |
 | G23 | Accès au profil sans session → redirection login (MariaDB) | P0 | ⚠️ partiel | **6.5** | Story 6.5 | Test feature MariaDB |
-| G24 | Session expirée sur route GET → redirect `?redirect=` + retour post-login | P1 | ❌ manquant | **6.9** | Story 6.9 | Test feature PHPUnit |
-| G25 | Session expirée sur route POST (action dashboard) → flash + redirect login, pas d'erreur PHP | P1 | ❌ manquant | **6.9** | Story 6.9 | Test feature PHPUnit |
-| G26 | Paramètre `redirect` validé same-origin (open redirect bloqué) | P0 | ❌ manquant | **6.9** | Story 6.9 | Test feature PHPUnit |
+| G24 | Session expirée sur route GET → redirect `?redirect=` + retour post-login | P1 | ✅ couvert | **6.8** | `SessionExpirationTest` (2 tests) | Test feature PHPUnit |
+| G25 | Session expirée sur route POST (action dashboard) → flash + redirect login, pas d'erreur PHP | P1 | ✅ couvert | **6.8** | `SessionExpirationTest` (2 tests) | Test feature PHPUnit |
+| G26 | Paramètre `redirect` validé same-origin (open redirect bloqué) | P0 | ✅ couvert | **6.8** | `SessionExpirationTest` (2 tests) | Test feature PHPUnit |
 
 ---
 
