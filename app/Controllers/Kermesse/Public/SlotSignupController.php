@@ -14,7 +14,7 @@ use App\Services\SlotSignupResult;
 use App\Services\SlotSignupService;
 
 /**
- * Public slot-signup form: GET/POST /k/{public_slug}/slots/{slot_id}/signup
+ * Public slot-signup form: GET/POST /k/{public_slug}/slots/{slot_id}/slot-signup
  *
  * Displays and validates the volunteer signup form, then delegates inscription
  * creation to SlotSignupService (find-or-create user + transactional signup insert).
@@ -98,7 +98,7 @@ class SlotSignupController extends BaseController
     {
         session()->remove('volunteer_identity');
 
-        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"));
+        return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/slot-signup"));
     }
 
     public function submit(string $publicSlug, string $slotId): mixed
@@ -124,7 +124,7 @@ class SlotSignupController extends BaseController
                 // Stale session (user_id not in DB): cannot fall through to anonymous flow safely
                 // on POST without fields. Destroy stale data and redirect.
                 session()->remove(['is_logged_in', 'user_id']);
-                return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/signup"))
+                return redirect()->to(site_url("k/{$publicSlug}/slots/{$slotId}/slot-signup"))
                     ->with('error', 'Votre session a expiré. Veuillez vous inscrire manuellement.');
             }
 

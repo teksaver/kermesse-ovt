@@ -8,7 +8,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\FeatureTestTrait;
 
 /**
- * Feature tests for the public signup form GET/POST /k/{slug}/slots/{id}/signup (Stories 3.2 & 3.3).
+ * Feature tests for the public signup form GET/POST /k/{slug}/slots/{id}/slot-signup (Stories 3.2 & 3.3).
  *
  * Focus: slot link on volunteer page, form display, server-side validation, 404 boundaries,
  * the hard privacy boundary (no user/admin data exposed), user create/reuse,
@@ -632,7 +632,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $result = $this->withSession($this->confirmationFlash('ecole-confirm-page', $slotId))
-            ->get("k/ecole-confirm-page/slots/{$slotId}/signup/confirmation");
+            ->get("k/ecole-confirm-page/slots/{$slotId}/slot-signup/confirmation");
         $result->assertOK();
         $body = $result->response()->getBody();
 
@@ -647,7 +647,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $result = $this->withSession($this->confirmationFlash('ecole-confirm-priv', $slotId))
-            ->get("k/ecole-confirm-priv/slots/{$slotId}/signup/confirmation");
+            ->get("k/ecole-confirm-priv/slots/{$slotId}/slot-signup/confirmation");
         $body   = $result->response()->getBody();
 
         $this->assertStringNotContainsString('volunteer_id', $body);
@@ -662,7 +662,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $standId    = $this->insertStand($kermesseId);
         $slotId     = $this->insertSlot($standId);
 
-        $result = $this->get("k/ecole-confirm-noflash/slots/{$slotId}/signup/confirmation");
+        $result = $this->get("k/ecole-confirm-noflash/slots/{$slotId}/slot-signup/confirmation");
 
         $this->assertSame(302, $result->response()->getStatusCode());
         $this->assertStringContainsString('k/ecole-confirm-noflash', $result->response()->getHeaderLine('Location'));
@@ -677,7 +677,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
 
         // Flash earned on $slotId must not unlock the confirmation of $otherSlotId
         $result = $this->withSession($this->confirmationFlash('ecole-confirm-scope', $slotId))
-            ->get("k/ecole-confirm-scope/slots/{$otherSlotId}/signup/confirmation");
+            ->get("k/ecole-confirm-scope/slots/{$otherSlotId}/slot-signup/confirmation");
 
         $this->assertSame(302, $result->response()->getStatusCode());
         $this->assertStringContainsString('k/ecole-confirm-scope', $result->response()->getHeaderLine('Location'));
@@ -694,7 +694,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         db_connect()->query("UPDATE db_kermesses SET status = 'closed' WHERE id = {$kermesseId}");
 
         $result = $this->withSession($this->confirmationFlash('ecole-confirm-closed', $slotId))
-            ->get("k/ecole-confirm-closed/slots/{$slotId}/signup/confirmation");
+            ->get("k/ecole-confirm-closed/slots/{$slotId}/slot-signup/confirmation");
 
         $result->assertOK();
         $this->assertStringContainsString('confirmée', $result->response()->getBody());
@@ -735,7 +735,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $slotB      = $this->insertSlotWithTimes($standId, '2026-09-12 11:00:00', '2026-09-12 12:30:00');
 
         $fields = ['first_name' => 'Marie', 'last_name' => 'Dupont', 'email' => 'multi@event.fr', 'phone' => ''];
-        $this->csrfPost("k/ecole-email-multi/slots/{$slotA}/signup", $fields);
+        $this->csrfPost("k/ecole-email-multi/slots/{$slotA}/slot-signup", $fields);
         $this->csrfPost("k/ecole-email-multi/slots/{$slotB}/slot-signup", $fields);
 
         // AC2: one distinct confirmation email attempt per accepted signup
@@ -773,7 +773,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $result = $this->withSession($this->confirmationFlash('ecole-email-fail', $slotId, emailSent: false))
-            ->get("k/ecole-email-fail/slots/{$slotId}/signup/confirmation");
+            ->get("k/ecole-email-fail/slots/{$slotId}/slot-signup/confirmation");
 
         $result->assertOK();
         $body = $result->response()->getBody();
@@ -814,7 +814,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
         $slotId     = $this->insertSlot($standId);
 
         $result = $this->withSession($this->confirmationFlash('ecole-email-nolink', $slotId))
-            ->get("k/ecole-email-nolink/slots/{$slotId}/signup/confirmation");
+            ->get("k/ecole-email-nolink/slots/{$slotId}/slot-signup/confirmation");
 
         // Écart acté 2026-06-10 : aucun lien de gestion promis tant que le modèle
         // d'identité (lien de gestion vs Magic Link) n'est pas tranché.
@@ -959,7 +959,7 @@ final class PublicSlotSignupFormTest extends CIUnitTestCase
                 'last_name'  => 'Bernard',
                 'email'      => 'helene@forget.fr',
             ],
-        ])->csrfPost("k/ecole-forget-post/slots/{$slotId}/signup/forget", []);
+        ])->csrfPost("k/ecole-forget-post/slots/{$slotId}/slot-signup/forget", []);
 
         $result->assertRedirectTo(site_url("k/ecole-forget-post/slots/{$slotId}/slot-signup"));
         $this->assertNull(session()->get('volunteer_identity'), 'L\'identité de session doit être effacée');
