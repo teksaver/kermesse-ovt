@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\ConnectionInterface;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Model;
@@ -40,6 +41,8 @@ class SlotSignupModel extends Model
     /**
      * Delegates to SlotSignup::computeStatus() — logic lives in the entity.
      * Kept as a static wrapper for callers that work with raw row arrays.
+     *
+     * @param array<string, mixed> $row
      */
     public static function getStatus(array $row): string
     {
@@ -50,6 +53,8 @@ class SlotSignupModel extends Model
      * Returns true when the slot-signup requires the volunteer's explicit confirmation:
      * created by someone else (admin) and not yet accepted.
      * Used to decide whether to show Accept/Refuse buttons vs the Cancel button.
+     *
+     * @param array<string, mixed> $row
      */
     public static function needsConfirmation(array $row, int $userId): bool
     {
@@ -74,7 +79,7 @@ class SlotSignupModel extends Model
      * under concurrency only because the slot row is locked FOR UPDATE before this
      * first plain read establishes the transaction snapshot.
      */
-    public function countActiveForSlot(int $slotId, ?ConnectionInterface $db = null): int
+    public function countActiveForSlot(int $slotId, ?BaseConnection $db = null): int
     {
         if ($db === null) {
             return $this->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
@@ -100,7 +105,8 @@ class SlotSignupModel extends Model
      *
      * Used for duplicate-signup detection inside a transaction.
      */
-    public function findActiveByEmailOrUserAndSlot(string $email, ?int $userId, int $slotId, ?ConnectionInterface $db = null): ?array
+    /** @return array<string, mixed>|null */
+    public function findActiveByEmailOrUserAndSlot(string $email, ?int $userId, int $slotId, ?BaseConnection $db = null): ?array
     {
         $conn  = $db ?? $this->db;
         $table = $conn->prefixTable($this->table);
@@ -129,6 +135,8 @@ class SlotSignupModel extends Model
     /**
      * Return the first active slot-signup whose slot overlaps [$startsAt, $endsAt) for
      * the given user, excluding $excludeSlotId (the target slot).
+     *
+     * @return array<string, mixed>|null
      */
     public function findOverlappingActiveByEmailOrUser(
         string $email,
@@ -137,7 +145,7 @@ class SlotSignupModel extends Model
         string $endsAt,
         int    $excludeSlotId,
         int    $kermesseId,
-        ?ConnectionInterface $db = null,
+        ?BaseConnection $db = null,
     ): ?array {
         $conn    = $db ?? $this->db;
         $tSign   = $conn->prefixTable($this->table);
@@ -291,7 +299,7 @@ class SlotSignupModel extends Model
      * volunteer (canceled_by = user_id). Removed = canceled_at set by admin (canceled_by
      * != user_id or IS NULL). Refused = rejected_at set.
      *
-     * @return list<array{signup_id: int, slot_id: int, stand_id: int, computed_status: string, first_name: string|null, last_name: string|null, signup_first_name: string|null, signup_last_name: string|null, last_modified_at: string|null, modifier_first_name: string|null}>
+     * @return list<array{signup_id: int, slot_id: int, stand_id: int, status: string, first_name: string|null, last_name: string|null, signup_first_name: string|null, signup_last_name: string|null, last_modified_at: string|null, modifier_first_name: string|null}>
      */
     public function findHistoricalParticipantsForKermesse(int $kermesseId): array
     {
@@ -332,7 +340,7 @@ class SlotSignupModel extends Model
      * Return an ACTIVE slot-signup that belongs to $kermesseId (via slot→stand scope),
      * with no user-ownership restriction — used by admin cancel and edit actions.
      *
-     * @return array{id: int, user_id: int|null, slot_id: int, email: string|null, first_name: string|null, last_name: string|null, signup_email: string|null, signup_first_name: string|null, stand_name: string, starts_at: string, ends_at: string}|null
+     * @return array{id: int, user_id: int|null, slot_id: int, email: string|null, first_name: string|null, last_name: string|null, phone: string|null, signup_email: string|null, signup_first_name: string|null, signup_last_name: string|null, signup_phone: string|null, stand_name: string, starts_at: string, ends_at: string}|null
      */
     public function findActiveInKermesse(int $signupId, int $kermesseId): ?array
     {
@@ -399,7 +407,7 @@ class SlotSignupModel extends Model
      * Return an ACTIVE slot-signup that belongs to $userId AND to $kermesseId, or null.
      * Ownership + scope guard for volunteer self-cancellation (Story 4.3).
      *
-     * @return array{id: int, user_id: int, slot_id: int}|null
+     * @return array{id: int, user_id: int, slot_id: int, accepted_at: string|null}|null
      */
     public function findActiveOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
     {
@@ -433,6 +441,8 @@ class SlotSignupModel extends Model
      * Find a slot-signup that is already rejected and owned by the given user in the given kermesse.
      * Used for idempotency in rejectSlotSignup(): a second POST after the slot was already freed
      * should return success rather than a confusing "not_found" error.
+     *
+     * @return array<string, mixed>|null
      */
     public function findRejectedOwnedInKermesse(int $signupId, int $userId, int $kermesseId): ?array
     {

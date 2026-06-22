@@ -8,7 +8,6 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\SlotSignupModel;
 use App\Models\UserModel;
-use App\Models\UserRoleModel;
 use App\Services\AdminCreateSlotSignupDTO;
 use App\Services\AdminMoveSlotSignupDTO;
 use App\Services\EmailService;
@@ -83,7 +82,6 @@ class AdminSlotSignupController extends BaseController
             slotSignupModel:  model(SlotSignupModel::class),
             kermesseModel:    model(KermesseModel::class),
             emailService:     new EmailService(),
-            userRoleModel:    model(UserRoleModel::class),
         );
 
         $result = $service->createSlotSignupByAdmin($dto);
@@ -155,7 +153,6 @@ class AdminSlotSignupController extends BaseController
             slotSignupModel:  model(SlotSignupModel::class),
             kermesseModel:    model(KermesseModel::class),
             emailService:     new EmailService(),
-            userRoleModel:    model(UserRoleModel::class),
         );
 
         $result = $service->moveSlotSignup($dto);
@@ -205,7 +202,6 @@ class AdminSlotSignupController extends BaseController
             slotSignupModel:  model(SlotSignupModel::class),
             kermesseModel:    model(KermesseModel::class),
             emailService:     new EmailService(),
-            userRoleModel:    model(UserRoleModel::class),
         );
 
         $result = $service->adminCancelSlotSignup(
@@ -289,7 +285,6 @@ class AdminSlotSignupController extends BaseController
             userModel:        model(UserModel::class),
             slotSignupModel:  model(SlotSignupModel::class),
             kermesseModel:    model(KermesseModel::class),
-            userRoleModel:    model(UserRoleModel::class),
         );
 
         $result = $service->adminEditSlotSignup(

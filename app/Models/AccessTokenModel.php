@@ -6,6 +6,7 @@ use CodeIgniter\Model;
 
 class AccessTokenModel extends Model
 {
+
     protected $table         = 'access_tokens';
     protected $primaryKey    = 'id';
     protected $useAutoIncrement = true;
@@ -32,4 +33,11 @@ class AccessTokenModel extends Model
         'token_type' => 'required|in_list[magic_link,role_invitation,signup_management,owner_validation,owner_login,volunteer_management]',
         'expires_at' => 'required',
     ];
+
+    public function affectedRows(): int
+    {
+        /** @var \CodeIgniter\Database\BaseConnection $db */
+        $db = $this->db;
+        return $db->affectedRows();
+    }
 }

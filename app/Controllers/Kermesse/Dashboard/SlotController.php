@@ -40,7 +40,7 @@ class SlotController extends BaseController
             $capacity = 0;
         } else {
             $capacityRaw = trim($capacityPost);
-            $capacity    = (ctype_digit($capacityRaw) && $capacityRaw !== '') ? (int) $capacityRaw : 0;
+            $capacity    = ctype_digit($capacityRaw) ? (int) $capacityRaw : 0;
         }
 
         $eventDate = !empty($kermesse['event_date']) ? $kermesse['event_date'] : date('Y-m-d');
@@ -212,6 +212,8 @@ class SlotController extends BaseController
     /**
      * Validates slot times and capacity.
      * Returns an array of field-specific error messages.
+     *
+     * @return array<string, string>
      */
     private function validateSlot(string $startsAt, string $endsAt, int $capacity, string $timezone): array
     {
@@ -247,6 +249,8 @@ class SlotController extends BaseController
 
     /**
      * Redirects back with input and flashdata for the dashboard slots section.
+     *
+     * @param array<string, string> $errors
      */
     private function redirectWithErrors(
         array $errors,
@@ -259,7 +263,7 @@ class SlotController extends BaseController
             ->withInput()
             ->with('slot_errors', $errors)
             ->with('slot_form', $formContext)
-            ->with('slot_form_stand_id', $standId)
-            ->with('slot_form_slot_id', $slotId);
+            ->with('slot_form_stand_id', (string) $standId)
+            ->with('slot_form_slot_id', $slotId !== null ? (string) $slotId : '');
     }
 }

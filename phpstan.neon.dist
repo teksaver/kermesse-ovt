@@ -2,14 +2,19 @@ includes:
     - phpstan-baseline.neon
 
 parameters:
-    level: 5
+    level: 6
     paths:
         - app
     excludePaths:
         - app/Views
     bootstrapFiles:
-        - vendor/codeigniter4/framework/system/Test/bootstrap.php
+        - phpstan-bootstrap.php
     scanDirectories:
         - vendor/codeigniter4/framework/system
     # PHPStan needs extra memory to scan the full CI4 framework stubs
     phpVersion: 80300
+    # ENVIRONMENT and CI_DEBUG are runtime constants — don't constant-fold them so all
+    # branches are analysed regardless of the bootstrap-defined values.
+    dynamicConstantNames:
+        - ENVIRONMENT
+        - CI_DEBUG

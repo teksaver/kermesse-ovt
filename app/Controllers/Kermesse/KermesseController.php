@@ -8,6 +8,7 @@ use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\EmailService;
 use App\Services\TokenService;
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
@@ -80,7 +81,7 @@ class KermesseController extends BaseController
         $roleModel     = model(UserRoleModel::class);
         $db            = \Config\Database::connect();
 
-        if ($isLoggedIn && $userId > 0) {
+        if ($isLoggedIn) {
             return $this->storeConnected($db, $kermesseModel, $roleModel, $userId, $name, $eventDate, $location, $description, $post);
         }
 
@@ -89,7 +90,7 @@ class KermesseController extends BaseController
 
     /** @param array<string, mixed> $post */
     private function storeConnected(
-        \CodeIgniter\Database\ConnectionInterface $db,
+        BaseConnection $db,
         KermesseModel $kermesseModel,
         UserRoleModel $roleModel,
         int $userId,
@@ -143,7 +144,7 @@ class KermesseController extends BaseController
 
     /** @param array<string, mixed> $post */
     private function storeGuest(
-        \CodeIgniter\Database\ConnectionInterface $db,
+        BaseConnection $db,
         KermesseModel $kermesseModel,
         UserRoleModel $roleModel,
         array $post,

@@ -37,7 +37,8 @@ class PendingResolutionFilter implements FilterInterface
     /**
      * @param list<string>|null $arguments
      */
-    public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): void
+    public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): ResponseInterface|null
     {
+        return null;
     }
 }

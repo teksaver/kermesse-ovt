@@ -12,6 +12,14 @@ use CodeIgniter\Entity\Entity;
  * computeStatus() is the canonical source of truth for slot-signup state. All controllers,
  * services, and tests must derive status through this class; never inline the conditions.
  * SlotSignupModel::getStatus() delegates here for backward-compatible static calls.
+ *
+ * @property string|null $deleted_at
+ * @property string|null $canceled_at
+ * @property int|null    $canceled_by
+ * @property int|null    $user_id
+ * @property string|null $rejected_at
+ * @property string|null $accepted_at
+ * @property int|null    $created_by
  */
 class SlotSignup extends Entity
 {
@@ -41,6 +49,8 @@ class SlotSignup extends Entity
      *   accepted_at set    → 'certified'
      *   unconfirmed cond.  → 'unconfirmed'  (visitor or created by someone else)
      *   default            → 'active'
+     *
+     * @param array<string, mixed> $row
      */
     public static function computeStatus(array $row): string
     {

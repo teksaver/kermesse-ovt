@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Database\ConnectionInterface;
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Model;
 
 class SlotModel extends Model
@@ -31,8 +31,10 @@ class SlotModel extends Model
      * that driver — the transaction still provides isolation in the test environment.
      *
      * Must be called inside an open transaction so the lock is held until commit/rollback.
+     *
+     * @return array<string, mixed>|null
      */
-    public function findForCapacityCheck(int $slotId, ConnectionInterface $db): ?array
+    public function findForCapacityCheck(int $slotId, BaseConnection $db): ?array
     {
         $table = $db->prefixTable('slots');
 

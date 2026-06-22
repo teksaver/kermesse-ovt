@@ -11,7 +11,7 @@ use App\Models\StandModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\EmailDeliveryResult;
-use CodeIgniter\Database\ConnectionInterface;
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
@@ -39,11 +39,10 @@ class SlotSignupService
         private readonly SlotSignupModel $slotSignupModel,
         private readonly ?KermesseModel $kermesseModel = null,
         private readonly ?SlotModel $slotModel = null,
-        private readonly ?ConnectionInterface $db = null,
+        private readonly ?BaseConnection $db = null,
         private readonly ?EmailService $emailService = null,
         private readonly ?StandModel $standModel = null,
         private readonly ?TokenService $tokenService = null,
-        private readonly ?UserRoleModel $userRoleModel = null,
     ) {}
 
     /**
@@ -309,9 +308,9 @@ class SlotSignupService
 
         $volunteerName = trim($notifyFirstName . ' ' . $notifyLastName) ?: $notifyEmail;
         $slotLabel     = $this->formatSlotLabel(
-            standName: (string) ($slotSignup['stand_name'] ?? ''),
-            startsAt:  (string) ($slotSignup['starts_at']  ?? ''),
-            endsAt:    (string) ($slotSignup['ends_at']    ?? ''),
+            standName: $slotSignup['stand_name'],
+            startsAt:  $slotSignup['starts_at'],
+            endsAt:    $slotSignup['ends_at'],
         );
 
         $context     = ['volunteer_name' => $volunteerName, 'slot_label' => $slotLabel];
@@ -550,9 +549,11 @@ class SlotSignupService
     /**
      * Run the invariant checks and inserts. Never commits or rolls back: the caller
      * owns the transaction boundary (single rollback point, exception-safe).
+     *
+     * @param array<string, mixed> $fields
      */
     private function signupWithinTransaction(
-        ConnectionInterface $db,
+        BaseConnection $db,
         int $slotId,
         int $kermesseId,
         string $email,
@@ -685,7 +686,7 @@ class SlotSignupService
     /**
      * Find the global user by normalized email.
      */
-    private function findUserByEmail(ConnectionInterface $db, string $email): ?int
+    private function findUserByEmail(BaseConnection $db, string $email): ?int
     {
         $emailHash = $this->userModel->hashEmail($email);
         $existing = $this->userModel->findByEmailHash($emailHash, $db, true);
@@ -805,14 +806,11 @@ class SlotSignupService
      * and writes outside the transaction and silently void every invariant. Fail fast
      * instead — this is a wiring error, not a runtime condition.
      */
-    private function assertSharedConnection(ConnectionInterface $db): void
+    private function assertSharedConnection(BaseConnection $db): void
     {
         foreach ([$this->userModel, $this->slotSignupModel] as $model) {
-            if ($model === null) {
-                continue;
-            }
             $modelDb = $model->db ?? null;
-            if ($modelDb instanceof ConnectionInterface && $modelDb !== $db) {
+            if ($modelDb instanceof BaseConnection && $modelDb !== $db) {
                 throw new DatabaseException(
                     'SlotSignupService models must share the transaction connection.'
                 );

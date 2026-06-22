@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Database\ConnectionInterface;
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Model;
 
@@ -50,7 +50,7 @@ class UserModel extends Model
      */
     public function findByEmailHash(
         string $emailHash,
-        ?ConnectionInterface $db = null,
+        ?BaseConnection $db = null,
         bool $lockForUpdate = false,
     ): ?array {
         $conn  = $db ?? $this->db;

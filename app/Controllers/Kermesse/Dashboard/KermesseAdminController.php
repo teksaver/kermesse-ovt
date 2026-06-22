@@ -300,17 +300,18 @@ class KermesseAdminController extends BaseController
                 $end   = Time::parse((string) $slot['ends_at'], $timezone);
 
                 $slots[] = [
-                    'slot_id'    => $slotId,
-                    'starts_at'  => (string) $slot['starts_at'],
-                    'ends_at'    => (string) $slot['ends_at'],
-                    'date'       => $start->format('d/m/Y'),
-                    'start_time' => $start->format('H:i'),
-                    'end_time'   => $end->format('H:i'),
-                    'capacity'   => $capacity,
-                    'occupied'   => $occupied,
-                    'remaining'  => max(0, $capacity - $occupied),
-                    'volunteers' => $volunteers,
-                    'history'    => $historicalBySlot[$slotId] ?? [],
+                    'slot_id'      => $slotId,
+                    'starts_at'    => (string) $slot['starts_at'],
+                    'ends_at'      => (string) $slot['ends_at'],
+                    'date'         => $start->format('d/m/Y'),
+                    'start_time'   => $start->format('H:i'),
+                    'end_time'     => $end->format('H:i'),
+                    'capacity'     => $capacity,
+                    'occupied'     => $occupied,
+                    'remaining'    => max(0, $capacity - $occupied),
+                    'volunteers'   => $volunteers,
+                    'history'      => $historicalBySlot[$slotId] ?? [],
+                    'move_targets' => [],
                 ];
             }
 
@@ -331,16 +332,6 @@ class KermesseAdminController extends BaseController
             }
         }
 
-        foreach ($result as &$s) {
-            foreach ($s['slots'] as &$sl) {
-                $sourceId           = $sl['slot_id'];
-                $sl['move_targets'] = array_values(
-                    array_filter($availableBySlotId, static fn(array $t): bool => $t['slot_id'] !== $sourceId)
-                );
-            }
-        }
-        unset($s, $sl);
-
         // Per-volunteer move targets: further filter out slots the volunteer is already
         // in or that overlap with their other active signups in this kermesse.
         $emailToSlots = [];
@@ -358,15 +349,23 @@ class KermesseAdminController extends BaseController
             }
         }
 
+        // Compute slot-level and volunteer-level move targets in one pass.
+        // $slMoveTargets is derived directly from $availableBySlotId so PHPStan
+        // can track its type without a separate mutation loop.
         foreach ($result as &$s) {
             foreach ($s['slots'] as &$sl) {
+                $sourceId      = $sl['slot_id'];
+                $slMoveTargets = array_values(
+                    array_filter($availableBySlotId, static fn(array $t): bool => $t['slot_id'] !== $sourceId)
+                );
+                $sl['move_targets'] = $slMoveTargets;
                 foreach ($sl['volunteers'] as &$vol) {
                     $otherSlots = array_filter(
                         $emailToSlots[$vol['email']] ?? [],
-                        static fn(array $entry): bool => $entry['slot_id'] !== $sl['slot_id']
+                        static fn(array $entry): bool => $entry['slot_id'] !== $sourceId
                     );
                     $vol['move_targets'] = array_values(array_filter(
-                        $sl['move_targets'],
+                        $slMoveTargets,
                         static function (array $target) use ($otherSlots): bool {
                             foreach ($otherSlots as $other) {
                                 if ($target['slot_id'] === $other['slot_id']) {

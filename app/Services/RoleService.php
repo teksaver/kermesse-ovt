@@ -6,7 +6,6 @@ use App\Models\KermesseModel;
 use App\Models\SlotSignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
-use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\I18n\Time;
 
 /**
@@ -257,8 +256,9 @@ class RoleService
     /**
      * Insert or update the role row for (kermesse, user), keeping the operation idempotent.
      *
-     * If a concurrent invitation wins the insert race on uq_role_per_kermesse, the duplicate-key
-     * error is caught and converted to an update so the caller never sees a 500.
+     * If a concurrent invitation wins the insert race on uq_role_per_kermesse, insert()
+     * returns false (production, DBDebug=false); we re-read and update so the requested
+     * role still wins.
      *
      * @param array<string, mixed>|null $existing Role row already read in this transaction, if any.
      */
@@ -280,19 +280,15 @@ class RoleService
             return;
         }
 
-        try {
-            $this->userRoleModel->insert([
-                'kermesse_id' => $kermesseId,
-                'user_id'     => $userId,
-                'role'        => $role,
-                'invited_by'  => $invitedBy,
-                'invited_at'  => $now,
-            ]);
-        } catch (DatabaseException $e) {
-            if (! $this->isDuplicateKey($e)) {
-                throw $e;
-            }
+        $inserted = $this->userRoleModel->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => $role,
+            'invited_by'  => $invitedBy,
+            'invited_at'  => $now,
+        ]);
 
+        if ($inserted === false) {
             // Concurrent invite already created the row: re-read and update so the
             // requested role still wins, keeping the invitation idempotent.
             $row = $this->userRoleModel->findByKermesseAndUser($kermesseId, $userId);
@@ -304,16 +300,6 @@ class RoleService
                 ]);
             }
         }
-    }
-
-    private function isDuplicateKey(DatabaseException $e): bool
-    {
-        $msg = $e->getMessage();
-
-        return $e->getCode() === 1062
-            || $e->getCode() === 23505
-            || str_contains($msg, 'Duplicate entry')
-            || str_contains($msg, 'UNIQUE constraint failed');
     }
 
     /**
@@ -495,6 +481,8 @@ class RoleService
      * second branch matters for the Owner, who is never "invited" (invited_at stays NULL) and must
      * still appear even before their first dashboard load; treating active as "not pending" keeps
      * such rows from silently vanishing from the team view.
+     *
+     * @return array{active: array<string, list<array<string, mixed>>>, pending: list<array<string, mixed>>}
      */
     public function getTeamMembersGroupedByStatus(int $kermesseId): array
     {

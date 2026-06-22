@@ -65,7 +65,8 @@ class TokenService
      */
     public function validateOwnerToken(string $rawToken): TokenValidationResult
     {
-        $hash  = hash('sha256', $rawToken);
+        $hash = hash('sha256', $rawToken);
+        /** @var array<string, mixed>|null $token */
         $token = $this->tokenModel
             ->where('token_hash', $hash)
             ->where('token_type', 'owner_validation')
@@ -239,7 +240,8 @@ class TokenService
      */
     public function validateMagicLink(string $rawToken): TokenValidationResult
     {
-        $hash  = hash('sha256', $rawToken);
+        $hash = hash('sha256', $rawToken);
+        /** @var array<string, mixed>|null $token */
         $token = $this->tokenModel
             ->where('token_hash', $hash)
             ->where('token_type', 'magic_link')
@@ -343,7 +345,8 @@ class TokenService
      */
     public function validateOwnerLoginToken(string $rawToken): TokenValidationResult
     {
-        $hash  = hash('sha256', $rawToken);
+        $hash = hash('sha256', $rawToken);
+        /** @var array<string, mixed>|null $token */
         $token = $this->tokenModel
             ->where('token_hash', $hash)
             ->where('token_type', 'owner_login')
@@ -354,6 +357,7 @@ class TokenService
 
     public function validateOwnerLoginTokenById(int $tokenId): TokenValidationResult
     {
+        /** @var array<string, mixed>|null $token */
         $token = $this->tokenModel
             ->where('id', $tokenId)
             ->where('token_type', 'owner_login')

@@ -10,7 +10,6 @@ use App\Models\SlotSignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 use App\Models\UserModel;
-use App\Models\UserRoleModel;
 use App\Services\AdminCreateSlotSignupDTO;
 use App\Services\EmailDeliveryResult;
 use App\Services\EmailService;
@@ -43,7 +42,7 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         // but admin cancel must succeed regardless.
         $closedKermesse = ['id' => 1, 'name' => 'K', 'status' => 'closed'];
 
-        $signupRow = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@example.com'];
+        $signupRow = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@example.com', 'stand_name' => 'Stand A', 'starts_at' => '2026-06-20 10:00:00', 'ends_at' => '2026-06-20 12:00:00'];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
         $slotSignupModel->method('findActiveInKermesse')->with(10, 1)->willReturn($signupRow);
@@ -136,7 +135,7 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
 
     public function testAdminCancelDoesNotSendEmailWhenNotifyFalse(): void
     {
-        $signupRow   = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@example.com', 'first_name' => 'A', 'last_name' => 'B'];
+        $signupRow   = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@example.com', 'first_name' => 'A', 'last_name' => 'B', 'stand_name' => 'Stand A', 'starts_at' => '2026-06-20 10:00:00', 'ends_at' => '2026-06-20 12:00:00'];
         $kermesseRow = ['id' => 1, 'name' => 'K', 'status' => 'open'];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
@@ -164,7 +163,7 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
 
     public function testAdminCancelStampsModificationColumns(): void
     {
-        $signupRow   = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@test.com', 'first_name' => 'X', 'last_name' => 'Y'];
+        $signupRow   = ['id' => 10, 'user_id' => 99, 'slot_id' => 5, 'email' => 'v@test.com', 'first_name' => 'X', 'last_name' => 'Y', 'stand_name' => 'Stand B', 'starts_at' => '2026-06-20 10:00:00', 'ends_at' => '2026-06-20 12:00:00'];
         $kermesseRow = ['id' => 1, 'name' => 'K', 'status' => 'preparation'];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
@@ -192,7 +191,6 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
     {
         $signupRow = ['id' => 20, 'user_id' => 55, 'slot_id' => 3, 'email' => 'orig@test.com'];
         $kermesseRow = ['id' => 1, 'status' => 'open'];
-        $kurRow = ['first_access_at' => null];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
         $slotSignupModel->method('findActiveInKermesse')->with(20, 1)->willReturn($signupRow);
@@ -202,13 +200,9 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         $kermesseModel = $this->createMock(KermesseModel::class);
         $kermesseModel->method('find')->willReturn($kermesseRow);
 
-        $userRoleModel = $this->createMock(UserRoleModel::class);
-        $userRoleModel->method('findByKermesseAndUser')->with(1, 55)->willReturn($kurRow);
-
         $service = $this->buildService(
             slotSignupModel: $slotSignupModel,
             kermesseModel: $kermesseModel,
-            userRoleModel: $userRoleModel,
         );
 
         $result = $service->adminEditSlotSignup(
@@ -243,7 +237,6 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
     {
         $signupRow   = ['id' => 20, 'user_id' => 55, 'slot_id' => 3, 'email' => 'orig@test.com'];
         $kermesseRow = ['id' => 1, 'status' => 'open'];
-        $kurRow      = ['first_access_at' => null];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
         $slotSignupModel->method('findActiveInKermesse')->willReturn($signupRow);
@@ -259,14 +252,10 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         $kermesseModel = $this->createMock(KermesseModel::class);
         $kermesseModel->method('find')->willReturn($kermesseRow);
 
-        $userRoleModel = $this->createMock(UserRoleModel::class);
-        $userRoleModel->method('findByKermesseAndUser')->willReturn($kurRow);
-
         $service = $this->buildService(
             userModel: $userModel,
             slotSignupModel: $slotSignupModel,
             kermesseModel: $kermesseModel,
-            userRoleModel: $userRoleModel,
         );
 
         $result = $service->adminEditSlotSignup(
@@ -281,7 +270,6 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
     {
         $signupRow   = ['id' => 20, 'user_id' => 55, 'slot_id' => 3, 'email' => 'orig@test.com'];
         $kermesseRow = ['id' => 1, 'status' => 'open'];
-        $kurRow      = ['first_access_at' => null];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
         $slotSignupModel->method('findActiveInKermesse')->willReturn($signupRow);
@@ -294,13 +282,9 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         $kermesseModel = $this->createMock(KermesseModel::class);
         $kermesseModel->method('find')->willReturn($kermesseRow);
 
-        $userRoleModel = $this->createMock(UserRoleModel::class);
-        $userRoleModel->method('findByKermesseAndUser')->willReturn($kurRow);
-
         $service = $this->buildService(
             slotSignupModel: $slotSignupModel,
             kermesseModel: $kermesseModel,
-            userRoleModel: $userRoleModel,
         );
 
         $service->adminEditSlotSignup(
@@ -313,7 +297,6 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
     {
         $signupRow   = ['id' => 20, 'user_id' => 55, 'slot_id' => 3, 'email' => 'orig@test.com'];
         $kermesseRow = ['id' => 1, 'status' => 'open'];
-        $kurRow      = ['first_access_at' => null];
         $fields      = ['first_name' => 'Alice', 'last_name' => 'Martin', 'email' => 'alice@test.com', 'phone' => '0601020304'];
 
         $slotSignupModel = $this->createMock(SlotSignupModel::class);
@@ -327,13 +310,9 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         $kermesseModel = $this->createMock(KermesseModel::class);
         $kermesseModel->method('find')->willReturn($kermesseRow);
 
-        $userRoleModel = $this->createMock(UserRoleModel::class);
-        $userRoleModel->method('findByKermesseAndUser')->willReturn($kurRow);
-
         $service = $this->buildService(
             slotSignupModel: $slotSignupModel,
             kermesseModel: $kermesseModel,
-            userRoleModel: $userRoleModel,
         );
 
         $service->adminEditSlotSignup(slotSignupId: 20, adminUserId: 7, kermesseId: 1, fields: $fields);
@@ -428,14 +407,12 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
         ?SlotSignupModel   $slotSignupModel = null,
         ?KermesseModel     $kermesseModel   = null,
         ?EmailService      $emailService    = null,
-        ?UserRoleModel     $userRoleModel   = null,
     ): SlotSignupService {
         return new SlotSignupService(
             userModel:       $userModel       ?? $this->createMock(UserModel::class),
             slotSignupModel: $slotSignupModel ?? $this->createMock(SlotSignupModel::class),
             kermesseModel:   $kermesseModel   ?? $this->createMock(KermesseModel::class),
             emailService:    $emailService    ?? $this->createMock(EmailService::class),
-            userRoleModel:   $userRoleModel   ?? $this->createMock(UserRoleModel::class),
         );
     }
 
@@ -456,7 +433,6 @@ final class SlotSignupServiceAdminTest extends CIUnitTestCase
             emailService:    $emailService ?? $this->buildMockEmailService(),
             standModel:      $this->buildMockStandModel(),
             tokenService:    $this->buildMockTokenService(),
-            userRoleModel:   null,
         );
     }
 

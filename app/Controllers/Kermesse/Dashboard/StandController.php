@@ -220,6 +220,6 @@ class StandController extends BaseController
             ->with('stand_error', $message)
             ->with('stand_form', $formContext)
             ->with('stand_name', $enteredName)
-            ->with('editing_stand_id', $editingStandId);
+            ->with('editing_stand_id', $editingStandId !== null ? (string) $editingStandId : '');
     }
 }
