@@ -6,6 +6,15 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: 'Run ID of a successful CI run on main (required for manual dispatch)'
+        required: true
+        type: string
+      expected_sha:
+        description: 'Expected commit SHA — optional but recommended for extra safety'
+        required: false
+        type: string
 
 concurrency:
   group: production-deploy
@@ -19,7 +28,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-and-package:
+  download-and-verify:
     # Auto-deploy only when CI succeeds on main; manual dispatch is always allowed.
     if: |
       github.event_name == 'workflow_dispatch' ||
@@ -27,79 +36,140 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
 
-    env:
-      PHP_VERSION: '8.3'
+    outputs:
+      archive_sha256: ${{ steps.verify-manifest.outputs.archive_sha256 }}
+      candidate_sha: ${{ steps.verify-manifest.outputs.candidate_sha }}
+      ci_run_id: ${{ steps.resolve-run-id.outputs.ci_run_id }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout scripts at candidate SHA
         uses: actions/checkout@v4
         with:
+          # Checkout the candidate commit (not the HEAD that triggered this workflow).
+          # For workflow_run: head_sha of the triggering CI run.
+          # For workflow_dispatch: the SHA resolved from the provided ci_run_id (verified below).
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
 
-      - name: Require successful CI for this commit
-        # Skipped when auto-triggered by workflow_run — CI conclusion is already guaranteed above.
-        if: github.event_name == 'workflow_dispatch'
+      - name: Resolve CI run ID
+        id: resolve-run-id
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          successful_runs="$(gh run list \
-            --workflow CI \
-            --commit "$GITHUB_SHA" \
-            --branch main \
-            --status success \
-            --json databaseId \
-            --jq 'length')"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CI_RUN_ID="${{ github.event.workflow_run.id }}"
+            EXPECTED_SHA="${{ github.event.workflow_run.head_sha }}"
+            echo "Triggered by CI run ${CI_RUN_ID} on SHA ${EXPECTED_SHA}"
+          else
+            CI_RUN_ID="${{ inputs.ci_run_id }}"
+            EXPECTED_SHA="${{ inputs.expected_sha }}"
 
-          if [ "$successful_runs" -lt 1 ]; then
-            echo "::error::No successful CI run found for ${GITHUB_SHA} on main. Run CI before deploying."
+            # Validate the provided run ID corresponds to a successful CI run on main.
+            RUN_INFO="$(gh run view "${CI_RUN_ID}" --json headBranch,headSha,conclusion,workflowName)"
+            RUN_CONCLUSION="$(echo "${RUN_INFO}" | jq -r '.conclusion')"
+            RUN_BRANCH="$(echo "${RUN_INFO}" | jq -r '.headBranch')"
+            RUN_WORKFLOW="$(echo "${RUN_INFO}" | jq -r '.workflowName')"
+            RUN_SHA="$(echo "${RUN_INFO}" | jq -r '.headSha')"
+
+            if [ "${RUN_CONCLUSION}" != "success" ]; then
+              echo "::error::CI run ${CI_RUN_ID} did not succeed (conclusion=${RUN_CONCLUSION}). Only successful runs may be promoted."
+              exit 1
+            fi
+            if [ "${RUN_BRANCH}" != "main" ]; then
+              echo "::error::CI run ${CI_RUN_ID} is from branch '${RUN_BRANCH}', not 'main'. Only main branch runs may be promoted."
+              exit 1
+            fi
+            if [ "${RUN_WORKFLOW}" != "CI" ]; then
+              echo "::error::Run ${CI_RUN_ID} is workflow '${RUN_WORKFLOW}', not 'CI'. Only CI workflow runs may be promoted."
+              exit 1
+            fi
+
+            # If operator provided an expected SHA, verify it matches.
+            if [ -n "${EXPECTED_SHA}" ] && [ "${RUN_SHA}" != "${EXPECTED_SHA}" ]; then
+              echo "::error::CI run ${CI_RUN_ID} is for SHA ${RUN_SHA} but expected_sha=${EXPECTED_SHA}. Refusing to promote."
+              exit 1
+            fi
+
+            EXPECTED_SHA="${RUN_SHA}"
+            echo "Manual dispatch: CI run ${CI_RUN_ID} validated — SHA ${EXPECTED_SHA}, conclusion=${RUN_CONCLUSION}"
+          fi
+
+          echo "ci_run_id=${CI_RUN_ID}" >> "${GITHUB_OUTPUT}"
+          echo "expected_sha=${EXPECTED_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download qualified CI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kermesse-deploy
+          run-id: ${{ steps.resolve-run-id.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          # Deposit files into build/ — the location expected by transfer-archive.sh and deploy steps.
+          path: build
+
+      - name: Verify manifest and archive identity
+        id: verify-manifest
+        env:
+          EXPECTED_SHA: ${{ steps.resolve-run-id.outputs.expected_sha }}
+          CI_RUN_ID: ${{ steps.resolve-run-id.outputs.ci_run_id }}
+        run: |
+          set -euo pipefail
+
+          MANIFEST="build/kermesse-deploy-manifest.json"
+          if [ ! -f "${MANIFEST}" ]; then
+            echo "::error::Manifeste RC absent de l'artefact téléchargé (${MANIFEST}). Ce run CI ne contient pas de manifeste."
             exit 1
           fi
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, xml, intl, json, mysqli, sqlite3
-          coverage: none
+          echo "Contenu du manifeste :"
+          cat "${MANIFEST}"
 
-      - name: Get Composer Cache Directory
-        id: composer-cache
+          MANIFEST_SHA="$(jq -r '.commit_sha' "${MANIFEST}")"
+          MANIFEST_RUN_ID="$(jq -r '.ci_run_id' "${MANIFEST}")"
+          MANIFEST_ARCHIVE_SHA256="$(jq -r '.archive_sha256' "${MANIFEST}")"
+          MANIFEST_ARTIFACT_NAME="$(jq -r '.artifact_name' "${MANIFEST}")"
+
+          # Verify commit SHA matches the triggering CI run.
+          if [ -n "${EXPECTED_SHA}" ] && [ "${MANIFEST_SHA}" != "${EXPECTED_SHA}" ]; then
+            echo "::error::Manifeste SHA (${MANIFEST_SHA}) ≠ SHA attendu (${EXPECTED_SHA}). Promotion refusée."
+            exit 1
+          fi
+
+          # Verify run ID in manifest matches the run we downloaded from.
+          if [ "${MANIFEST_RUN_ID}" != "${CI_RUN_ID}" ]; then
+            echo "::error::Manifeste run_id (${MANIFEST_RUN_ID}) ≠ run téléchargé (${CI_RUN_ID}). Incohérence détectée."
+            exit 1
+          fi
+
+          # Verify archive checksum.
+          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu — checksum invalide."; exit 1; }
+
+          # Verify sidecar checksum matches manifest value.
+          SIDECAR_SHA256="$(awk '{print $1}' build/kermesse-deploy.tar.gz.sha256)"
+          if [ "${MANIFEST_ARCHIVE_SHA256}" != "${SIDECAR_SHA256}" ]; then
+            echo "::error::SHA256 du manifeste (${MANIFEST_ARCHIVE_SHA256}) ≠ sidecar (${SIDECAR_SHA256}). Archive substituée ou corrompue."
+            exit 1
+          fi
+
+          echo "Identité RC vérifiée :"
+          echo "  Commit SHA    : ${MANIFEST_SHA}"
+          echo "  CI Run ID     : ${MANIFEST_RUN_ID}"
+          echo "  Archive SHA256: ${MANIFEST_ARCHIVE_SHA256}"
+          echo "  Artifact name : ${MANIFEST_ARTIFACT_NAME}"
+
+          echo "archive_sha256=${MANIFEST_ARCHIVE_SHA256}" >> "${GITHUB_OUTPUT}"
+          echo "candidate_sha=${MANIFEST_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Extract public assets for httpdocs deployment
         run: |
-          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
-
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
-
-      - name: Validate composer.json
-        run: composer validate --strict
-
-      - name: Install dependencies (with dev for tests)
-        run: composer install --prefer-dist --no-progress
-
-      - name: Run tests
-        run: vendor/bin/phpunit --exclude-group mariadb
-
-      - name: Run packaging script
-        run: bash scripts/package-deploy-artifact.sh
-
-      - name: Upload deploy artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kermesse-deploy
-          path: |
-            build/kermesse-deploy.tar.gz
-            build/kermesse-deploy.tar.gz.sha256
-          retention-days: 14
+          set -euo pipefail
+          mkdir -p deploy-staging
+          tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging public \
+            || tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
 
   deploy:
-    needs: build-and-package
+    needs: download-and-verify
     runs-on: ubuntu-latest
     environment: production
 
@@ -121,9 +191,13 @@ jobs:
       # attendu par scripts/lib/ops-sign.sh), pas au niveau du job.
 
     steps:
-      - name: Checkout code
+      - name: Checkout scripts at candidate SHA
+        # Checkout the exact candidate commit so that all deployment scripts (transfer-archive.sh,
+        # deploy-httpdocs.sh, sync-production-env.sh, ops-sign.sh, …) match the promoted artifact.
+        # Never fall back to HEAD implicitly when the candidate differs.
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.download-and-verify.outputs.candidate_sha }}
           persist-credentials: false
 
       - name: Install transfer client
@@ -157,21 +231,33 @@ jobs:
           OPS_MIGRATION_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
         run: bash scripts/sync-production-env.sh
 
-      - name: Download deploy artifact
+      - name: Download qualified CI artifact
         uses: actions/download-artifact@v4
         with:
           name: kermesse-deploy
+          run-id: ${{ needs.download-and-verify.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
           # Dépose l'archive dans build/ — emplacement attendu par scripts/transfer-archive.sh.
           path: build
 
-      - name: Verify and extract artifact
+      - name: Verify artifact identity before deploy
+        env:
+          EXPECTED_SHA256: ${{ needs.download-and-verify.outputs.archive_sha256 }}
+          EXPECTED_CANDIDATE_SHA: ${{ needs.download-and-verify.outputs.candidate_sha }}
         run: |
           set -euo pipefail
-          # Le .sha256 référence l'archive par son nom nu → vérifier depuis build/.
-          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu"; exit 1; }
+          # Re-verify the checksum after download into the deploy job — ensures the artifact
+          # was not swapped between jobs. The manifest check in download-and-verify already
+          # validated identity; this is a lightweight second confirmation before any write.
+          ( cd build && sha256sum -c kermesse-deploy.tar.gz.sha256 ) || { echo "::error::Artefact corrompu à l'étape de déploiement."; exit 1; }
+          ACTUAL_SHA256="$(awk '{print $1}' build/kermesse-deploy.tar.gz.sha256)"
+          if [ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]; then
+            echo "::error::SHA256 du déploiement (${ACTUAL_SHA256}) ≠ SHA256 validé en qualification (${EXPECTED_SHA256}). Promotion refusée."
+            exit 1
+          fi
+          echo "Archive identité confirmée : SHA256=${ACTUAL_SHA256} pour commit ${EXPECTED_CANDIDATE_SHA}"
           mkdir -p deploy-staging
           # Extract only the public directory needed for static assets.
-          # New artifacts use top-level entries without "./"; keep a fallback for older reruns.
           tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging public \
             || tar -xzf build/kermesse-deploy.tar.gz -C deploy-staging ./public
 

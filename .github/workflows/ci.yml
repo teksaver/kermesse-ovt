@@ -290,6 +290,26 @@ jobs:
       - name: Run packaging script
         run: bash scripts/package-deploy-artifact.sh
 
+      - name: Generate release candidate manifest
+        id: rc-manifest
+        run: |
+          set -euo pipefail
+          ARCHIVE_SHA256="$(awk '{print $1}' build/kermesse-deploy.tar.gz.sha256)"
+          TIMESTAMP_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > build/kermesse-deploy-manifest.json <<EOF
+          {
+            "commit_sha": "${{ github.sha }}",
+            "ci_run_id": "${{ github.run_id }}",
+            "artifact_name": "kermesse-deploy",
+            "archive_sha256": "${ARCHIVE_SHA256}",
+            "php_version": "${{ env.PHP_VERSION }}",
+            "timestamp_utc": "${TIMESTAMP_UTC}"
+          }
+          EOF
+          echo "Manifeste RC généré :"
+          cat build/kermesse-deploy-manifest.json
+          echo "archive_sha256=${ARCHIVE_SHA256}" >> "${GITHUB_OUTPUT}"
+
       - name: Verify deploy artifact public extraction
         run: |
           set -euo pipefail
@@ -323,13 +343,24 @@ jobs:
 
       - name: Upload main deploy artifact
         if: github.ref == 'refs/heads/main'
+        id: upload-main-artifact
         uses: actions/upload-artifact@v4
         with:
           name: kermesse-deploy
           path: |
             build/kermesse-deploy.tar.gz
             build/kermesse-deploy.tar.gz.sha256
+            build/kermesse-deploy-manifest.json
           retention-days: 14
+
+      - name: Log artifact identity
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Artifact ID   : ${{ steps.upload-main-artifact.outputs.artifact-id }}"
+          echo "Artifact URL  : ${{ steps.upload-main-artifact.outputs.artifact-url }}"
+          echo "Archive SHA256: ${{ steps.rc-manifest.outputs.archive_sha256 }}"
+          echo "Commit SHA    : ${{ github.sha }}"
+          echo "CI Run ID     : ${{ github.run_id }}"
 
       - name: Upload pull request deploy artifact
         if: github.event_name == 'pull_request'
@@ -339,4 +370,17 @@ jobs:
           path: |
             build/kermesse-deploy.tar.gz
             build/kermesse-deploy.tar.gz.sha256
+            build/kermesse-deploy-manifest.json
           retention-days: 7
+
+      - name: Upload RC evidence placeholder
+        # Publie le manifeste comme point d'ancrage des preuves RC.
+        # Les preuves complètes (smoke tests, rehearsal log) sont générées par
+        # scripts/qualify-release-candidate.sh et archivées séparément.
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc-evidence-${{ github.run_id }}
+          path: |
+            build/kermesse-deploy-manifest.json
+          retention-days: 30

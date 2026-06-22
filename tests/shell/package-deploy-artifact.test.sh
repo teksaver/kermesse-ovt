@@ -124,6 +124,30 @@ else
   fail=1
 fi
 
+# ─── Story 6.9 : manifeste RC dans le job package-artifact de ci.yml ─────────
+CI_WORKFLOW="${PROJECT_ROOT}/.github/workflows/ci.yml"
+
+assert_ci() {
+  local label="$1" needle="$2"
+  if ! grep -Fq -- "${needle}" "${CI_WORKFLOW}"; then
+    printf 'FAIL %s\n  attendu dans ci.yml : %s\n' "${label}" "${needle}" >&2
+    fail=1
+  else
+    printf 'ok   %s\n' "${label}"
+  fi
+}
+
+assert_ci "ci: génère le manifeste RC après packaging" 'Generate release candidate manifest'
+assert_ci "ci: commit_sha dans le manifeste" '"commit_sha"'
+assert_ci "ci: ci_run_id dans le manifeste" '"ci_run_id"'
+assert_ci "ci: archive_sha256 dans le manifeste" '"archive_sha256"'
+assert_ci "ci: artifact_name dans le manifeste" '"artifact_name"'
+assert_ci "ci: timestamp_utc dans le manifeste" '"timestamp_utc"'
+assert_ci "ci: manifeste inclus dans upload main" 'kermesse-deploy-manifest.json'
+assert_ci "ci: log artifact-id après upload" 'artifact-id'
+assert_ci "ci: preuves RC séparées (rétention 30j)" 'retention-days: 30'
+assert_ci "ci: rc-evidence uploadé séparément" 'rc-evidence-'
+
 if [ "${fail}" -ne 0 ]; then
   echo "ECHEC : garde-fous package-deploy-artifact invalides." >&2
   exit 1

@@ -20,24 +20,43 @@ Tout est préparé par GitHub Actions et livré en artefact prêt à exécuter.
 
 ### Étape 1 : CI (automatique)
 
-Le workflow `.github/workflows/ci.yml` s'exécute sur chaque `push` et `pull_request` vers `main` et `develop`. Il valide `composer.json`, installe les dépendances et exécute les tests.
+Le workflow `.github/workflows/ci.yml` s'exécute sur chaque `push` et `pull_request` vers `main` et `develop`. Il valide `composer.json`, installe les dépendances et exécute les six gates (PHPUnit SQLite, PHPStan, MariaDB, E2E Playwright, répétition de déploiement, packaging).
 
-Sur `push` vers `main` ou `pull_request` ciblant `main`, la CI produit aussi l'artefact `kermesse-deploy.zip` après validation. Les validations MariaDB de CI utilisent un service MariaDB GitHub Actions isolé ; elles ne représentent pas la base de production Ouvaton.
+Sur `push` vers `main` ou `pull_request` ciblant `main`, la CI produit en dernier l'artefact `kermesse-deploy` après que toutes les gates ont réussi. Cet artefact contient :
+- `kermesse-deploy.tar.gz` — l'archive de déploiement
+- `kermesse-deploy.tar.gz.sha256` — le sidecar de checksum
+- `kermesse-deploy-manifest.json` — le manifeste RC (commit_sha, ci_run_id, archive_sha256, horodatage)
+
+L'artefact est immuable : il n'est produit qu'une seule fois par run CI et n'est jamais reconstruit pendant le déploiement.
+
+Les validations MariaDB de CI utilisent un service MariaDB GitHub Actions isolé ; elles ne représentent pas la base de production Ouvaton.
 
 ### Étape 2 : Déploiement et configuration (automatique)
 
-Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` (sans race condition : le déclenchement automatique attend que CI soit terminé avant de démarrer).
+Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` en fournissant un `ci_run_id` correspondant à un run CI réussi sur `main`.
 
-1. Checkout, setup PHP, validation Composer, tests
-2. Exécution de `scripts/package-deploy-artifact.sh`
-3. Publication de l'archive de déploiement comme artefact GitHub (14 jours)
-4. Amorçage de `shared/.env` via SFTP uniquement s'il est absent (première installation)
-5. Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
-6. Génération d'un script PHP autonome et éphémère `ops-bootstrap-activate.php`, sécurisé par token aléatoire de déploiement
-7. Déploiement du shim `httpdocs/index.php`, du bootstrap temporaire et des assets publics via `scripts/deploy-httpdocs.sh`
-8. Appel de `POST /ops-bootstrap-activate.php` : le serveur vérifie l'archive sans charger CodeIgniter, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`/`CURRENT_RELEASE`
-9. Suppression du script `ops-bootstrap-activate.php` du web root, y compris si l'activation échoue
-10. Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+**Principe fondamental : promotion sans rebuild.** Le workflow de déploiement ne réinstalle pas Composer, ne rejoue pas PHPUnit et ne repackage pas l'archive. Il télécharge l'artefact exact produit par la CI et vérifie son identité avant de le déployer.
+
+1. **Job `download-and-verify`** :
+   - Résolution du `ci_run_id` (depuis `workflow_run.id` pour le déclenchement auto, depuis l'input pour `workflow_dispatch`)
+   - Validation du run CI (conclusion=success, branch=main, workflow=CI)
+   - Téléchargement de l'artefact `kermesse-deploy` depuis ce run via `actions/download-artifact@v4` avec `run-id`
+   - Vérification du manifeste : `commit_sha`, `ci_run_id`, `archive_sha256` cohérents entre manifeste, sidecar et `workflow_run.head_sha`
+   - Vérification du checksum SHA-256 de l'archive
+
+2. **Job `deploy`** (nécessite `download-and-verify`) :
+   - Checkout des scripts au SHA candidat (jamais HEAD implicite)
+   - Re-téléchargement de l'artefact qualifié avec le même `ci_run_id`
+   - Vérification du SHA-256 une seconde fois avant toute écriture
+   - Amorçage de `shared/.env` via SFTP uniquement s'il est absent (première installation)
+   - Transfert de l'archive vers `OUVATON_DEPLOY_REMOTE_FOLDER/staging` via SFTP `put` (**code applicatif uniquement — jamais le `.env`**)
+   - Génération d'un script PHP autonome et éphémère `ops-bootstrap-activate.php`, sécurisé par token aléatoire de déploiement
+   - Déploiement du shim `httpdocs/index.php`, du bootstrap temporaire et des assets publics via `scripts/deploy-httpdocs.sh`
+   - Appel de `POST /ops-bootstrap-activate.php` : le serveur vérifie l'archive sans charger CodeIgniter, la décompresse avec PHP natif dans une release horodatée, puis bascule `current`/`CURRENT_RELEASE`
+   - Suppression du script `ops-bootstrap-activate.php` du web root, y compris si l'activation échoue
+   - Appel post-déploiement de `POST /ops/migrate` via HTTPS/HMAC pour appliquer les migrations en utilisant la connexion MariaDB configurée dans le `.env` de production
+
+> **Déclenchement manuel** : pour déployer un commit spécifique, lancer `deploy-ouvaton.yml` avec le `ci_run_id` du run CI correspondant. Fournir optionnellement `expected_sha` pour une vérification supplémentaire. Sélectionner silencieusement « le dernier artefact » sans `ci_run_id` est interdit.
 
 > **Règle absolue (NFR-2) :** le déploiement de routine n'écrase jamais le `.env` de production. Il peut seulement créer `shared/.env` s'il est absent, avant la première activation applicative ; les mises à jour et rotations restent une opération manuelle dédiée — voir « Déploiement du `.env` de production » plus bas.
 

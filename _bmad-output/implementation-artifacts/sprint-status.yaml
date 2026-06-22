@@ -97,7 +97,7 @@ development_status:
   6-7-installer-les-gates-ci-de-preparation-a-la-production: done
   6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: done
   6-8bis-resoudre-la-dette-technique-ci-deferred-findings-de-la-story-6-7: done
-  6-9-qualifier-et-deployer-la-release-candidate: ready-for-dev
+  6-9-qualifier-et-deployer-la-release-candidate: review
   6-10-securiser-le-deploiement-des-migrations-incompatibles: backlog
   epic-6-retrospective: optional
   epic-7: backlog

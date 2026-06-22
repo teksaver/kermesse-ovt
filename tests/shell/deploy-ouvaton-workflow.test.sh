@@ -55,6 +55,28 @@ assert_contains "diagnostic récupère les logs après échec" 'Fetch production
 assert_contains "diagnostic tente les logs CodeIgniter .log" 'for extension in log php; do'
 assert_contains "diagnostic n'imprime que la fin du log" 'tail -n 120 "${fetched_log}"'
 
+# ─── Story 6.9 : promotion immuable sans rebuild ────────────────────────────
+assert_not_contains "plus de build-and-package job" 'build-and-package'
+assert_contains "job download-and-verify présent" 'download-and-verify'
+assert_contains "input ci_run_id pour dispatch manuel" 'ci_run_id'
+assert_contains "input expected_sha pour dispatch manuel" 'expected_sha'
+assert_contains "téléchargement cross-run par run-id" 'run-id:'
+assert_contains "téléchargement utilise github-token" 'github-token:'
+assert_contains "vérification manifeste après download" 'Verify manifest and archive identity'
+assert_contains "validation run CI = success" 'Only successful runs may be promoted'
+assert_contains "refus branche non-main" 'Only main branch runs may be promoted'
+assert_contains "refus SHA discordant" 'Refusing to promote'
+assert_contains "refus workflow non-CI" 'Only CI workflow runs may be promoted'
+assert_contains "double vérification SHA avant deploy" 'Verify artifact identity before deploy'
+assert_contains "checkout SHA candidat (job deploy)" 'candidate_sha'
+assert_not_contains "plus de composer install dans deploy" 'Install dependencies (with dev for tests)'
+assert_not_contains "plus de phpunit dans deploy" 'vendor/bin/phpunit'
+assert_not_contains "plus de packaging dans deploy" 'package-deploy-artifact.sh'
+assert_contains "outputs archive_sha256 entre jobs" 'archive_sha256'
+assert_contains "outputs candidate_sha entre jobs" 'candidate_sha'
+assert_contains "outputs ci_run_id entre jobs" 'ci_run_id'
+assert_contains "env préservé sans écriture" 'shared/.env'
+
 if [ "${fail}" -ne 0 ]; then
   echo "ÉCHEC : diagnostics webhook deploy-ouvaton invalides." >&2
   exit 1
