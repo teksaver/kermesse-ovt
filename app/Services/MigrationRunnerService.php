@@ -420,6 +420,70 @@ class MigrationRunnerService
     }
 
     /**
+     * Reconcile a known checksum drift for a specific migration version.
+     *
+     * Used when a migration file was patched after being successfully applied in
+     * production (e.g. a backfill UPDATE was removed). Verifies the actual schema
+     * effect of the migration matches the expected outcome before updating the stored
+     * checksum to the current file value.
+     *
+     * @param  string $version           The migration version key (filename without .sql)
+     * @param  string $currentChecksum   SHA-256 of the current migration file on disk
+     * @return array{ok: bool, action: string, error?: string}
+     */
+    public function reconcileChecksum(string $version, string $currentChecksum): array
+    {
+        try {
+            $appliedVersions = $this->getAppliedVersions();
+        } catch (\Throwable) {
+            return ['ok' => false, 'action' => 'error', 'error' => 'schema_versions_unavailable'];
+        }
+
+        if (!isset($appliedVersions[$version])) {
+            return ['ok' => false, 'action' => 'not_found', 'error' => 'version_not_in_schema_versions'];
+        }
+
+        $existing = $appliedVersions[$version];
+
+        if ($existing['status'] !== 'success') {
+            return ['ok' => false, 'action' => 'not_applied', 'error' => 'migration_status_is_not_success'];
+        }
+
+        if ($existing['checksum'] === $currentChecksum) {
+            return ['ok' => true, 'action' => 'already_reconciled'];
+        }
+
+        // For known drift on last_login_at: verify the column actually exists before updating.
+        if ($version === '20260614121500_add_last_login_at_to_users') {
+            $result = $this->db->query(
+                "SELECT COUNT(*) AS cnt
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = 'users'
+                   AND COLUMN_NAME = 'last_login_at'"
+            )->getRowArray();
+
+            if ((int) ($result['cnt'] ?? 0) === 0) {
+                return [
+                    'ok'     => false,
+                    'action' => 'schema_mismatch',
+                    'error'  => 'last_login_at column absent from users table',
+                ];
+            }
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $this->db->query(
+            'UPDATE `schema_versions`
+             SET `checksum` = ?, `error_code` = NULL, `error_message` = ?, `updated_at` = ?
+             WHERE `version` = ? AND `status` = ?',
+            [$currentChecksum, 'Checksum reconciled after file patch', $now, $version, 'success']
+        );
+
+        return ['ok' => true, 'action' => 'reconciled'];
+    }
+
+    /**
      * Split a SQL string into individual statements on semicolons.
      *
      * This is a simple splitter suitable for DDL migrations.

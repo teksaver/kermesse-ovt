@@ -495,6 +495,83 @@ jobs:
             printf 'bye\n'
           } | lftp || { echo "::error::Impossible de supprimer le script temporaire."; exit 1; }
 
+      - name: Drift-fix — remédiation checksum connu avant migration
+        env:
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/ops-sign.sh
+
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          ops_require_https_endpoint "$BASE_URL" 32
+
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          ROUTE="ops/fix-drift"
+          BODY='{"version":"20260614121500_add_last_login_at_to_users"}'
+          ops_sign "$ROUTE" "$BODY"
+
+          HTTP_CODE=$(curl --max-time 60 --retry 2 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+            -w "%{http_code}" -o /dev/stderr \
+            -d "$BODY")
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::ops/fix-drift a retourné HTTP $HTTP_CODE. Impossible de réconcilier le drift de checksum."
+            exit 1
+          fi
+          echo "Drift-fix OK — checksum réconcilié (ou déjà à jour)"
+
+      - name: Préflight migration — vérification de l'état avant application
+        env:
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/ops-sign.sh
+
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          ops_require_https_endpoint "$BASE_URL" 32
+
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          ROUTE="ops/migrate/status"
+          ops_sign "$ROUTE"
+
+          PREFLIGHT_FILE="${RUNNER_TEMP:-/tmp}/preflight-status.json"
+          HTTP_CODE=$(curl --max-time 60 --retry 2 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+            -w "%{http_code}" -o "${PREFLIGHT_FILE}" \
+            -d '{}')
+
+          echo "Préflight HTTP : ${HTTP_CODE}"
+          if [ -s "${PREFLIGHT_FILE}" ]; then cat "${PREFLIGHT_FILE}"; printf '\n'; fi
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Préflight ops/migrate/status a retourné HTTP $HTTP_CODE."
+            exit 1
+          fi
+
+          FAILED_COUNT="$(jq -r 'if .failed then (.failed | length) else 0 end' "${PREFLIGHT_FILE}" 2>/dev/null || echo "unknown")"
+          if [ "${FAILED_COUNT}" != "0" ]; then
+            echo "::error::Préflight — ${FAILED_COUNT} migration(s) en drift/échec. Résoudre avant de continuer."
+            exit 1
+          fi
+          echo "Préflight OK — aucune migration en échec"
+
       - name: Run post-deploy migrations
         env:
           # ops-sign.sh attend OPS_HMAC_SECRET ; on y mappe le secret de migration.
@@ -537,6 +614,55 @@ jobs:
             echo "::error::Webhook échoué ou redirigé (HTTP $HTTP_CODE). L'URL ne doit pas déclencher de redirection 3xx."
             exit 1
           fi
+
+      - name: Postflight migration — vérification pending=[] et failed=[]
+        env:
+          OPS_HMAC_SECRET: ${{ secrets.OPS_MIGRATION_HMAC_SECRET }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/ops-sign.sh
+
+          BASE_URL="$(echo "${KERMESSE_PUBLIC_BASE_URL}" | sed 's:/*$::')"
+          ALLOW_INSECURE_TLS="${KERMESSE_ALLOW_INSECURE_TLS:-false}"
+          ops_require_https_endpoint "$BASE_URL" 32
+
+          CURL_TLS_ARGS=()
+          if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+            CURL_TLS_ARGS+=(--insecure)
+          fi
+
+          ROUTE="ops/migrate/status"
+          ops_sign "$ROUTE"
+
+          POSTFLIGHT_FILE="${RUNNER_TEMP:-/tmp}/postflight-status.json"
+          HTTP_CODE=$(curl --max-time 60 --retry 2 -sS ${CURL_TLS_ARGS[@]:+"${CURL_TLS_ARGS[@]}"} -X POST "${BASE_URL}/${ROUTE}" \
+            -H "Content-Type: application/json" \
+            -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+            -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+            -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+            -w "%{http_code}" -o "${POSTFLIGHT_FILE}" \
+            -d '{}')
+
+          echo "Postflight HTTP : ${HTTP_CODE}"
+          if [ -s "${POSTFLIGHT_FILE}" ]; then cat "${POSTFLIGHT_FILE}"; printf '\n'; fi
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Postflight ops/migrate/status a retourné HTTP $HTTP_CODE."
+            exit 1
+          fi
+
+          PENDING_COUNT="$(jq -r 'if .pending then (.pending | length) else 0 end' "${POSTFLIGHT_FILE}" 2>/dev/null || echo "unknown")"
+          FAILED_COUNT="$(jq -r 'if .failed then (.failed | length) else 0 end' "${POSTFLIGHT_FILE}" 2>/dev/null || echo "unknown")"
+
+          if [ "${PENDING_COUNT}" != "0" ]; then
+            echo "::error::Postflight — ${PENDING_COUNT} migration(s) encore en attente. Le déploiement est incomplet."
+            exit 1
+          fi
+          if [ "${FAILED_COUNT}" != "0" ]; then
+            echo "::error::Postflight — ${FAILED_COUNT} migration(s) en échec. Déclencher la procédure Stop/Rollback."
+            exit 1
+          fi
+          echo "Postflight OK — pending=[] et failed=[]"
 
       - name: Post-deploy health check
         run: |

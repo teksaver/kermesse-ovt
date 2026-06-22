@@ -1,5 +1,5 @@
 # generated: 2026-06-19T18:32:48+0200
-# last_updated: 2026-06-22T22:00:00+0200
+# last_updated: 2026-06-22T23:00:00+0200
 # project: Kermesse
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-22T22:00:00+0200
+last_updated: 2026-06-22T23:00:00+0200
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
@@ -97,8 +97,8 @@ development_status:
   6-7-installer-les-gates-ci-de-preparation-a-la-production: done
   6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: done
   6-8bis-resoudre-la-dette-technique-ci-deferred-findings-de-la-story-6-7: done
-  6-9-qualifier-et-deployer-la-release-candidate: review
-  6-10-securiser-le-deploiement-des-migrations-incompatibles: backlog
+  6-9-qualifier-et-deployer-la-release-candidate: done
+  6-10-securiser-le-deploiement-des-migrations-incompatibles: review
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog

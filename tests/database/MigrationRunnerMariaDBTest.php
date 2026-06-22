@@ -48,6 +48,7 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         // with database/migrations_sql/ — see the baseline initial_schema migration.
         $db->query('SET FOREIGN_KEY_CHECKS = 0');
         foreach ([
+            'slot_signups',  // renamed from `signups` by migration 20260620000000
             'signups',
             'slots',
             'stands',
@@ -62,6 +63,8 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
         ] as $table) {
             $db->query("DROP TABLE IF EXISTS `{$table}`");
         }
+        // Drop the compat view if it exists (migration 20260619500000)
+        $db->query('DROP VIEW IF EXISTS `slot_signups`');
         $db->query('SET FOREIGN_KEY_CHECKS = 1');
 
         // Set up temp migrations directory

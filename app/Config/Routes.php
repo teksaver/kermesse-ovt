@@ -106,5 +106,6 @@ $routes->get('k/(:segment)/slots/(:num)/slot-signup/confirmation', '\App\Control
 // ---------------------------------------------------------------------------
 $routes->post('ops/migrate',        '\App\Controllers\Ops\MigrationController::migrate',   ['filter' => 'ops-auth']);
 $routes->post('ops/migrate/status', '\App\Controllers\Ops\MigrationController::status',    ['filter' => 'ops-auth']);
+$routes->post('ops/fix-drift',      '\App\Controllers\Ops\DriftController::fixDrift',      ['filter' => 'ops-auth']);
 $routes->post('ops/probe',          '\App\Controllers\Ops\ProbeController::probe',          ['filter' => 'ops-auth']);
 $routes->post('ops/activate',       '\App\Controllers\Ops\ActivateController::activate',   ['filter' => 'ops-auth']);

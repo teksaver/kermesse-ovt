@@ -497,6 +497,37 @@ call_migrate_endpoint() {
     echo "  ${label} [OK] — aucun échec détecté"
 }
 
+# ── Drift fix : remédiation du drift de checksum connu ───────────────────────
+# Appelé avant le préflight pour s'assurer qu'un drift connu est réconcilié
+# avant que ops/migrate/status ne détecte et bloque sur le drift.
+# Idempotent : si le checksum est déjà à jour, la réponse est ok+already_reconciled.
+CURRENT_STEP="drift-fix"
+echo ""
+echo "-- Drift-fix : remédiation du drift de checksum (20260614121500_add_last_login_at_to_users)"
+DRIFT_BODY='{"version":"20260614121500_add_last_login_at_to_users"}'
+ops_sign "ops/fix-drift" "${DRIFT_BODY}"
+DRIFT_RESPONSE_FILE="$(mktemp)"
+DRIFT_HTTP=$(curl --max-time 30 -sS -X POST "${BASE_URL%/}/ops/fix-drift" \
+    -H "Content-Type: application/json" \
+    -H "X-Kermesse-Timestamp: ${SIGN_TS}" \
+    -H "X-Kermesse-Nonce: ${SIGN_NONCE}" \
+    -H "X-Kermesse-Signature: ${SIGN_SIG}" \
+    -w "%{http_code}" -o "${DRIFT_RESPONSE_FILE}" \
+    -d "${DRIFT_BODY}")
+DRIFT_BODY_RESPONSE="$(cat "${DRIFT_RESPONSE_FILE}")"
+rm -f "${DRIFT_RESPONSE_FILE}"
+
+echo "  Réponse HTTP : ${DRIFT_HTTP}"
+if [[ -n "${DRIFT_BODY_RESPONSE}" ]]; then
+    echo "  Corps : ${DRIFT_BODY_RESPONSE}"
+fi
+
+if [[ "${DRIFT_HTTP}" != "200" ]]; then
+    echo "ERREUR : ops/fix-drift a retourné HTTP ${DRIFT_HTTP} (attendu 200)" >&2
+    exit 1
+fi
+echo "  Drift-fix [OK]"
+
 # ── Préflight migration : état des migrations avant toute exécution ───────────
 # Lecture seule via ops/migrate/status — vérifie qu'aucune migration n'est en échec.
 # Si failed[] non vide, le déploiement est bloqué : résoudre avant de continuer.
@@ -584,6 +615,29 @@ echo "  PENDING_BEFORE_SECOND=0 — la seconde migration ne peut appliquer aucun
 call_migrate_endpoint "Seconde migration (idempotence)" "ops/migrate"
 echo ""
 
+# ── Smoke test slot_signups : lecture + écriture no-op ───────────────────────
+# Exécuté DANS le conteneur deploy-client (accès direct au service MariaDB).
+# L'UPDATE WHERE id = 0 ne modifie aucune ligne — il vérifie uniquement que
+# la table existe et accepte des requêtes DML (écriture sans mutation de données).
+CURRENT_STEP="smoke-slot-signups"
+echo ""
+echo "-- Smoke test : lecture/écriture sur slot_signups"
+READ_COUNT=$(MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+    -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
+    -N -e "SELECT COUNT(*) FROM \`slot_signups\`;" 2>/dev/null) || {
+    echo "ERREUR : Lecture sur slot_signups échouée — la table est absente ou inaccessible" >&2
+    exit 1
+}
+echo "  Lecture slot_signups [OK] — ${READ_COUNT} lignes"
+
+MYSQL_PWD="${DB_RESET_PASS}" mysql --skip-ssl \
+    -h "${DB_RESET_HOST}" -u "${DB_RESET_USER}" "${DB_RESET_NAME}" \
+    -e "UPDATE \`slot_signups\` SET \`updated_at\` = \`updated_at\` WHERE \`id\` = 0;" 2>/dev/null || {
+    echo "ERREUR : Écriture sur slot_signups échouée" >&2
+    exit 1
+}
+echo "  Écriture slot_signups [OK] — UPDATE no-op exécuté"
+
 # ── Étape 5/5 : Vérification de l'état des migrations (postflight) ───────────
 CURRENT_STEP="verification-etat"
 echo ""
@@ -647,7 +701,9 @@ else
 fi
 echo "  Transfert            [OK]"
 echo "  Activation           [OK]"
+echo "  Drift-fix            [OK] — checksum réconcilié"
 echo "  Migration            [OK]"
+echo "  Smoke slot_signups   [OK] — lecture et écriture no-op confirmées"
 echo "  Idempotence          [OK] — PENDING_BEFORE_SECOND=${PENDING_BEFORE_SECOND} (no-op prouvé)"
 echo "  Postflight statut    [OK]"
 echo ""

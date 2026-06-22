@@ -82,7 +82,7 @@ class Filters extends BaseFilters
     public array $globals = [
         'before' => [
             // 'honeypot',
-            'csrf' => ['except' => ['ops/migrate', 'ops/migrate/status', 'ops/probe', 'ops/activate']],
+            'csrf' => ['except' => ['ops/migrate', 'ops/migrate/status', 'ops/fix-drift', 'ops/probe', 'ops/activate']],
             // 'invalidchars',
         ],
         'after' => [
