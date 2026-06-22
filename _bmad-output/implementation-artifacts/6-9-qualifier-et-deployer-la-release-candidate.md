@@ -1,12 +1,12 @@
 ---
 baseline_commit: 542ac152bdfbc45b0ee6763d4ec133a46cb46b43
 story_key: 6-9-qualifier-et-deployer-la-release-candidate
-status: review
+status: done
 ---
 
 # Story 6.9 : Qualifier et déployer la release candidate
 
-Status: review
+Status: done
 
 ## Story
 
@@ -80,6 +80,24 @@ so that la mise en production puisse être décidée et exécutée avec un risqu
   - [x] Étendre les tests shell/YAML pour prouver : absence de packaging dans le workflow de production, téléchargement cross-run borné au `run-id`, validation SHA/checksum/manifeste, refus d'un mauvais candidat et conservation de `shared/.env`.
   - [x] Tester le mode « artefact existant », les réponses status avec `pending`/`failed`, l'idempotence, l'échec de restauration et les seuils Stop/Rollback.
   - [x] Exécuter `composer check-all`, les tests shell, le rehearsal complet et les smoke Playwright. La qualification ne doit pas masquer une relance flaky.
+
+### Review Findings
+
+- [x] [Review][Patch] Bloquer tout déploiement automatique sans Go explicite ni preuve que la Story 6.10 est terminée [.github/workflows/deploy-ouvaton.yml:3]
+- [x] [Review][Patch] Qualifier l'archive exacte publiée au lieu de répéter un build distinct, et exécuter réellement le qualificateur dans la CI [.github/workflows/ci.yml:242]
+- [x] [Review][Patch] Enregistrer l'artifact ID, le digest et l'URL dans l'identité persistée du candidat [.github/workflows/ci.yml:293]
+- [x] [Review][Patch] Valider strictement le schéma du manifeste et imposer `artifact_name=kermesse-deploy` avant promotion [.github/workflows/deploy-ouvaton.yml:119]
+- [x] [Review][Patch] Remplacer le parsing `grep` du manifeste et nettoyer/isoler le dossier de preuves avant chaque qualification [scripts/qualify-release-candidate.sh:55]
+- [x] [Review][Patch] Ajouter le préflight lecture seule et faire échouer toute réponse migration/status absente, invalide ou incomplète [scripts/deploy-rehearsal.sh:446]
+- [x] [Review][Patch] Prouver l'idempotence en exigeant zéro migration appliquée lors du second appel [scripts/deploy-rehearsal.sh:507]
+- [x] [Review][Patch] Intégrer la répétition sauvegarde/restauration au parcours de qualification et à ses preuves [scripts/qualify-release-candidate.sh:114]
+- [x] [Review][Patch] Fournir les fixtures représentatives requises et refuser leur absence hors option explicite [scripts/rehearsal-backup-restore.sh:87]
+- [x] [Review][Patch] Sécuriser la base de restauration, son nettoyage sur erreur et les comptages afin qu'une double erreur `N/A` ne passe jamais [scripts/rehearsal-backup-restore.sh:56]
+- [x] [Review][Patch] Exécuter Playwright depuis les dépendances verrouillées et conserver les traces depuis le vrai répertoire de sortie [scripts/qualify-release-candidate.sh:130]
+- [x] [Review][Patch] Ne jamais annoncer `QUALIFICATION OK` lorsque les smoke tests sont sautés [scripts/qualify-release-candidate.sh:194]
+- [x] [Review][Patch] Ajouter en production le parsing JSON migration/postflight, les contrôles de santé et les smokes non destructifs avec décision Stop/Rollback [.github/workflows/deploy-ouvaton.yml:475]
+- [x] [Review][Patch] Archiver les preuves complètes reliées au candidat au lieu du seul manifeste placeholder [.github/workflows/ci.yml:376]
+- [x] [Review][Patch] Aligner matrice et runbook sur les lacunes P0/P1 réelles et ajouter des tests fonctionnels des chemins d'échec, pas seulement des assertions textuelles [_bmad-output/planning-artifacts/test-coverage-matrix.md:1]
 
 ## Dev Notes
 
@@ -216,3 +234,5 @@ claude-sonnet-4-6
 ## Change Log
 
 - 2026-06-22 : Story créée et mise au statut `ready-for-dev` après analyse exhaustive des artefacts, du pipeline, de la répétition, des migrations, de la couverture et de l'historique Git.
+- 2026-06-22 : Implémentation initiale (T1–T8) — pipeline de qualification RC créé. PHPStan 0 erreur ; tests shell 70+ assertions OK. (claude-sonnet-4-6)
+- 2026-06-22 : 15 patches de revue appliqués (commit 6ea8a91) — DEPLOY_PRODUCTION_GO + STORY_610_DONE gates, package-artifact avant deploy-rehearsal, rc-identity.json, artifact_name strict, jq parsing, préflight/idempotence migration, backup-restore intégré, fixtures obligatoires, DB_RESTORE_NAME ≠ DB_NAME, Playwright verrouillé, QUALIFICATION PARTIELLE si skip-smoke, health check postflight, rc-evidence complet, runbook Go/No-Go. PHPStan 0 erreur ; tests shell 99/99 OK. (claude-sonnet-4-6)

@@ -27,7 +27,9 @@ final class OpsActivateEndpointMariaDBTest extends CIUnitTestCase
     private string $tmpBase;
     private \Config\Kermesse $originalConfig;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {

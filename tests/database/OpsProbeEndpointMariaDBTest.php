@@ -23,7 +23,9 @@ final class OpsProbeEndpointMariaDBTest extends CIUnitTestCase
 
     private \Config\Kermesse $originalConfig;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {

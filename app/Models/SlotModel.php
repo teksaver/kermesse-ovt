@@ -43,7 +43,16 @@ class SlotModel extends Model
             [$slotId],
         );
 
-        return ($result ? $result->getRowArray() : null) ?: null;
+        if ($result === false) {
+            // CI4 silences query errors inside transactions (transDepth > 0, transException off).
+            // A lock wait timeout returns false here rather than throwing — surface it explicitly
+            // so SlotSignupService::signup() catch block maps it to transaction_failed.
+            throw new \CodeIgniter\Database\Exceptions\DatabaseException(
+                'findForCapacityCheck query failed: ' . ($db->error()['message'] ?? 'unknown')
+            );
+        }
+
+        return $result->getRowArray() ?: null;
     }
 
     /**

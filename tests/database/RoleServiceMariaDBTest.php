@@ -37,7 +37,9 @@ final class RoleServiceMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {
@@ -183,7 +185,9 @@ final class RoleServiceMariaDBTest extends CIUnitTestCase
 
     public function testConcurrentRemoveRoleDoesNotCrashIfAlreadyRemovedOnMariaDB(): void
     {
-        [$kermesseId, $userId] = $this->fixture(role: 'admin');
+        // pendingInvite: true ensures first removeRole DELETES the row (not updates to benevole),
+        // so the second call finds no row and returns false as expected.
+        [$kermesseId, $userId] = $this->fixture(role: 'admin', pendingInvite: true);
 
         // Mutation 1: remove
         $res1 = $this->makeService()->removeRole($kermesseId, $userId, 0);
@@ -274,104 +278,92 @@ final class RoleServiceMariaDBTest extends CIUnitTestCase
     /** @return array{int, int} [kermesseId, targetUserId] */
     private function fixture(string $role, bool $pendingInvite = false): array
     {
-        $userFab = new \CodeIgniter\Test\Fabricator(\App\Models\UserModel::class);
-        $kermesseFab = new \CodeIgniter\Test\Fabricator(\App\Models\KermesseModel::class);
-        $roleFab = new \CodeIgniter\Test\Fabricator(\App\Models\UserRoleModel::class);
+        $db = db_connect('tests');
 
         $ownerEmail = 'owner-role-' . uniqid() . '@mariadb.test';
-        $ownerData = $userFab->create([
-            'email' => $ownerEmail,
-            'email_hash' => hash('sha256', $ownerEmail),
-            'first_name' => 'Owner',
-            'last_name' => 'Role',
-            'phone' => ''
-        ]);
-        $ownerId = $ownerData['id'];
+        $db->query(
+            "INSERT INTO `users` (email, email_hash, first_name, last_name, phone) VALUES (?, ?, 'Owner', 'Role', '')",
+            [$ownerEmail, hash('sha256', $ownerEmail)]
+        );
+        $ownerId = (int) $db->insertID();
 
         $targetEmail = 'target-role-' . uniqid() . '@mariadb.test';
-        $targetData = $userFab->create([
-            'email' => $targetEmail,
-            'email_hash' => hash('sha256', $targetEmail),
-            'first_name' => 'Target',
-            'last_name' => 'Role',
-            'phone' => ''
-        ]);
-        $userId = $role === 'owner' ? $ownerId : $targetData['id'];
+        $db->query(
+            "INSERT INTO `users` (email, email_hash, first_name, last_name, phone) VALUES (?, ?, 'Target', 'Role', '')",
+            [$targetEmail, hash('sha256', $targetEmail)]
+        );
+        $targetId = (int) $db->insertID();
 
-        $kermesseData = $kermesseFab->create([
-            'created_by' => $ownerId,
-            'public_slug' => 'role-mariadb-' . uniqid(),
-            'name' => 'Kermesse Role MariaDB',
-            'event_date' => '2026-09-01',
-            'location' => 'Salle',
-            'status' => 'open'
-        ]);
-        $kermesseId = $kermesseData['id'];
+        $userId = $role === 'owner' ? $ownerId : $targetId;
 
-        $roleData = [
-            'kermesse_id' => $kermesseId,
-            'user_id'     => $userId,
-            'role'        => $role,
-        ];
+        $db->query(
+            "INSERT INTO `kermesses` (created_by, public_slug, name, event_date, location, status) VALUES (?, ?, 'Kermesse Role MariaDB', '2026-09-01', 'Salle', 'open')",
+            [$ownerId, 'role-mariadb-' . uniqid()]
+        );
+        $kermesseId = (int) $db->insertID();
 
-        if ($pendingInvite) {
-            $roleData['invited_at']      = date('Y-m-d H:i:s');
-            $roleData['first_access_at'] = null;
-        } else {
-            $roleData['first_access_at'] = '2026-01-01 10:00:00';
+        // Owner always gets the owner role
+        $db->query(
+            "INSERT INTO `kermesse_user_roles` (kermesse_id, user_id, role, first_access_at) VALUES (?, ?, 'owner', '2026-01-01 10:00:00')",
+            [$kermesseId, $ownerId]
+        );
+
+        if ($role !== 'owner') {
+            if ($pendingInvite) {
+                $db->query(
+                    "INSERT INTO `kermesse_user_roles` (kermesse_id, user_id, role, invited_at, first_access_at) VALUES (?, ?, ?, NOW(), NULL)",
+                    [$kermesseId, $userId, $role]
+                );
+            } else {
+                $db->query(
+                    "INSERT INTO `kermesse_user_roles` (kermesse_id, user_id, role, first_access_at) VALUES (?, ?, ?, '2026-01-01 10:00:00')",
+                    [$kermesseId, $userId, $role]
+                );
+            }
         }
-
-        $roleFab->create($roleData);
 
         return [$kermesseId, $userId];
     }
 
     private function insertSignup(int $kermesseId, int $userId, string $status): void
     {
-        $standFab = new \CodeIgniter\Test\Fabricator(\App\Models\StandModel::class);
-        $slotFab = new \CodeIgniter\Test\Fabricator(\App\Models\SlotModel::class);
-        $signupFab = new \CodeIgniter\Test\Fabricator(\App\Models\SlotSignupModel::class);
+        $db = db_connect('tests');
 
-        $standData = $standFab->create([
-            'kermesse_id' => $kermesseId,
-            'name' => 'Stand Role Test',
-            'display_order' => 1,
-            'status' => 'active'
-        ]);
-        $standId = $standData['id'];
+        $db->query(
+            "INSERT INTO `stands` (kermesse_id, name, display_order, status) VALUES (?, 'Stand Role Test', 1, 'active')",
+            [$kermesseId]
+        );
+        $standId = (int) $db->insertID();
 
-        $slotData = $slotFab->create([
-            'stand_id' => $standId,
-            'starts_at' => '2099-01-01 09:00:00',
-            'ends_at' => '2099-01-01 12:00:00',
-            'capacity' => 5
-        ]);
-        $slotId = $slotData['id'];
+        $db->query(
+            "INSERT INTO `slots` (stand_id, starts_at, ends_at, capacity) VALUES (?, '2099-01-01 09:00:00', '2099-01-01 12:00:00', 5)",
+            [$standId]
+        );
+        $slotId = (int) $db->insertID();
 
-        // Status is now stateless (no status column): use timestamps to represent state
-        $row = [
-            'slot_id' => $slotId,
-            'user_id' => $userId,
-            'email' => 'target@test.com',
-            'first_name' => 'T',
-            'last_name' => 'R',
-            'phone' => ''
-        ];
+        // Build column list and values dynamically based on status
+        $canceledAt = null;
+        $canceledBy = null;
+        $rejectedAt = null;
+        $deletedAt  = null;
 
         if ($status === 'cancelled') {
-            $row['canceled_at'] = '2026-01-01 00:00:00';
-            $row['canceled_by'] = $userId;
+            $canceledAt = '2026-01-01 00:00:00';
+            $canceledBy = $userId;
         } elseif ($status === 'removed') {
-            $row['canceled_at'] = '2026-01-01 00:00:00';
-            $row['canceled_by'] = 9999;
+            $canceledAt = '2026-01-01 00:00:00';
+            $canceledBy = 9999;
         } elseif ($status === 'rejected') {
-            $row['rejected_at'] = '2026-01-01 00:00:00';
+            $rejectedAt = '2026-01-01 00:00:00';
         } elseif ($status === 'deleted') {
-            $row['deleted_at'] = '2026-01-01 00:00:00';
+            $deletedAt = '2026-01-01 00:00:00';
         }
-        // 'active' = no canceled_at, no deleted_at, no rejected_at
 
-        $signupFab->create($row);
+        $db->query(
+            "INSERT INTO `slot_signups` (slot_id, user_id, email, first_name, last_name, phone, canceled_at, canceled_by, rejected_at, deleted_at)
+             VALUES (?, ?, 'target@test.com', 'T', 'R', '', ?, ?, ?, ?)",
+            [$slotId, $userId, $canceledAt, $canceledBy, $rejectedAt, $deletedAt]
+        );
     }
 
     private function roleForUser(int $kermesseId, int $userId): ?string

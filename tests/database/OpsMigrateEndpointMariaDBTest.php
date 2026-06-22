@@ -20,7 +20,9 @@ final class OpsMigrateEndpointMariaDBTest extends CIUnitTestCase
 
     private string $tempMigrationsDir;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {

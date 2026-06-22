@@ -180,20 +180,10 @@ jobs:
         run: composer install --prefer-dist --no-progress
 
       - name: Run MariaDB integration tests
-        env:
-          database.tests.hostname: 127.0.0.1
-          database.tests.database: kermesse_test
-          database.tests.username: kermesse_ci
-          database.tests.password: ci_password
-          database.tests.DBDriver: MySQLi
-          database.tests.DBPrefix: ''
-          database.tests.port: 3306
-          database.tests.charset: utf8mb4
-          database.tests.DBCollat: utf8mb4_general_ci
-          CI_ENVIRONMENT: testing
-          kermesse.opsMigrationProductionOnly: 'false'
-          kermesse.opsMigrationHmacSecret: ci_test_hmac_secret_32_bytes_min
-          kermesse.opsMigrationLockName: kermesse_ci_migration_lock
+        # La connexion MySQLi est injectée via phpunit.mariadb.xml (<php><env>)
+        # et non via des variables d'env shell : CI4 BaseConfig::getEnvValue() lit
+        # $_ENV/$_SERVER, jamais getenv(). PHP ne peuple pas $_ENV avec les noms
+        # contenant des points (database.tests.*). PHPUnit <env> peuple bien $_ENV.
         run: composer test:mariadb
 
       - name: Dump MariaDB logs on failure

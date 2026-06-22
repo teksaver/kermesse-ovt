@@ -27,7 +27,9 @@ final class OpsMigrateStatusEndpointMariaDBTest extends CIUnitTestCase
     private ?string $tmpDir = null;
     private \Config\Kermesse $originalConfig;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {

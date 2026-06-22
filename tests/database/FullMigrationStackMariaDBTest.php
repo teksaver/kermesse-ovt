@@ -24,7 +24,9 @@ final class FullMigrationStackMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup   = 'tests';
+    protected $migrate  = false;
+    protected $refresh  = false;
 
     private bool $origOpsProductionOnly;
     private string $origOpsLockName;
@@ -318,19 +320,31 @@ final class FullMigrationStackMariaDBTest extends CIUnitTestCase
         // ── Insérer via la VIEW de compatibilité ──────────────────────────────
         // Le code applicatif référence slot_signups : l'INSERT passe par la vue,
         // qui délègue à signups (table physique).
-        $db->query("INSERT INTO `users` (email, created_at, updated_at) VALUES ('test-upgrade@kermesse.test', NOW(), NOW())");
+        $db->query(
+            "INSERT INTO `users` (email, email_hash, created_at, updated_at) VALUES ('test-upgrade@kermesse.test', ?, NOW(), NOW())",
+            [hash('sha256', 'test-upgrade@kermesse.test')]
+        );
         $userId = (int) $db->insertID();
 
-        $db->query("INSERT INTO `kermesses` (name, slug, owner_id, lifecycle, created_at, updated_at)
-            VALUES ('Test K', 'test-k', ?, 'open', NOW(), NOW())", [$userId]);
+        $db->query(
+            "INSERT INTO `kermesses` (created_by, public_slug, name, status, created_at, updated_at)
+             VALUES (?, 'test-k', 'Test K', 'open', NOW(), NOW())",
+            [$userId]
+        );
         $kermesseId = (int) $db->insertID();
 
-        $db->query("INSERT INTO `stands` (kermesse_id, name, created_at, updated_at)
-            VALUES (?, 'Stand Test', NOW(), NOW())", [$kermesseId]);
+        $db->query(
+            "INSERT INTO `stands` (kermesse_id, name, display_order, created_at, updated_at)
+             VALUES (?, 'Stand Test', 1, NOW(), NOW())",
+            [$kermesseId]
+        );
         $standId = (int) $db->insertID();
 
-        $db->query("INSERT INTO `slots` (stand_id, label, capacity, start_at, end_at, created_at, updated_at)
-            VALUES (?, 'Créneau 1', 5, NOW(), NOW(), NOW(), NOW())", [$standId]);
+        $db->query(
+            "INSERT INTO `slots` (stand_id, starts_at, ends_at, capacity, created_at, updated_at)
+             VALUES (?, NOW(), DATE_ADD(NOW(), INTERVAL 2 HOUR), 5, NOW(), NOW())",
+            [$standId]
+        );
         $slotId = (int) $db->insertID();
 
         // INSERT via la VIEW slot_signups — délègue à la table physique signups.

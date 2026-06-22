@@ -27,7 +27,9 @@ final class ManageSlotsMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     private int $kermesseId = 0;
     private int $standId    = 0;
@@ -49,12 +51,14 @@ final class ManageSlotsMariaDBTest extends CIUnitTestCase
         // Drop all tables with FK checks disabled so order is irrelevant.
         $db->query('SET FOREIGN_KEY_CHECKS = 0');
         foreach ([
-            'signups', 'slots', 'stands', 'profile_divergences',
+            'slot_signups', 'signups', 'slots', 'stands', 'profile_divergences',
             'access_tokens', 'email_events', 'kermesse_user_roles',
             'kermesses', 'users', 'ops_nonces', 'schema_versions',
         ] as $table) {
             $db->query("DROP TABLE IF EXISTS `{$table}`");
         }
+        // Drop compat view created by migration 20260619500000 if present.
+        $db->query('DROP VIEW IF EXISTS `slot_signups`');
         $db->query('SET FOREIGN_KEY_CHECKS = 1');
 
         // Apply all actual SQL migrations — this is the authoritative MariaDB schema.
@@ -73,7 +77,7 @@ final class ManageSlotsMariaDBTest extends CIUnitTestCase
     {
         $db = db_connect('tests');
         $db->query('SET FOREIGN_KEY_CHECKS = 0');
-        $db->query('DELETE FROM `signups`');
+        $db->query('DELETE FROM `slot_signups`');
         $db->query('DELETE FROM `slots`');
         $db->query('DELETE FROM `stands`');
         $db->query('DELETE FROM `kermesse_user_roles`');

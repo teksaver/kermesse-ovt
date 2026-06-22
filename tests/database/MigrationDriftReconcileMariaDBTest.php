@@ -22,7 +22,9 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     private string $tempMigrationsDir;
 
@@ -39,11 +41,17 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
             $this->markTestSkipped('These tests require a MariaDB/MySQL connection.');
         }
 
-        // Partir d'une ardoise vide
+        // Partir d'une ardoise vide — supprimer TOUTES les tables pour éviter les FK
+        // orphelines laissées par les classes de test précédentes (ex. ManageSlotsMariaDBTest).
         $db->query('SET FOREIGN_KEY_CHECKS = 0');
-        $db->query('DROP TABLE IF EXISTS `schema_versions`');
-        $db->query('DROP TABLE IF EXISTS `ops_nonces`');
-        $db->query('DROP TABLE IF EXISTS `users`');
+        foreach ([
+            'slot_signups', 'signups', 'slots', 'stands', 'profile_divergences',
+            'access_tokens', 'email_events', 'kermesse_user_roles',
+            'kermesses', 'users', 'ops_nonces', 'schema_versions',
+        ] as $table) {
+            $db->query("DROP TABLE IF EXISTS `{$table}`");
+        }
+        $db->query('DROP VIEW IF EXISTS `slot_signups`');
         $db->query('SET FOREIGN_KEY_CHECKS = 1');
 
         $this->tempMigrationsDir = sys_get_temp_dir() . '/kermesse_drift_test_' . uniqid('', true);
@@ -174,16 +182,21 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
     public function testReconcileChecksumFor20260614RequiresLastLoginAtColumn(): void
     {
         // Appliquer une migration qui ne crée PAS last_login_at
-        $sql = "CREATE TABLE IF NOT EXISTS `users` (`id` INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`)) ENGINE=InnoDB;";
-        $this->writeMigration('20260614121500_add_last_login_at_to_users.sql', $sql);
+        $originalSql = "CREATE TABLE IF NOT EXISTS `users` (`id` INT NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`)) ENGINE=InnoDB;";
+        $this->writeMigration('20260614121500_add_last_login_at_to_users.sql', $originalSql);
 
         $runner = $this->makeRunner();
         $runner->run();
 
-        // Tenter de réconcilier alors que la colonne est absente
+        // Simuler un "patch" du fichier : la nouvelle version déclare l'ajout de last_login_at,
+        // mais la colonne est absente de la base (migration originale ne la créait pas).
+        // Le TOCTOU guard exige que le fichier sur disque corresponde au checksum passé.
+        $patchedSql = "ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `last_login_at` DATETIME NULL;";
+        $this->writeMigration('20260614121500_add_last_login_at_to_users.sql', $patchedSql);
+
         $result = $runner->reconcileChecksum(
             '20260614121500_add_last_login_at_to_users',
-            hash('sha256', 'some_patched_content')
+            hash('sha256', $patchedSql)
         );
 
         $this->assertFalse($result['ok']);

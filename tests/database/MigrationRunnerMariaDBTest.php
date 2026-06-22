@@ -20,7 +20,9 @@ final class MigrationRunnerMariaDBTest extends CIUnitTestCase
     /** @var string Temporary directory for test migration files */
     private string $tempMigrationsDir;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     protected function setUp(): void
     {

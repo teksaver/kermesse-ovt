@@ -41,7 +41,7 @@
     "scripts": {
         "test": "phpunit --exclude-group mariadb",
         "test:sqlite": "phpunit --exclude-group mariadb",
-        "test:mariadb": "phpunit --testsuite Database --group mariadb",
+        "test:mariadb": "phpunit --configuration phpunit.mariadb.xml --testsuite Database --group mariadb",
         "analyse": "php -d memory_limit=512M vendor/bin/phpstan analyse",
         "check-all": [
             "@analyse",

@@ -25,7 +25,9 @@ final class AdminSlotSignupMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     private int $kermesseId  = 0;
     private int $standId     = 0;

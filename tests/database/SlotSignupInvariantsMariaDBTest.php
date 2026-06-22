@@ -25,7 +25,9 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $DBGroup = 'tests';
+    protected $DBGroup  = 'tests';
+    protected $migrate = false;
+    protected $refresh = false;
 
     private int $kermesseId = 0;
     private int $standId    = 0;
@@ -219,9 +221,9 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
 
         // Connection 2 attempts to signup but will block on capacity check lock
         $db2->query('SET innodb_lock_wait_timeout=1');
-        
+
         $service2 = new SlotSignupService(
-            new UserModel(), new SlotSignupModel(), null, null, $db2
+            new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
         
         $start = microtime(true);
@@ -252,7 +254,7 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
         // Connection 2 attempts a duplicate signup
         $db2->query('SET innodb_lock_wait_timeout=1');
         $service2 = new SlotSignupService(
-            new UserModel(), new SlotSignupModel(), null, null, $db2
+            new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
         
         $start = microtime(true);
@@ -290,7 +292,7 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
         // Connection 2 attempts to signup to the overlapping slot
         $db2->query('SET innodb_lock_wait_timeout=1');
         $service2 = new SlotSignupService(
-            new UserModel(), new SlotSignupModel(), null, null, $db2
+            new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
         
         $start = microtime(true);

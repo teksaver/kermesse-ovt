@@ -158,14 +158,24 @@ class SlotSignupModel extends Model
             $params[] = $userId;
         }
 
-        $signups = $conn->query(
+        $signupsResult = $conn->query(
             "SELECT si.id, si.slot_id FROM {$tSign} si
              JOIN {$tSlots} sl ON sl.id = si.slot_id
              JOIN {$tStands} st ON st.id = sl.stand_id
              WHERE si.slot_id != ? AND st.kermesse_id = ? AND (si.email = ? {$userCond})
                AND si.canceled_at IS NULL AND si.rejected_at IS NULL AND si.deleted_at IS NULL " . $this->forUpdateSuffix($conn),
             $params
-        )->getResultArray();
+        );
+
+        if ($signupsResult === false) {
+            // CI4 silences query errors inside transactions — propagate lock timeout
+            // explicitly so SlotSignupService maps it to transaction_failed.
+            throw new \CodeIgniter\Database\Exceptions\DatabaseException(
+                'findOverlappingActiveByEmailOrUser query failed: ' . ($conn->error()['message'] ?? 'unknown')
+            );
+        }
+
+        $signups = $signupsResult->getResultArray();
 
         if (empty($signups)) {
             return null;
