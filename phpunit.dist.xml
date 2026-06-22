@@ -11,6 +11,11 @@
     failOnWarning="true"
     cacheDirectory="build/.phpunit.cache"
 >
+    <extensions>
+        <!-- Reset le schéma :memory: partagé avant chaque test (isolation inter-classes). -->
+        <bootstrap class="Tests\Support\ResetMemorySchemaExtension"/>
+    </extensions>
+
     <testsuites>
         <testsuite name="Unit">
             <directory>./tests/unit</directory>
