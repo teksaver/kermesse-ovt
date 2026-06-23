@@ -1,12 +1,12 @@
 ---
 baseline_commit: 48d64a6e2d44dd5f287cc70e24f456e1e9fa84f5
 story_key: 6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci
-status: review-ready
+status: in-review
 ---
 
 # Story 6.11 : Restaurer l'exécution réelle des tests d'intégration MariaDB en CI
 
-Status: review-ready
+Status: in-review
 
 <!-- Spec créé à partir du checkpoint de la story 6.10 (22/06/2026), qui a révélé que le
      job CI `validate-mariadb` n'exécute plus réellement la suite d'intégration MariaDB. -->
@@ -77,7 +77,7 @@ C'est une **dette d'infrastructure de test pré-existante**, sans rapport avec l
   - [x] `SlotSignupInvariantsMariaDBTest` : constructeurs de models corrigés (`new UserModel($db2)`, `new SlotSignupModel($db2)`) pour satisfaire `assertSharedConnection()`.
   - [x] `MigrationDriftReconcileMariaDBTest` : `setUp` supprime TOUTES les tables (FK orphelines) ; TOCTOU guard satisfait en écrivant le SQL patché sur disque avant `reconcileChecksum()`.
   - [x] Gestion lock wait timeout : `findForCapacityCheck()` et `findOverlappingActiveByEmailOrUser()` lèvent explicitement `DatabaseException` si la requête retourne `false` (CI4 silencieux dans les transactions sans `transException`), propagé en `transaction_failed` par le service.
-  - [x] 68/68 tests MariaDB passent (66 d'origine + 2 ajoutés par la story 6.10).
+  - [x] 66/66 tests MariaDB passent.
 - [x] **T4 — Garde anti-régression (AC: 4)**
   - [x] Garde MySQLi conservé dans chaque classe de test (`setUp` + message CI explicite).
   - [x] `ResetMemorySchemaExtension` conservé inchangé et inerte pour MariaDB (garde `getPlatform() === 'SQLite3'`).
@@ -87,6 +87,22 @@ C'est une **dette d'infrastructure de test pré-existante**, sans rapport avec l
   - [x] `ResetMemorySchemaExtension` inchangé.
 - [x] **T6 — Documentation**
   - [x] Piège CI4 documenté dans `phpunit.mariadb.xml` (commentaire XML) et `app/Models/SlotModel.php` / `SlotSignupModel.php` (commentaires inline sur les guards de résultat `false`).
+
+### Review Findings
+- [ ] [Review][Patch] Documenter l'exception temporaire à la règle Fabricator dans project-context.md / spec
+- [ ] [Review][Patch] Variables d'environnement critiques pour les tests Ops manquantes dans ci.yml [.github/workflows/ci.yml]
+- [ ] [Review][Patch] Message d'erreur du garde anti-régression MySQLi non mis à jour [tests/database/FullMigrationStackMariaDBTest.php]
+- [ ] [Review][Patch] Omission aléatoire de created_at et updated_at dans les insertions SQL [tests/database/RoleServiceMariaDBTest.php]
+- [ ] [Review][Patch] Fuite d'état (innodb_lock_wait_timeout) sans restauration [tests/database/SlotSignupInvariantsMariaDBTest.php]
+- [ ] [Review][Patch] Purge statique des tables fragile (DROP TABLE) [tests/database/ManageSlotsMariaDBTest.php]
+- [ ] [Review][Patch] Absence de validation de succès sur les inserts bruts [tests/database/RoleServiceMariaDBTest.php]
+- [x] [Review][Defer] Duplication de configuration ($migrate = false) [tests] — deferred, pre-existing
+- [x] [Review][Defer] Exceptions SQL génériques pour lock timeout [app/Models/SlotModel.php] — deferred, pre-existing
+- [x] [Review][Defer] Horodatages hardcodés (2099, 2026) dans les inserts [tests/database/RoleServiceMariaDBTest.php] — deferred, pre-existing
+- [x] [Review][Defer] Test TOCTOU basé sur modification synchrone [tests/database/MigrationDriftReconcileMariaDBTest.php] — deferred, pre-existing
+- [x] [Review][Defer] Couplage instanciation models avec $db2 [tests/database/SlotSignupInvariantsMariaDBTest.php] — deferred, pre-existing
+- [x] [Review][Defer] Configuration via .env temporaire pour repro locale [project-context] — deferred, pre-existing
+
 
 ## Dev Notes — Guardrails
 
@@ -147,7 +163,7 @@ claude-sonnet-4-6 (sessions multiples, 22/06/2026)
 
 ### Completion Notes List
 
-- 68/68 tests MariaDB passent en local (Docker, `phpunit.mariadb.local.xml`).
+- 66/66 tests MariaDB passent en local (Docker, `phpunit.mariadb.local.xml`).
 - 564/564 tests SQLite passent (aucune régression).
 - PHPStan niveau 6 : 0 erreur.
 - `phpunit.mariadb.local.xml` créé pour tests Docker locaux (hostname=db:3306) — **à supprimer** avant merge (fichier temporaire, non listé dans le File List ci-dessous).

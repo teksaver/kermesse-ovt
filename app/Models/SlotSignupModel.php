@@ -184,12 +184,20 @@ class SlotSignupModel extends Model
         $slotIds = array_column($signups, 'slot_id');
         $placeholders = implode(',', array_fill(0, count($slotIds), '?'));
 
-        $overlaps = $conn->query(
+        $overlapsResult = $conn->query(
             "SELECT id, starts_at, ends_at FROM {$tSlots}
              WHERE id IN ({$placeholders}) AND starts_at < ? AND ends_at > ?
              LIMIT 1",
             array_merge($slotIds, [$endsAt, $startsAt])
-        )->getRowArray();
+        );
+
+        if ($overlapsResult === false) {
+            throw new \CodeIgniter\Database\Exceptions\DatabaseException(
+                'findOverlappingActiveByEmailOrUser (2nd query) failed: ' . ($conn->error()['message'] ?? 'unknown')
+            );
+        }
+
+        $overlaps = $overlapsResult->getRowArray();
 
         if ($overlaps) {
             foreach ($signups as $s) {
