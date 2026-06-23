@@ -1,12 +1,12 @@
 ---
 baseline_commit: 48d64a6e2d44dd5f287cc70e24f456e1e9fa84f5
 story_key: 6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci
-status: in-review
+status: done
 ---
 
 # Story 6.11 : Restaurer l'exécution réelle des tests d'intégration MariaDB en CI
 
-Status: in-review
+Status: done
 
 <!-- Spec créé à partir du checkpoint de la story 6.10 (22/06/2026), qui a révélé que le
      job CI `validate-mariadb` n'exécute plus réellement la suite d'intégration MariaDB. -->
@@ -198,3 +198,45 @@ claude-sonnet-4-6 (sessions multiples, 22/06/2026)
 - [Source: .github/workflows/ci.yml#validate-mariadb] — step et bloc env:
 - [Source: app/Config/Database.php#$tests] — défaut :memory: SQLite
 - [Source: CLAUDE.md] — production runtime-only, CI valide les migrations SQL, uv run python
+
+## Suggested Review Order
+
+**Piège CI4 — injection de config MySQLi sans env-vars à points**
+
+- Coeur du fix : blocs `<env>` PHPUnit peuplent `$_ENV` là où le shell échoue
+  [`phpunit.mariadb.xml:69`](../../phpunit.mariadb.xml#L69)
+
+- Ancien bloc `env:` inerte supprimé ; commentaire explicatif conservé
+  [`ci.yml:183`](../../.github/workflows/ci.yml#L183)
+
+- Script `test:mariadb` câblé sur `phpunit.mariadb.xml`
+  [`composer.json:44`](../../composer.json#L44)
+
+**Propagation des erreurs DB dans les transactions (lock wait timeout)**
+
+- Première requête `FOR UPDATE` : `false` → `DatabaseException` au lieu de `null` → `slot_full`
+  [`SlotModel.php:50`](../../app/Models/SlotModel.php#L50)
+
+- Deux requêtes gardées dans la recherche de chevauchements
+  [`SlotSignupModel.php:170`](../../app/Models/SlotSignupModel.php#L170)
+
+**Tests MariaDB — stratégie de schéma et connexion partagée**
+
+- Concurrence : models secondaires reçoivent `$db2` (guard `assertSharedConnection`)
+  [`SlotSignupInvariantsMariaDBTest.php:226`](../../tests/database/SlotSignupInvariantsMariaDBTest.php#L226)
+
+- Full DROP en setUp pour éviter les FK orphelines entre classes de test
+  [`MigrationDriftReconcileMariaDBTest.php:46`](../../tests/database/MigrationDriftReconcileMariaDBTest.php#L46)
+
+- Fabricator remplacé par INSERTs directs (API 4.7 + Faker datetime invalide)
+  [`RoleServiceMariaDBTest.php:282`](../../tests/database/RoleServiceMariaDBTest.php#L282)
+
+**Alignement colonnes sur le schéma actuel**
+
+- Colonnes post-rename corrigées : `email_hash`, `public_slug`, `starts_at`, `ends_at`
+  [`FullMigrationStackMariaDBTest.php:323`](../../tests/database/FullMigrationStackMariaDBTest.php#L323)
+
+**Boilerplate `$migrate = false` (périphériques)**
+
+- Tous les tests MariaDB : `$migrate = false; $refresh = false;` pour éviter le runner natif CI4
+  [`AdminSlotSignupMariaDBTest.php:27`](../../tests/database/AdminSlotSignupMariaDBTest.php#L27)
