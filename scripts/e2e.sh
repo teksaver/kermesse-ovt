@@ -95,16 +95,7 @@ _run_with_timeout() {
 
 # ----------------------------------------------------------------
 # 1. Start core services (with E2E overrides)
-#
-# Pre-create all project resources (volumes, network) with --no-start so that
-# e2e-node-modules exists before the first `up -d` call. Without this step,
-# `docker compose run --profile e2e e2e-runner` creates e2e-node-modules at
-# run-time, which Docker Compose v2 interprets as a project-state change and
-# forces a recreation of the app container — breaking cross-container DNS.
 # ----------------------------------------------------------------
-echo "=== Initialisation des ressources du projet E2E (volumes, réseau) ==="
-docker compose "${COMPOSE_FILES[@]}" --profile e2e up --no-start 2>/dev/null || true
-
 echo "=== Démarrage des services (app, db) avec surcharge E2E ==="
 docker compose "${COMPOSE_FILES[@]}" up -d app db
 
@@ -166,6 +157,15 @@ echo "=== Fixtures chargées. ==="
 # ----------------------------------------------------------------
 # 4. Run Playwright inside the official image
 #
+# We use `docker run --network` instead of `docker compose run` to avoid a
+# DC v2 quirk: the first-time creation of the e2e-node-modules volume triggers
+# a project-state change that forces app to be recreated, breaking DNS resolution
+# of the `app` service name inside the runner container.
+#
+# By deriving the network from the already-running app container and mounting
+# the volume explicitly, we attach to the live project network without touching
+# the project state. `app` is already healthy (waited in section 1).
+#
 # Pass extra args safely via "$@" inside the bash -c script so that
 # arguments with spaces or special characters are preserved verbatim.
 # Use `set +e` to capture the Playwright exit code without set -e
@@ -173,26 +173,25 @@ echo "=== Fixtures chargées. ==="
 # ----------------------------------------------------------------
 echo "=== Lancement des tests Playwright ==="
 set +e
-docker compose \
-  "${COMPOSE_FILES[@]}" \
-  --profile e2e \
-  run --rm \
-  e2e-runner \
-  bash -c '
-    npm ci --include=dev --silent
-    # `docker compose run` peut recréer le conteneur app (changement de config du projet).
-    # On attend depuis l'intérieur du réseau Docker que app réponde avant de lancer Playwright.
-    count=0
-    until curl -sf http://app/auth/login >/dev/null 2>&1; do
-      count=$((count+1))
-      if [ "$count" -ge 40 ]; then
-        echo "=== TIMEOUT : app non prête après $((count*3))s ===" >&2
-        exit 1
-      fi
-      sleep 3
-    done
-    npx playwright test "$@"
-  ' -- "$@"
+
+APP_CONTAINER_ID=$(docker compose "${COMPOSE_FILES[@]}" ps -q app 2>/dev/null | head -1)
+COMPOSE_NETWORK=$(docker inspect "${APP_CONTAINER_ID}" \
+  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' \
+  2>/dev/null | head -1)
+COMPOSE_PROJECT="${COMPOSE_NETWORK%_default}"
+E2E_VOLUME="${COMPOSE_PROJECT}_e2e-node-modules"
+docker volume create "${E2E_VOLUME}" 2>/dev/null || true
+
+docker run --rm \
+  --network "${COMPOSE_NETWORK}" \
+  --volume "${PROJECT_ROOT}:/workspace" \
+  --volume "${E2E_VOLUME}:/workspace/node_modules" \
+  --workdir /workspace \
+  --env APP_URL=http://app \
+  --env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+  --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+  mcr.microsoft.com/playwright:v1.60.0-noble \
+  bash -c 'npm ci --include=dev --silent && npx playwright test "$@"' -- "$@"
 EXIT_CODE=$?
 set -e
 
