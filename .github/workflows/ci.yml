@@ -207,6 +207,11 @@ jobs:
       - name: Run Playwright E2E tests (Docker Compose)
         run: bash scripts/e2e.sh
 
+      - name: Dump app container logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs app > app-logs-e2e.txt 2>&1 || true
+
       - name: Upload Playwright artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -215,6 +220,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            app-logs-e2e.txt
           retention-days: 7
 
   # ─── Gate 5 : Package deploy artifact ────────────────────────────────────

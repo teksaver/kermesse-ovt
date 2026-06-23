@@ -56,6 +56,12 @@ services:
       - composer-cache:/tmp/composer
       - vendor:/var/www/html/vendor
       - writable:/var/www/html/writable
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/auth/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy
@@ -245,7 +251,7 @@ services:
       db:
         condition: service_healthy
       app:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   composer-cache:
