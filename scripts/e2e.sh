@@ -23,9 +23,16 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 COMPOSE_FILES=(-f "${PROJECT_ROOT}/docker-compose.yml" -f "${PROJECT_ROOT}/docker-compose.e2e.yml")
 
-# The automated phase must never inherit a host-facing override from the caller.
-# Only the post-Playwright --keep transition may replace this value.
-export E2E_APP_BASE_URL="http://app/"
+# In CI (GitHub Actions), playwright uses --network host and reaches the app via
+# the published host port (localhost:8080). In local dev, it runs on the Docker
+# Compose network and reaches the app via the Docker-internal service name.
+if [ "${CI:-}" = "true" ]; then
+  PLAYWRIGHT_APP_URL="http://localhost:${KERMESSE_HTTP_PORT:-8080}"
+  export E2E_APP_BASE_URL="${PLAYWRIGHT_APP_URL}/"
+else
+  PLAYWRIGHT_APP_URL="http://app"
+  export E2E_APP_BASE_URL="http://app/"
+fi
 
 # --keep: after Playwright, preserve the database and recreate only app with a
 # host-facing baseURL. Combine with KERMESSE_HTTP_PORT=8085 to avoid conflicts.
@@ -174,20 +181,29 @@ echo "=== Fixtures chargées. ==="
 echo "=== Lancement des tests Playwright ==="
 set +e
 
-APP_CONTAINER_ID=$(docker compose "${COMPOSE_FILES[@]}" ps -q app 2>/dev/null | head -1)
-COMPOSE_NETWORK=$(docker inspect "${APP_CONTAINER_ID}" \
-  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' \
-  2>/dev/null | head -1)
-COMPOSE_PROJECT="${COMPOSE_NETWORK%_default}"
+COMPOSE_PROJECT=$(docker compose "${COMPOSE_FILES[@]}" config 2>/dev/null | awk '/^name:/{print $2; exit}')
 E2E_VOLUME="${COMPOSE_PROJECT}_e2e-node-modules"
 docker volume create "${E2E_VOLUME}" 2>/dev/null || true
 
+if [ "${CI:-}" = "true" ]; then
+  # CI (GitHub Actions): bridge inter-container traffic is unreliable for Chromium.
+  # Use --network host so the playwright container reaches app at localhost:8080
+  # via the published port — no Docker DNS required.
+  PLAYWRIGHT_NETWORK="host"
+else
+  # Local: derive the project network from the running app container.
+  APP_CONTAINER_ID=$(docker compose "${COMPOSE_FILES[@]}" ps -q app 2>/dev/null | head -1)
+  PLAYWRIGHT_NETWORK=$(docker inspect "${APP_CONTAINER_ID}" \
+    --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' \
+    2>/dev/null | head -1)
+fi
+
 docker run --rm \
-  --network "${COMPOSE_NETWORK}" \
+  --network "${PLAYWRIGHT_NETWORK}" \
   --volume "${PROJECT_ROOT}:/workspace" \
   --volume "${E2E_VOLUME}:/workspace/node_modules" \
   --workdir /workspace \
-  --env APP_URL=http://app \
+  --env APP_URL="${PLAYWRIGHT_APP_URL}" \
   --env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
   --env PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
   mcr.microsoft.com/playwright:v1.60.0-noble \
