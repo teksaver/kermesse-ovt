@@ -95,7 +95,16 @@ _run_with_timeout() {
 
 # ----------------------------------------------------------------
 # 1. Start core services (with E2E overrides)
+#
+# Pre-create all project resources (volumes, network) with --no-start so that
+# e2e-node-modules exists before the first `up -d` call. Without this step,
+# `docker compose run --profile e2e e2e-runner` creates e2e-node-modules at
+# run-time, which Docker Compose v2 interprets as a project-state change and
+# forces a recreation of the app container — breaking cross-container DNS.
 # ----------------------------------------------------------------
+echo "=== Initialisation des ressources du projet E2E (volumes, réseau) ==="
+docker compose "${COMPOSE_FILES[@]}" --profile e2e up --no-start 2>/dev/null || true
+
 echo "=== Démarrage des services (app, db) avec surcharge E2E ==="
 docker compose "${COMPOSE_FILES[@]}" up -d app db
 
