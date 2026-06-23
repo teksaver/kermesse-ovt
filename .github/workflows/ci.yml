@@ -370,7 +370,10 @@ jobs:
       - name: Download packaged artifact for rehearsal
         uses: actions/download-artifact@v4
         with:
-          name: kermesse-deploy
+          # L'upload de package-artifact nomme l'artefact selon l'événement :
+          # `kermesse-deploy` sur push main, `kermesse-deploy-pr-<num>` sur PR.
+          # Le download doit suivre la même condition, sinon « Artifact not found ».
+          name: ${{ github.event_name == 'pull_request' && format('kermesse-deploy-pr-{0}', github.event.pull_request.number) || 'kermesse-deploy' }}
           run-id: ${{ github.run_id }}
           github-token: ${{ github.token }}
           path: build/
