@@ -65,7 +65,7 @@ _cleanup() {
     return
   fi
   # Sauvegarder les logs app avant teardown (diagnostic CI — AC4)
-  docker compose "${COMPOSE_FILES[@]}" logs app > "${PROJECT_ROOT}/app-logs-e2e.txt" 2>&1 || true
+  docker compose "${COMPOSE_FILES[@]}" logs --no-color app > "${PROJECT_ROOT}/app-logs-e2e.txt" 2>&1 || true
   echo "=== Nettoyage des conteneurs E2E (artefacts préservés) ==="
   docker compose "${COMPOSE_FILES[@]}" --profile e2e down --remove-orphans 2>/dev/null || true
 }
