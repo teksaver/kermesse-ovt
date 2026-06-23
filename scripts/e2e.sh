@@ -57,6 +57,8 @@ _cleanup() {
     echo "=== Pour arrêter : cd \"${PROJECT_ROOT}\" && docker compose -f docker-compose.yml -f docker-compose.e2e.yml down ==="
     return
   fi
+  # Sauvegarder les logs app avant teardown (diagnostic CI — AC4)
+  docker compose "${COMPOSE_FILES[@]}" logs app > "${PROJECT_ROOT}/app-logs-e2e.txt" 2>&1 || true
   echo "=== Nettoyage des conteneurs E2E (artefacts préservés) ==="
   docker compose "${COMPOSE_FILES[@]}" --profile e2e down --remove-orphans 2>/dev/null || true
 }
@@ -165,7 +167,7 @@ set +e
 docker compose \
   "${COMPOSE_FILES[@]}" \
   --profile e2e \
-  run --rm \
+  run --rm --no-deps \
   e2e-runner \
   bash -c 'npm ci --include=dev --silent && npx playwright test "$@"' -- "$@"
 EXIT_CODE=$?
