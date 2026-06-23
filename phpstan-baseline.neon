@@ -13,12 +13,6 @@ parameters:
 			path: app/Controllers/Kermesse/KermesseController.php
 
 		-
-			message: '#^PHPDoc tag @var for variable \$db contains generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
-			identifier: missingType.generics
-			count: 2
-			path: app/Database/Migrations/2026-06-20-000000_RenameSignupsToSlotSignups.php
-
-		-
 			message: '#^Method App\\Filters\\OpsAuthFilter\:\:bootstrapNonceTable\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
 			identifier: missingType.generics
 			count: 1
