@@ -179,25 +179,31 @@ echo "=== Fixtures chargées. ==="
 # exiting the script before the report and cleanup steps can run.
 # ----------------------------------------------------------------
 echo "=== Lancement des tests Playwright ==="
-set +e
 
 COMPOSE_PROJECT=$(docker compose "${COMPOSE_FILES[@]}" config 2>/dev/null | awk '/^name:/{print $2; exit}')
 E2E_VOLUME="${COMPOSE_PROJECT}_e2e-node-modules"
 docker volume create "${E2E_VOLUME}" 2>/dev/null || true
 
 if [ "${CI:-}" = "true" ]; then
-  # CI (GitHub Actions): bridge inter-container traffic is unreliable for Chromium.
-  # Use --network host so the playwright container reaches app at localhost:8080
-  # via the published port — no Docker DNS required.
+  # CI (GitHub Actions): Docker bridge inter-container traffic is blocked for Chromium
+  # on Linux. Use --network host so the playwright container reaches app via the
+  # published host port (localhost:${KERMESSE_HTTP_PORT:-8080}) — no Docker DNS needed.
+  # PLAYWRIGHT_APP_URL and E2E_APP_BASE_URL are already set to localhost:PORT above.
   PLAYWRIGHT_NETWORK="host"
 else
-  # Local: derive the project network from the running app container.
+  # Local dev: derive the project network from the running app container.
   APP_CONTAINER_ID=$(docker compose "${COMPOSE_FILES[@]}" ps -q app 2>/dev/null | head -1)
   PLAYWRIGHT_NETWORK=$(docker inspect "${APP_CONTAINER_ID}" \
     --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' \
     2>/dev/null | head -1)
+  if [ -z "${PLAYWRIGHT_NETWORK}" ]; then
+    echo "=== ERREUR : impossible de dériver le réseau Docker du conteneur app ===" >&2
+    echo "Vérifier que docker compose up -d app db a démarré correctement." >&2
+    exit 1
+  fi
 fi
 
+set +e
 docker run --rm \
   --network "${PLAYWRIGHT_NETWORK}" \
   --volume "${PROJECT_ROOT}:/workspace" \
