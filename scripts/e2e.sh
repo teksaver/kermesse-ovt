@@ -167,9 +167,23 @@ set +e
 docker compose \
   "${COMPOSE_FILES[@]}" \
   --profile e2e \
-  run --rm --no-deps \
+  run --rm \
   e2e-runner \
-  bash -c 'npm ci --include=dev --silent && npx playwright test "$@"' -- "$@"
+  bash -c '
+    npm ci --include=dev --silent
+    # `docker compose run` peut recréer le conteneur app (changement de config du projet).
+    # On attend depuis l'intérieur du réseau Docker que app réponde avant de lancer Playwright.
+    count=0
+    until curl -sf http://app/auth/login >/dev/null 2>&1; do
+      count=$((count+1))
+      if [ "$count" -ge 40 ]; then
+        echo "=== TIMEOUT : app non prête après $((count*3))s ===" >&2
+        exit 1
+      fi
+      sleep 3
+    done
+    npx playwright test "$@"
+  ' -- "$@"
 EXIT_CODE=$?
 set -e
 
