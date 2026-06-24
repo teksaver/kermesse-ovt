@@ -500,14 +500,16 @@ class MigrationRunnerService
      */
     public function reconcileChecksum(string $version, string $currentChecksum): array
     {
-        try {
-            $appliedVersions = $this->getAppliedVersions();
-        } catch (\Throwable) {
-            return ['ok' => false, 'action' => 'error', 'error' => 'schema_versions_unavailable'];
+        // Blank DB: schema_versions not yet created — no drift to reconcile.
+        if (!$this->db->tableExists('schema_versions')) {
+            return ['ok' => true, 'action' => 'nothing_to_reconcile'];
         }
 
+        $appliedVersions = $this->getAppliedVersions();
+
         if (!isset($appliedVersions[$version])) {
-            return ['ok' => false, 'action' => 'not_found', 'error' => 'version_not_in_schema_versions'];
+            // Version not yet applied — no drift to reconcile.
+            return ['ok' => true, 'action' => 'nothing_to_reconcile'];
         }
 
         $existing = $appliedVersions[$version];

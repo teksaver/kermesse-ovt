@@ -294,3 +294,15 @@ The following issues were found by the review agents (Adversarial/Edge Case) in 
 - **Fichier** : `tests/database/ExampleDatabaseTest.php`
 - **Problème** : Pas de `$migrate = false` ni `$refresh = false`. Masqué par le filtre `--group mariadb` dans `composer test:mariadb`, mais si on exécute `phpunit --configuration phpunit.mariadb.xml --testsuite Database` sans le filtre `--group`, CI4 tentera de migrer via son runner natif et échouera (table `factories` absente du schéma SQL).
 - **Priorité** : Faible — pré-existant, hors périmètre story 6.11.
+
+## Deferred from: code review of 6-12-restaurer-le-job-e2e-playwright-en-ci.md (2026-06-23)
+- Contradiction in Readiness Fix for automated runs — deferred: aucun changement de code. La readiness est garantie correctement par la boucle bash. La "contradiction" est une redondance saine : si on supprimait le healthcheck Compose, on perdrait la visibilité health et le support docker compose run manuel sans rien gagner en CI.
+- Excessive healthcheck start period (120s) [docker-compose.yml]
+- Log file overwriting and concurrency risks [scripts/e2e.sh]
+- Naive Compose project name extraction / Empty project name [scripts/e2e.sh]
+- Silent volume creation failures [scripts/e2e.sh]
+- Unsafe Docker network inspection [scripts/e2e.sh]
+- Inefficient use of npm ci with persistent volumes [scripts/e2e.sh]
+- Hardcoded Playwright Docker Image Version [scripts/e2e.sh]
+- Missing path upload warning in CI [.github/workflows/ci.yml]
+- app container multiple networks [scripts/e2e.sh]

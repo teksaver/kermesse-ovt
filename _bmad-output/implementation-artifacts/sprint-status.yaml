@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-23T09:30:00+0200
+last_updated: 2026-06-24T15:00:00+0200
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
@@ -100,7 +100,8 @@ development_status:
   6-9-qualifier-et-deployer-la-release-candidate: done
   6-10-securiser-le-deploiement-des-migrations-incompatibles: in-progress
   6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci: review
-  6-12-restaurer-le-job-e2e-playwright-en-ci: review
+  6-12-restaurer-le-job-e2e-playwright-en-ci: done
+  6-13-corriger-le-drift-fix-en-repetition-de-deploiement-sur-base-vierge: done
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog

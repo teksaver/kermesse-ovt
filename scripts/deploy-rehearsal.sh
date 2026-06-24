@@ -759,7 +759,7 @@ else
 fi
 echo "  Transfert            [OK]"
 echo "  Activation           [OK]"
-echo "  Drift-fix            [OK] — checksum réconcilié"
+echo "  Drift-fix            [OK]"
 echo "  Migration Phase 1    [OK] — vue de compatibilité slot_signups créée"
 echo "  Smoke Phase 1        [OK] — lecture et écriture sur vue confirmées"
 echo "  Migration Phase 2    [OK] — RENAME TABLE signups → slot_signups"

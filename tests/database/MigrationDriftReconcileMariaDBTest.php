@@ -159,10 +159,26 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
     }
 
     // -----------------------------------------------------------------------
-    // Version inconnue
+    // Base vierge (schema_versions absente)
     // -----------------------------------------------------------------------
 
-    public function testReconcileChecksumRejectsUnknownVersion(): void
+    public function testReconcileChecksumReturnsNothingToReconcileOnBlankDatabase(): void
+    {
+        // schema_versions n'existe pas (setUp fait un DROP TABLE sur tout).
+        // Ne pas appeler $runner->run() pour éviter le bootstrapping des tables.
+        $runner = $this->makeRunner();
+
+        $result = $runner->reconcileChecksum('20260614121500_add_last_login_at_to_users', 'somechecksum');
+
+        $this->assertTrue($result['ok'], 'Doit être ok sur base vierge');
+        $this->assertSame('nothing_to_reconcile', $result['action']);
+    }
+
+    // -----------------------------------------------------------------------
+    // Version inconnue (schema_versions existe mais version non appliquée)
+    // -----------------------------------------------------------------------
+
+    public function testReconcileChecksumReturnsNothingToReconcileForUnknownVersion(): void
     {
         // Bootstrapper schema_versions sans appliquer de migration
         $this->writeMigration('20260614000000_dummy.sql', 'SELECT 1;');
@@ -171,8 +187,9 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
 
         $result = $runner->reconcileChecksum('20260699999999_unknown_version', 'somechecksum');
 
-        $this->assertFalse($result['ok']);
-        $this->assertSame('not_found', $result['action']);
+        // Version non appliquée → rien à réconcilier (no-op succès)
+        $this->assertTrue($result['ok'], 'Version non appliquée doit être un no-op succès');
+        $this->assertSame('nothing_to_reconcile', $result['action']);
     }
 
     // -----------------------------------------------------------------------
