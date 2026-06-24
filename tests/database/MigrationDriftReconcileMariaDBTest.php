@@ -54,6 +54,10 @@ final class MigrationDriftReconcileMariaDBTest extends CIUnitTestCase
         $db->query('DROP VIEW IF EXISTS `slot_signups`');
         $db->query('SET FOREIGN_KEY_CHECKS = 1');
 
+        // Reset CI4's table-list cache: after DROP TABLE, tableExists() would otherwise
+        // return a stale true from a previous test's run, causing getAppliedVersions() to fail.
+        $db->resetDataCache();
+
         $this->tempMigrationsDir = sys_get_temp_dir() . '/kermesse_drift_test_' . uniqid('', true);
         mkdir($this->tempMigrationsDir, 0755, true);
 
