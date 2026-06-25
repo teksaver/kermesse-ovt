@@ -65,6 +65,7 @@ final class RoleServiceAccessTest extends CIUnitTestCase
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
+        $db->query('DROP TABLE IF EXISTS db_kermesse_user_roles');
         $db->query('
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -250,5 +251,45 @@ final class RoleServiceAccessTest extends CIUnitTestCase
         $service = $this->makeService();
         $this->expectNotToPerformAssertions();
         $service->recordAccess($kermesseId, $userId);
+    }
+
+    public function testRecordAccessWithLegacyRoleSchemaDoesNotThrow(): void
+    {
+        $db = db_connect();
+        $db->query('DROP TABLE IF EXISTS db_kermesse_user_roles');
+        $db->query('
+            CREATE TABLE db_kermesse_user_roles (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id     INTEGER NOT NULL,
+                user_id         INTEGER NOT NULL,
+                role            TEXT    NOT NULL,
+                invited_by      INTEGER,
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+
+        $db->table('users')->insert([
+            'email'      => 'legacy@access-5-2.test',
+            'email_hash' => hash('sha256', 'legacy@access-5-2.test'),
+        ]);
+        $userId = (int) $db->insertID();
+        $db->table('kermesses')->insert([
+            'created_by'  => $userId,
+            'public_slug' => 'legacy-access-52',
+            'name'        => 'Legacy access schema',
+            'status'      => 'open',
+        ]);
+        $kermesseId = (int) $db->insertID();
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $kermesseId,
+            'user_id'     => $userId,
+            'role'        => UserRoleModel::ROLE_OWNER,
+        ]);
+
+        $this->expectNotToPerformAssertions();
+        $this->makeService()->recordAccess($kermesseId, $userId);
     }
 }

@@ -55,10 +55,18 @@ class RoleService
         }
 
         $now  = Time::now()->toDateTimeString();
-        $data = ['last_access_at' => $now];
+        $data = [];
 
-        if ($row['first_access_at'] === null) {
+        if (array_key_exists('last_access_at', $row)) {
+            $data['last_access_at'] = $now;
+        }
+
+        if (array_key_exists('first_access_at', $row) && $row['first_access_at'] === null) {
             $data['first_access_at'] = $now;
+        }
+
+        if ($data === []) {
+            return;
         }
 
         $this->userRoleModel->update((int) $row['id'], $data);
