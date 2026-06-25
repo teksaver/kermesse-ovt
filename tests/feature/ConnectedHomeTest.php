@@ -31,6 +31,9 @@ final class ConnectedHomeTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
+        $db->query('DELETE FROM db_slot_signups');
+        $db->query('DELETE FROM db_slots');
+        $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
         $db->query('DELETE FROM db_kermesses');
         $db->query('DELETE FROM db_users');
@@ -76,13 +79,63 @@ final class ConnectedHomeTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id  INTEGER NOT NULL,
-                user_id      INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        // Story 5.9: HomeController::index() calls canLeaveKermesse() which queries signups.
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_stands (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                kermesse_id   INTEGER NOT NULL,
+                name          TEXT    NOT NULL,
+                display_order INTEGER NOT NULL DEFAULT 0,
+                status        TEXT    NOT NULL DEFAULT \'active\',
+                created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_slots (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                stand_id   INTEGER NOT NULL,
+                starts_at  DATETIME NOT NULL,
+                ends_at    DATETIME NOT NULL,
+                capacity   INTEGER NOT NULL DEFAULT 1,
+                status     TEXT    NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ');
+        $db->query('
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }
@@ -95,7 +148,7 @@ final class ConnectedHomeTest extends CIUnitTestCase
             'email_hash' => hash('sha256', $email),
             'first_name' => 'Test',
             'last_name'  => 'User',
-            'phone'      => '',
+            'phone'      => '', 
         ]);
 
         return (int) $db->insertID();

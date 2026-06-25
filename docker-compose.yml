@@ -56,6 +56,12 @@ services:
       - composer-cache:/tmp/composer
       - vendor:/var/www/html/vendor
       - writable:/var/www/html/writable
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/auth/login"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy
@@ -106,6 +112,7 @@ services:
   deploy-target:
     profiles: [rehearsal]
     image: atmoz/sftp:latest
+    platform: linux/amd64
     ports:
       - "127.0.0.1:${DEPLOY_TARGET_SFTP_PORT:-2222}:22"
     environment:
@@ -214,9 +221,42 @@ services:
       - deploy-web
       - db
 
+  # ---------------------------------------------------------------------------
+  # Profile: e2e — runner Playwright (Story 6.3)
+  # ---------------------------------------------------------------------------
+  # Démarrage via scripts/e2e.sh (qui seed aussi la base) :
+  #   bash scripts/e2e.sh
+  # Usage direct :
+  #   docker compose --profile e2e run --rm e2e-runner npx playwright test
+  #
+  # L'image et @playwright/test sont épinglés sur la même version (1.60.0).
+  # Les navigateurs sont pré-installés dans l'image ; PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+  # empêche un re-téléchargement lors de npm ci.
+  e2e-runner:
+    profiles: [e2e]
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    volumes:
+      # Monter le dépôt complet en lecture + écriture pour les sorties E2E.
+      - .:/workspace
+      # Volume dédié pour node_modules : évite les conflits de binaires Linux/macOS
+      # et accélère les relances sans re-télécharger les dépendances npm.
+      - e2e-node-modules:/workspace/node_modules
+    working_dir: /workspace
+    environment:
+      APP_URL: http://app
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # Pointe vers les navigateurs pré-installés dans l'image officielle.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+
 volumes:
   composer-cache:
   mariadb-data:
   vendor:
   writable:
   deploy-target-data:
+  e2e-node-modules:

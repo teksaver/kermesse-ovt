@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\KermesseModel;
-use App\Models\SignupModel;
+use App\Models\SlotSignupModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
 
@@ -60,7 +60,7 @@ class PublicVolunteerPageService
         }
 
         $hasActiveSignups = $userId !== null
-            && ! empty(model(SignupModel::class)->findActiveForUserAndKermesse($userId, $kermesseId));
+            && ! empty(model(SlotSignupModel::class)->findActiveForUserAndKermesse($userId, $kermesseId));
 
         return [
             'kermesse'        => $publicKermesse,
@@ -108,7 +108,7 @@ class PublicVolunteerPageService
             return null;
         }
 
-        $activeSignups  = model(SignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
+        $activeSignups  = model(SlotSignupModel::class)->countActiveBySlotIds([$slotId])[$slotId] ?? 0;
         $capacity       = (int) $slot['capacity'];
         $remainingSpots = max(0, $capacity - $activeSignups);
 
@@ -145,14 +145,16 @@ class PublicVolunteerPageService
             fn($slot) => $slot['ends_at'] >= $now
         );
 
-        $signupCounts = model(SignupModel::class)->countActiveBySlotIds(array_column($allSlots, 'id'));
+        $signupCounts = model(SlotSignupModel::class)->countActiveBySlotIds(array_column($allSlots, 'id'));
 
         $userSignups = [];
         $userIntervals = [];
         if ($userId !== null && !empty($allSlots)) {
-            $signups = model(SignupModel::class)
+            $signups = model(SlotSignupModel::class)
                 ->where('user_id', $userId)
-                ->where('status', \App\Models\SignupModel::STATUS_ACTIVE)
+                ->where('canceled_at', null)
+                ->where('rejected_at', null)
+                ->where('deleted_at', null)
                 ->findAll();
             
             $userSignups = array_flip(array_column($signups, 'slot_id'));
@@ -219,7 +221,7 @@ class PublicVolunteerPageService
 
         return [
             'slotId'         => $slotId,
-            'signupHref'     => ($isFull || $isSignedUp || $isOverlapping) ? null : site_url("k/{$publicSlug}/slots/{$slotId}/signup"),
+            'signupHref'     => ($isFull || $isSignedUp || $isOverlapping) ? null : site_url("k/{$publicSlug}/slots/{$slotId}/slot-signup"),
             'displayTime'    => $this->formatSlotTime((string) $slot['starts_at'], (string) $slot['ends_at']),
             'capacity'       => $capacity,
             'remainingSpots' => $remainingSpots,

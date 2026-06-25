@@ -10,3 +10,6 @@
 set -euo pipefail
 
 sed -i '/^\s*ChrootDirectory/d' /etc/ssh/sshd_config
+
+# Fix ownership back to www-data (UID 33) so deploy-web can write symlinks and files
+chown 33:33 /home/deploy

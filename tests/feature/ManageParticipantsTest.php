@@ -49,7 +49,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -67,7 +67,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee(self::STAND_NAME);
 
         // Identité et contact des bénévoles actifs (UX-DR24).
@@ -85,7 +85,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->gestionId);
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee(self::STAND_NAME);
         $result->assertSee('Durand');
         $result->assertSee('0611223344');
@@ -101,15 +101,66 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertSee('Restant : 1');
     }
 
-    public function testCancelledSignupVolunteerIsExcluded(): void
+    public function testCancelledSignupVolunteerIsNotCountedButAppearsInHistory(): void
     {
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        // Le bénévole dont l'inscription est annulée n'est ni nommé ni compté (UX-DR23).
-        // (Nom volontairement distinct de toute copie d'UI comme « Annuler ».)
-        $result->assertDontSee('Lefebvre');
+        // Compte : seulement les inscriptions actives (UX-DR23).
+        $result->assertSee('Occupé : 2 / 3');
+        // Lefebvre est visible dans la section historique (Story 5.10 AC1).
+        $result->assertSee('Lefebvre');
+        // Son email n'est jamais exposé dans l'historique (lecture seule, pas de contact).
         $result->assertDontSee('quentin.lefebvre@participant.test');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.10 — Tableau historique (annulé/supprimé par admin)
+    // ------------------------------------------------------------------
+
+    public function testHistoricalSectionShowsCancelledVolunteer(): void
+    {
+        // The fixture already has Lefebvre with status='cancelled'.
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        // Lefebvre should appear in the history section but not in the active table.
+        $result->assertSee('Historique');
+        $result->assertSee('Lefebvre');
+        // The cancelled badge should be shown.
+        $result->assertSee('Annulé');
+        // Lefebvre's email must not appear (history section is read-only, no contact info).
+        $result->assertDontSee('quentin.lefebvre@participant.test');
+    }
+
+    public function testHistoricalSectionShowsRemovedVolunteerWithAdminBadge(): void
+    {
+        // Override Lefebvre's signup to 'removed' (admin suppression via canceled_by != user_id).
+        db_connect()->table('slot_signups')
+            ->where('user_id', $this->annuleId)
+            ->update(['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999]);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Historique');
+        $result->assertSee('Lefebvre');
+        $result->assertSee("Supprimé par l'admin");
+    }
+
+    public function testHistoricalSectionAbsentWhenNoHistoricalSignups(): void
+    {
+        // Remove Lefebvre's signup entirely.
+        db_connect()->table('slot_signups')
+            ->where('user_id', $this->annuleId)
+            ->delete();
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        // No history toggle rendered when no cancelled/removed signups exist.
+        // Use "Historique (" to avoid matching the always-present HTML comment.
+        $result->assertDontSee('Historique (');
     }
 
     public function testManagerOnKermesseWithoutStandsSeesEmptyState(): void
@@ -132,8 +183,62 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->adminId))->get("kermesse/{$emptyKermesseId}");
 
         $result->assertStatus(200);
-        $result->assertSee('Gestion des inscriptions');
+        $result->assertSee('Gestion des inscrits');
         $result->assertSee("Aucun stand n'a encore été créé");
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.3 — Badge de modification dans « Gestion des inscrits »
+    // ------------------------------------------------------------------
+
+    public function testAdminSeesModificationBadgeWhenSignupWasModified(): void
+    {
+        $db = db_connect();
+        $db->table('slot_signups')
+            ->where('slot_id', $this->buvetteSlot)
+            ->where('user_id', $this->camilleId)
+            ->update([
+                'last_modified_by_user_id' => $this->adminId,
+                'last_modified_at'         => '2026-10-10 15:00:00',
+            ]);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Modifié par Admin');
+        $result->assertSee('le 10/10/2026 à 15:00');
+        $body = (string) $result->response()->getBody();
+        $this->assertStringContainsString('role="note"', $body);
+        $this->assertStringContainsString('aria-label="Modifié par Admin le 10/10/2026 à 15:00"', $body);
+    }
+
+    public function testModificationBadgeFallsBackWhenModifierFirstNameIsEmpty(): void
+    {
+        $db = db_connect();
+        $db->table('users')
+            ->where('id', $this->adminId)
+            ->update(['first_name' => '']);
+        $db->table('slot_signups')
+            ->where('slot_id', $this->buvetteSlot)
+            ->where('user_id', $this->camilleId)
+            ->update([
+                'last_modified_by_user_id' => $this->adminId,
+                'last_modified_at'         => '2026-10-10 15:00:00',
+            ]);
+
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Modifié par un administrateur');
+        $result->assertSee('le 10/10/2026 à 15:00');
+    }
+
+    public function testNoBadgeWhenSignupWasNotModified(): void
+    {
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertDontSee('Modifié par');
     }
 
     // ------------------------------------------------------------------
@@ -145,7 +250,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result = $this->getDashboard($this->benevoleId);
 
         $result->assertStatus(200);
-        $result->assertDontSee('Gestion des inscriptions');
+        $result->assertDontSee('Gestion des inscrits');
 
         // Aucune donnée personnelle d'un autre bénévole ne doit fuiter.
         $result->assertDontSee('Durand');
@@ -178,7 +283,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => $phone,
+                'phone'      => $phone, 
             ]);
         }
 
@@ -230,14 +335,17 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $this->insertSignup($this->buvetteSlot, $this->annuleId, 'cancelled');
     }
 
-    private function insertSignup(int $slotId, int $userId, string $status): void
+    private function insertSignup(int $slotId, int $userId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => null,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $userId];
+        $row += match ($state) {
+            'cancelled'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'                => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'                => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                  => [],
+        };
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -286,13 +394,15 @@ final class ManageParticipantsTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id  INTEGER NOT NULL,
-                user_id      INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -301,7 +411,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -313,20 +423,32 @@ final class ManageParticipantsTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME NULL DEFAULT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

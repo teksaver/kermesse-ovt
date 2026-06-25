@@ -88,10 +88,12 @@ final class ManageKermesseLifecycleTest extends CIUnitTestCase
                 user_id      INTEGER NOT NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -100,7 +102,7 @@ final class ManageKermesseLifecycleTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -113,7 +115,7 @@ final class ManageKermesseLifecycleTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )

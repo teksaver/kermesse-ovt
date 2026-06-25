@@ -16,8 +16,7 @@ $routes->get('auth/login', '\App\Controllers\Auth\MagicLinkController::showLogin
 $routes->post('auth/login', '\App\Controllers\Auth\MagicLinkController::requestLink');
 $routes->get('auth/magic-link/(:segment)', '\App\Controllers\Auth\MagicLinkController::verify/$1');
 $routes->post('auth/logout', '\App\Controllers\Auth\LogoutController::logout');
-$routes->get('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::show', ['filter' => 'auth']);
-$routes->post('auth/profile-resolution', '\App\Controllers\Auth\ProfileResolutionController::resolve', ['filter' => 'auth']);
+
 
 // ---------------------------------------------------------------------------
 // Connected home — kermesse list (Story 1.5)
@@ -41,7 +40,7 @@ $routes->post('kermesses', '\App\Controllers\Kermesse\KermesseController::store'
 // ---------------------------------------------------------------------------
 // Tableau de bord interne accessible à tout rôle (Story 4.1) ; les sections
 // internes sont gardées par rôle côté serveur dans le contrôleur/la vue.
-$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->get('kermesse/(:num)', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::show/$1', ['filter' => ['pending-resolution', 'role:owner,admin,gestionnaire,benevole']]);
 $routes->post('kermesse/(:num)/edit', '\App\Controllers\Kermesse\Dashboard\KermesseAdminController::update/$1', ['filter' => 'role:owner,admin']);
 
 // Invitation d'un Admin/Gestionnaire (Story 4.5) — réservé Owner/Admin (RBAC route + service).
@@ -52,7 +51,25 @@ $routes->post('kermesse/(:num)/team/(:num)/delete', '\App\Controllers\Kermesse\D
 
 // Désistement bénévole : annuler sa propre inscription depuis « Mes participations »
 // (Story 4.3). Ouvert à tout rôle membre ; l'ownership est garanti côté service.
-$routes->post('kermesse/(:num)/signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/cancel', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::cancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+
+// Story 5.14 — accepter / refuser une inscription non confirmée (bénévole).
+$routes->post('kermesse/(:num)/slot-signups/(:num)/accept', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::accept/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/reject', '\App\Controllers\Kermesse\Dashboard\SlotSignupCancellationController::reject/$1/$2', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
+
+// Story 5.10 — annulation et correction admin (Owner/Admin/Gestionnaire).
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-cancel', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminCancel/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-edit', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminEdit/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+
+// Story 5.11 — ajout manuel d'une inscription (Owner/Admin/Gestionnaire).
+$routes->post('kermesse/(:num)/slots/(:num)/admin-add-slot-signup', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminAddSlotSignup/$1/$2', ['filter' => ['auth', 'role:owner,admin,gestionnaire']]);
+
+// Story 5.12 — déplacement admin d'une inscription (Owner/Admin/Gestionnaire).
+$routes->post('kermesse/(:num)/slot-signups/(:num)/admin-move-slot-signup', '\App\Controllers\Kermesse\Dashboard\AdminSlotSignupController::adminMoveSlotSignup/$1/$2', ['filter' => 'role:owner,admin,gestionnaire']);
+
+// Quitter une kermesse (Story 5.9). Filtre inclut owner : le rejet Owner produit le
+// message FR spécifique côté service/flash plutôt qu'un 403 générique du RoleFilter.
+$routes->post('kermesse/(:num)/leave', '\App\Controllers\Kermesse\Dashboard\LeaveKermesseController::leave/$1', ['filter' => 'role:owner,admin,gestionnaire,benevole']);
 
 // ---------------------------------------------------------------------------
 // Lifecycle management — Owner/Admin only (Story 2.5)
@@ -79,15 +96,16 @@ $routes->post('kermesse/(:num)/slots/(:num)/delete', '\App\Controllers\Kermesse\
 // Public volunteer page & signup (Stories 3.1–3.5)
 // ---------------------------------------------------------------------------
 $routes->get('k/(:segment)', '\App\Controllers\Kermesse\Public\PublicController::index/$1');
-$routes->get('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::show/$1/$2');
-$routes->post('k/(:segment)/slots/(:num)/signup', '\App\Controllers\Kermesse\Public\SignupController::submit/$1/$2');
-$routes->post('k/(:segment)/slots/(:num)/signup/forget', '\App\Controllers\Kermesse\Public\SignupController::forget/$1/$2');
-$routes->get('k/(:segment)/slots/(:num)/signup/confirmation', '\App\Controllers\Kermesse\Public\SignupController::confirm/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/slot-signup', '\App\Controllers\Kermesse\Public\SlotSignupController::show/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/slot-signup', '\App\Controllers\Kermesse\Public\SlotSignupController::submit/$1/$2');
+$routes->post('k/(:segment)/slots/(:num)/slot-signup/forget', '\App\Controllers\Kermesse\Public\SlotSignupController::forget/$1/$2');
+$routes->get('k/(:segment)/slots/(:num)/slot-signup/confirmation', '\App\Controllers\Kermesse\Public\SlotSignupController::confirm/$1/$2');
 
 // ---------------------------------------------------------------------------
 // Ops endpoints — protected by HMAC authentication, CSRF excluded
 // ---------------------------------------------------------------------------
 $routes->post('ops/migrate',        '\App\Controllers\Ops\MigrationController::migrate',   ['filter' => 'ops-auth']);
 $routes->post('ops/migrate/status', '\App\Controllers\Ops\MigrationController::status',    ['filter' => 'ops-auth']);
+$routes->post('ops/fix-drift',      '\App\Controllers\Ops\DriftController::fixDrift',      ['filter' => 'ops-auth']);
 $routes->post('ops/probe',          '\App\Controllers\Ops\ProbeController::probe',          ['filter' => 'ops-auth']);
 $routes->post('ops/activate',       '\App\Controllers\Ops\ActivateController::activate',   ['filter' => 'ops-auth']);

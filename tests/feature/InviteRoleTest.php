@@ -52,7 +52,7 @@ final class InviteRoleTest extends CIUnitTestCase
         $db = db_connect();
         $db->query('DELETE FROM db_email_events');
         $db->query('DELETE FROM db_access_tokens');
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -86,8 +86,8 @@ final class InviteRoleTest extends CIUnitTestCase
         $result = $this->getDashboard($this->gestionId);
 
         $result->assertStatus(200);
-        // Le Gestionnaire voit la section « Gestion des inscriptions » mais PAS le formulaire d'invitation.
-        $result->assertSee('Gestion des inscriptions');
+        // Le Gestionnaire voit la section « Gestion des inscrits » mais PAS le formulaire d'invitation.
+        $result->assertSee('Gestion des inscrits');
         $result->assertDontSee(self::INVITE_FORM_MARKER);
     }
 
@@ -107,6 +107,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->gestionId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'admin',
             ]));
@@ -120,6 +122,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->benevoleId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'admin',
             ]));
@@ -140,7 +144,9 @@ final class InviteRoleTest extends CIUnitTestCase
         try {
             $result = $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => self::NEW_INVITEE_EMAIL,
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => self::NEW_INVITEE_EMAIL,
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -192,6 +198,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->adminId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::EXISTING_EMAIL,
                 'role'  => 'gestionnaire',
             ]));
@@ -220,6 +228,8 @@ final class InviteRoleTest extends CIUnitTestCase
         // ligne unique (kermesse_id, user_id) sans lever d'erreur de doublon (idempotence).
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'benevole@invite.test',
                 'role'  => 'gestionnaire',
             ]));
@@ -243,7 +253,9 @@ final class InviteRoleTest extends CIUnitTestCase
         try {
             $result = $this->withSession($this->session($this->ownerId))
                 ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
-                    'email' => self::NEW_INVITEE_EMAIL,
+                    'first_name' => 'Test',
+                'last_name'  => 'User',
+                'email' => self::NEW_INVITEE_EMAIL,
                     'role'  => 'admin',
                 ]));
         } finally {
@@ -277,6 +289,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'pas-un-email',
                 'role'  => 'admin',
             ]));
@@ -292,6 +306,8 @@ final class InviteRoleTest extends CIUnitTestCase
         // Tenter d'attribuer un rôle hors liste (owner) doit échouer à la validation.
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => self::NEW_INVITEE_EMAIL,
                 'role'  => 'owner',
             ]));
@@ -309,6 +325,8 @@ final class InviteRoleTest extends CIUnitTestCase
     {
         $result = $this->withSession($this->session($this->adminId))
             ->post("kermesse/{$this->kermesseId}/invitations", $this->csrf([
+                'first_name' => 'Test',
+                'last_name'  => 'User',
                 'email' => 'owner@invite.test',
                 'role'  => 'admin',
             ]));
@@ -328,14 +346,17 @@ final class InviteRoleTest extends CIUnitTestCase
     // Suppression d'un membre de l'équipe (removeRole)
     // ------------------------------------------------------------------
 
-    public function testRemoveAdminWithoutSignupsDeletesRole(): void
+    public function testRemoveActiveMemberWithoutSignupsDowngradesToBenevole(): void
     {
+        // Story 5.8: un membre actif (invited_at IS NULL) est toujours rétrogradé en bénévole,
+        // même sans inscriptions, afin qu'il garde la kermesse visible dans "Mes participations"
+        // et puisse se retirer lui-même via Story 5.9.
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
 
         $result->assertRedirect();
-        $role = $this->roleForUser($this->adminId);
-        $this->assertNull($role, 'La ligne doit être supprimée quand l\'admin n\'a pas d\'inscriptions.');
+        $this->assertSame('benevole', $this->roleForUser($this->adminId),
+            'Un membre actif sans inscriptions doit être rétrogradé en bénévole (pas supprimé).');
     }
 
     public function testRemoveAdminWithActiveSignupsDowngradesToBenevole(): void
@@ -360,6 +381,56 @@ final class InviteRoleTest extends CIUnitTestCase
         $result->assertRedirect();
         $this->assertSame('benevole', $this->roleForUser($this->gestionId),
             'Un gestionnaire avec des inscriptions actives doit être rétrogradé en bénévole.');
+    }
+
+    // ------------------------------------------------------------------
+    // Story 5.8 — Révocation par un Admin + flash message
+    // ------------------------------------------------------------------
+
+    public function testAdminCanRevokeGestionnaire(): void
+    {
+        // AC4 Story 5.8 (branche Gestionnaire) : un Admin peut révoquer un Gestionnaire.
+        $result = $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->gestionId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($this->gestionId),
+            'Un Admin doit pouvoir révoquer un Gestionnaire.');
+    }
+
+    public function testAdminCanRevokeAnotherAdmin(): void
+    {
+        // AC4 Story 5.8 (branche Admin→Admin) : un Admin peut révoquer un autre Admin.
+        $db = db_connect();
+        $db->table('users')->insert([
+            'email'      => 'admin2@invite.test',
+            'email_hash' => hash('sha256', 'admin2@invite.test'),
+            'first_name' => 'Admin2', 'last_name' => 'Test', 'phone' => '', 
+        ]);
+        $admin2Id = (int) $db->insertID();
+        $db->table('kermesse_user_roles')->insert([
+            'kermesse_id' => $this->kermesseId, 'user_id' => $admin2Id, 'role' => 'admin',
+        ]);
+
+        $result = $this->withSession($this->session($this->adminId))
+            ->post("kermesse/{$this->kermesseId}/team/{$admin2Id}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertSame('benevole', $this->roleForUser($admin2Id),
+            'Un Admin doit pouvoir révoquer un autre Admin (symétrie avec l\'invitation Story 5.5).');
+    }
+
+    public function testRevocationFlashMessageIsCorrect(): void
+    {
+        $result = $this->withSession($this->session($this->ownerId))
+            ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
+
+        $result->assertRedirect();
+        $this->assertStringContainsString(
+            'révoqué',
+            (string) session()->getFlashdata('invite_success'),
+            'Le message de confirmation doit mentionner la révocation.',
+        );
     }
 
     // ------------------------------------------------------------------
@@ -427,10 +498,9 @@ final class InviteRoleTest extends CIUnitTestCase
         ]);
         $slotId = (int) $db->insertID();
 
-        $db->table('signups')->insert([
+        $db->table('slot_signups')->insert([
             'slot_id' => $slotId,
             'user_id' => $userId,
-            'status'  => 'active',
         ]);
     }
 
@@ -468,7 +538,7 @@ final class InviteRoleTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => '',
+                'phone'      => '', 
             ]);
         }
 
@@ -532,13 +602,15 @@ final class InviteRoleTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id  INTEGER NOT NULL,
-                user_id      INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         // Reproduit la contrainte d'unicité de production (uq_role_per_kermesse) pour que le
@@ -550,7 +622,7 @@ final class InviteRoleTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -562,20 +634,33 @@ final class InviteRoleTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME NULL DEFAULT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                status                    TEXT     NOT NULL DEFAULT \'active\',
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('

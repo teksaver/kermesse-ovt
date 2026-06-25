@@ -14,4 +14,4 @@ $labels = [
 ];
 $label = $labels[$status ?? ''] ?? esc($status ?? 'Inconnu');
 ?>
-<span class="status-badge status-badge--<?= esc($status ?? 'unknown') ?>"><?= $label ?></span>
+<span class="kermesse-status-badge kermesse-status-badge--<?= esc($status ?? 'unknown') ?>"><?= $label ?></span>

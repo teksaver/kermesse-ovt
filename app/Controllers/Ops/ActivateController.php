@@ -75,7 +75,7 @@ class ActivateController extends BaseController
 
         } catch (\Throwable $e) {
             log_message('critical', 'ActivateController: unhandled error: {message}', [
-                'message' => $e,
+                'message' => $e->getMessage() . "\n" . $e->getTraceAsString(),
             ]);
 
             return $this->response

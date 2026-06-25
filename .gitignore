@@ -148,6 +148,18 @@ _bmad/custom/*.user.toml
 claude.md
 
 #-------------------------
+# Playwright E2E (Story 6.3)
+#-------------------------
+# Sorties générées — non versionnées.
+/playwright-report/
+/test-results/
+# Sessions sauvegardées par global-setup.ts — contiennent des cookies de session.
+/e2e/.auth/
+# node_modules géré dans un volume Docker, pas sur l'hôte.
+/node_modules/
+# Lockfile versionnné (package-lock.json) ; les binaires ne le sont pas.
+
+#-------------------------
 # Code Review Diff Exports
 #-------------------------
 # Snapshots de revue régénérables (ex. `git diff main > diff_to_review.diff`).
@@ -162,3 +174,11 @@ preload.php
 .phpunit.result.cache
 composer.phar
 *.php.bak
+
+#-------------------------
+# Database Backups
+#-------------------------
+*backup*.sql
+
+# Log applicatif généré par scripts/e2e.sh (diagnostic e2e)
+app-logs-e2e.txt

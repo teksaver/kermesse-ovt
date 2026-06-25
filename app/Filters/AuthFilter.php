@@ -12,6 +12,8 @@ use CodeIgniter\HTTP\ResponseInterface;
  */
 class AuthFilter implements FilterInterface
 {
+    use BuildsLoginRedirect;
+
     /**
      * @param list<string>|null $arguments
      */
@@ -19,13 +21,13 @@ class AuthFilter implements FilterInterface
     {
         $userId = session()->get('user_id');
         if (! $userId) {
-            return redirect()->to(site_url('auth/login'));
+            return redirect()->to($this->loginRedirectUrl($this->currentRequestPath($request)));
         }
 
         $userModel = new \App\Models\UserModel();
         if (! $userModel->find($userId)) {
             session()->remove('user_id');
-            return redirect()->to(site_url('auth/login'));
+            return redirect()->to($this->loginRedirectUrl($this->currentRequestPath($request)));
         }
 
         return null;
@@ -34,7 +36,8 @@ class AuthFilter implements FilterInterface
     /**
      * @param list<string>|null $arguments
      */
-    public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): void
+    public function after(RequestInterface $request, ResponseInterface $response, $arguments = null): ResponseInterface|null
     {
+        return null;
     }
 }

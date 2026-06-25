@@ -45,14 +45,27 @@ final class StandDeletionServiceTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            DROP TABLE IF EXISTS db_slot_signups;
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }
@@ -60,7 +73,7 @@ final class StandDeletionServiceTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         parent::tearDown();
@@ -95,13 +108,17 @@ final class StandDeletionServiceTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function makeSignup(int $slotId, string $status = 'active'): void
+    private function makeSignup(int $slotId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id' => $slotId,
-            'user_id' => $this->otherUser,
-            'status'  => $status,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $this->otherUser];
+        $row += match ($state) {
+            'cancelled'            => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $this->otherUser],
+            'removed'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'              => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                => [],
+        };
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function standStatus(int $standId): ?string

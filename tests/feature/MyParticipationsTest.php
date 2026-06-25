@@ -44,7 +44,7 @@ final class MyParticipationsTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesse_user_roles');
@@ -106,7 +106,7 @@ final class MyParticipationsTest extends CIUnitTestCase
                 'email_hash' => hash('sha256', $email),
                 'first_name' => $first,
                 'last_name'  => $last,
-                'phone'      => '',
+                'phone'      => '', 
             ]);
         }
 
@@ -160,14 +160,17 @@ final class MyParticipationsTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, int $userId, string $status): void
+    private function insertSignup(int $slotId, int $userId, string $state = 'active'): void
     {
-        db_connect()->table('signups')->insert([
-            'slot_id'    => $slotId,
-            'user_id'    => $userId,
-            'status'     => $status,
-            'deleted_at' => null,
-        ]);
+        $row = ['slot_id' => $slotId, 'user_id' => $userId];
+        $row += match ($state) {
+            'cancelled'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
+            'removed'                => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
+            'refused'                => ['rejected_at' => '2026-01-01 00:00:00'],
+            'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
+            default                  => [],
+        };
+        db_connect()->table('slot_signups')->insert($row);
     }
 
     private function session(int $userId): array
@@ -216,13 +219,15 @@ final class MyParticipationsTest extends CIUnitTestCase
             CREATE TABLE IF NOT EXISTS db_kermesse_user_roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 kermesse_id  INTEGER NOT NULL,
-                user_id      INTEGER NOT NULL,
+                user_id INTEGER NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -231,7 +236,7 @@ final class MyParticipationsTest extends CIUnitTestCase
                 kermesse_id   INTEGER NOT NULL,
                 name          TEXT    NOT NULL,
                 display_order INTEGER NOT NULL DEFAULT 0,
-                status        TEXT    NOT NULL DEFAULT "active",
+                status        TEXT    NOT NULL DEFAULT \'active\',
                 created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -243,20 +248,32 @@ final class MyParticipationsTest extends CIUnitTestCase
                 starts_at  DATETIME NOT NULL,
                 ends_at    DATETIME NOT NULL,
                 capacity   INTEGER  NOT NULL,
-                status     TEXT     NOT NULL DEFAULT "active",
+                status     TEXT     NOT NULL DEFAULT \'active\',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id    INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                status     TEXT    NOT NULL DEFAULT "active",
-                deleted_at DATETIME NULL DEFAULT NULL,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }

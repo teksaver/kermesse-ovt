@@ -184,13 +184,10 @@ class ReleaseActivationService
         // AC-6 — prune old releases; shared/ is never scanned here
         $pruned = $this->pruneOldReleases($releasesDir, $releaseName, $this->releasesRetention);
 
-        // Clean up the staging artifact
-        if (file_exists($archivePath)) {
-            unlink($archivePath);
-        }
-        if (file_exists($checksumPath)) {
-            unlink($checksumPath);
-        }
+        // Clean up the staging artifact; guard against a prior partial activation
+        // where the files were already removed (idempotent retry safety).
+        is_file($archivePath) && unlink($archivePath);
+        is_file($checksumPath) && unlink($checksumPath);
 
         return ['ok' => true, 'release' => $releaseName, 'pruned' => $pruned];
     }
@@ -378,6 +375,7 @@ class ReleaseActivationService
         return true;
     }
 
+    /** @param resource $handle */
     private function readGzipBytes($handle, int $bytes): string
     {
         $data = '';
@@ -396,6 +394,7 @@ class ReleaseActivationService
         return $data;
     }
 
+    /** @param resource $handle */
     private function readTarPayload($handle, int $size): ?string
     {
         $payload = $this->readGzipBytes($handle, $size);
@@ -413,6 +412,7 @@ class ReleaseActivationService
         return $payload;
     }
 
+    /** @param resource $handle */
     private function skipTarPayload($handle, int $size): bool
     {
         $remaining = $size;

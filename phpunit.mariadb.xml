@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuration PHPUnit dédiée au job CI `validate-mariadb`.
+
+  PIÈGE CI4 (raison d'existence de ce fichier) :
+  CodeIgniter 4 BaseConfig::getEnvValue() lit $_ENV/$_SERVER, jamais getenv().
+  PHP ne peuple PAS $_ENV/$_SERVER avec les noms de variables contenant des
+  points (ex: database.tests.DBDriver). Les blocs `env:` du workflow GitHub
+  Actions passent bien la valeur à getenv(), mais CI4 ne la voit jamais.
+  Solution : les blocs <php><env> de PHPUnit peuplent directement $_ENV, ce
+  qui permet à CI4 de lire la surcharge de connexion.
+
+  Pour les tests locaux (Docker), créer un .env temporaire à la racine
+  (ne pas le committer — le projet n'utilise pas de .env permanent) :
+    database.tests.hostname = db
+    database.tests.database = kermesse_test
+    database.tests.username = kermesse_user
+    database.tests.password = kermesse_password
+    database.tests.DBDriver = MySQLi
+    database.tests.DBPrefix =
+    database.tests.port = 3306
+    database.tests.charset = utf8mb4
+    database.tests.DBCollat = utf8mb4_general_ci
+  CI4 DotEnv peuple aussi $_ENV → la surcharge s'applique.
+-->
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+    bootstrap="vendor/codeigniter4/framework/system/Test/bootstrap.php"
+    backupGlobals="false"
+    beStrictAboutOutputDuringTests="true"
+    colors="true"
+    columns="max"
+    failOnRisky="true"
+    failOnWarning="true"
+    cacheDirectory="build/.phpunit.cache"
+>
+    <extensions>
+        <!-- Inerte pour MariaDB (borné à getPlatform() === 'SQLite3'). -->
+        <bootstrap class="Tests\Support\ResetMemorySchemaExtension"/>
+    </extensions>
+
+    <testsuites>
+        <testsuite name="Database">
+            <directory>./tests/database</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">./app</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">./app/Views</directory>
+            <file>./app/Config/Routes.php</file>
+        </exclude>
+    </source>
+
+    <php>
+        <server name="app.baseURL" value="http://example.com/"/>
+        <server name="CODEIGNITER_SCREAM_DEPRECATIONS" value="0"/>
+        <const name="HOMEPATH" value="./"/>
+        <const name="CONFIGPATH" value="./app/Config/"/>
+        <const name="PUBLICPATH" value="./public/"/>
+
+        <!-- Connexion MariaDB CI — credentials du service `mariadb` du job validate-mariadb.
+             Ces valeurs correspondent au bloc `services.mariadb` de .github/workflows/ci.yml.
+             PHPUnit <env> peuple $_ENV → CI4 BaseConfig::getEnvValue() les lit correctement. -->
+        <env name="database.tests.hostname" value="127.0.0.1"/>
+        <env name="database.tests.database" value="kermesse_test"/>
+        <env name="database.tests.username" value="kermesse_ci"/>
+        <env name="database.tests.password" value="ci_password"/>
+        <env name="database.tests.DBDriver" value="MySQLi"/>
+        <env name="database.tests.DBPrefix" value=""/>
+        <env name="database.tests.port" value="3306"/>
+        <env name="database.tests.charset" value="utf8mb4"/>
+        <env name="database.tests.DBCollat" value="utf8mb4_general_ci"/>
+    </php>
+</phpunit>

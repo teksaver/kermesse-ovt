@@ -27,6 +27,8 @@ class UserRoleModel extends Model
         'invited_by',
         'invited_at',
         'accepted_at',
+        'first_access_at',
+        'last_access_at',
     ];
 
     /**
@@ -63,6 +65,24 @@ class UserRoleModel extends Model
     }
 
     /**
+     * Returns the Owner's user row (with email, first_name, last_name) for a given kermesse.
+     * Used by RoleService to address team-change notification emails.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findOwner(int $kermesseId): ?array
+    {
+        return $this->db
+            ->table('kermesse_user_roles kur')
+            ->select('u.id as user_id, u.email, u.first_name, u.last_name')
+            ->join('users u', 'u.id = kur.user_id')
+            ->where('kur.kermesse_id', $kermesseId)
+            ->where('kur.role', self::ROLE_OWNER)
+            ->get()
+            ->getRowArray();
+    }
+
+    /**
      * Returns the organization team members for a given kermesse.
      * Includes owner, admin, and gestionnaire. Excludes benevole.
      *
@@ -72,7 +92,7 @@ class UserRoleModel extends Model
     {
         return $this->db
             ->table('kermesse_user_roles kur')
-            ->select('kur.role, kur.invited_at, kur.accepted_at, u.id as user_id, u.email, u.first_name, u.last_name')
+            ->select('kur.role, kur.invited_at, kur.accepted_at, kur.first_access_at, u.id as user_id, u.email, u.first_name, u.last_name')
             ->join('users u', 'u.id = kur.user_id')
             ->where('kur.kermesse_id', $kermesseId)
             ->whereIn('kur.role', [self::ROLE_OWNER, self::ROLE_ADMIN, self::ROLE_GESTIONNAIRE])

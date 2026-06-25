@@ -1,11 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
-use App\Models\ProfileDivergenceModel;
+
+use App\Models\UserRoleModel;
 use App\Models\UserModel;
 use App\Services\EmailService;
+use App\Services\ProfileService;
+use App\Services\RoleService;
 use App\Services\TokenService;
 
 /**
@@ -16,6 +21,13 @@ class MagicLinkController extends BaseController
     /** GET /auth/login — affiche le formulaire de demande de lien */
     public function showLoginForm(): mixed
     {
+        $redirectParam = $this->request->getGet('redirect');
+        if (is_string($redirectParam) && trim($redirectParam) !== '') {
+            // localRedirectTarget validates same-origin and converts relative paths.
+            // External URLs are silently demoted to site_url('/') (open-redirect protection).
+            session()->set('redirect_url', $this->localRedirectTarget($redirectParam));
+        }
+
         return view('auth/login', ['errors' => []]);
     }
 
@@ -84,8 +96,12 @@ class MagicLinkController extends BaseController
 
         $db->transComplete();
 
-        $userModel = new \App\Models\UserModel();
-        $userModel->update($userId, ['last_login_at' => date('Y-m-d H:i:s')]);
+        $userModel  = new UserModel();
+        $userRecord = $userModel->find($userId);
+        if ($userRecord === null) {
+            log_message('error', 'MagicLink: user disappeared after successful token claim for user ' . $userId);
+            return $this->response->setStatusCode(400)->setBody(view('auth/magic_link_invalid'));
+        }
 
         // Mark invitation accepted per-kermesse so the dashboard can distinguish
         // "accepted this kermesse" from "has a global account" (NFR5 privacy).
@@ -105,22 +121,41 @@ class MagicLinkController extends BaseController
             'is_logged_in' => true,
         ]);
 
-        // Story 3.6: intercept to profile resolution when pending divergences exist.
-        $unresolvedDivergences = (new ProfileDivergenceModel())->findUnresolvedByUser($userId);
-        if (! empty($unresolvedDivergences)) {
-            session()->set('pending_profile_resolution', true);
-            return redirect()->to(site_url('auth/profile-resolution'));
+        // Story 5.14: Rapatrier les inscriptions orphelines (invités) et acter leur prise de connaissance.
+        $slotSignupService = new \App\Services\SlotSignupService(
+            userModel:       model(\App\Models\UserModel::class),
+            slotSignupModel: model(\App\Models\SlotSignupModel::class),
+            kermesseModel:   model(\App\Models\KermesseModel::class),
+            slotModel:       model(\App\Models\SlotModel::class),
+            db:              \Config\Database::connect(),
+            emailService:    new \App\Services\EmailService(),
+            standModel:      model(\App\Models\StandModel::class),
+            tokenService:    new \App\Services\TokenService(),
+        );
+        try {
+            $slotSignupService->resolveOrphanSlotSignups($userRecord['email'], $userId);
+        } catch (\Throwable $e) {
+            // Non-critical: a DB failure here must not block login.
+            log_message('error', 'MagicLink: orphan slot-signup resolution failed for user ' . $userId . ': ' . $e->getMessage());
+        }
+
+        // Story 5.10 (Stateless): first login and returning logins are handled identically,
+        // we just record the timestamp and proceed directly. Divergences are gone.
+        $profileService = new ProfileService($userModel);
+        if (! $profileService->recordReturningLogin($userId)) {
+            // Non-critical audit write — log but continue so a transient DB hiccup does not lock the user out.
+            log_message('error', 'MagicLink: login timestamp update failed for user ' . $userId);
+        }
+
+        if ($kermesseId > 0) {
+            (new RoleService(new UserRoleModel(), $userModel))->recordAccess($kermesseId, $userId);
         }
 
         $url = session('redirect_url');
         session()->remove('redirect_url');
 
-        $redirectUrl = site_url('/');
-        if ($url && (str_starts_with($url, '/') || str_starts_with($url, site_url()))) {
-            $redirectUrl = $url;
-        } elseif (! empty($tokenRow['kermesse_id'])) {
-            $redirectUrl = site_url('kermesse/' . (int) $tokenRow['kermesse_id']);
-        }
+        $fallback = $kermesseId > 0 ? site_url('kermesse/' . $kermesseId) : site_url('/');
+        $redirectUrl = $this->localRedirectTarget($url, $fallback);
 
         return redirect()->to($redirectUrl);
     }

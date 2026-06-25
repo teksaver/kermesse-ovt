@@ -6,6 +6,13 @@
     <h1 class="page-title">Mes kermesses</h1>
     <p style="margin-top:-16px; margin-bottom:24px; color:var(--color-text-muted);">Avec Padlapin, évitez les lapins dans vos événements ! Organisez vos kermesses et gérez les inscriptions des bénévoles facilement.</p>
 
+    <?php if (! empty($participationNotice = session()->getFlashdata('participation_notice'))): ?>
+    <p class="form-success"><?= esc($participationNotice) ?></p>
+    <?php endif; ?>
+    <?php if (! empty($participationError = session()->getFlashdata('participation_error'))): ?>
+    <p class="form-error" role="alert"><?= esc($participationError) ?></p>
+    <?php endif; ?>
+
     <?php if (empty($kermesses)): ?>
 
         <div class="kermesse-empty-state">
@@ -33,9 +40,15 @@
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
-                    <div style="display:flex; gap:8px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
                         <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary"><?= $k['role'] === 'benevole' ? 'Mes inscriptions' : 'Administration' ?></a>
                         <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary"><?= $k['role'] === 'benevole' ? 'Nouvelle inscription' : 'Page publique' ?></a>
+                        <?php if (! empty($k['canLeave'])): ?>
+                        <form method="post" action="<?= site_url("kermesse/{$k['id']}/leave") ?>" style="margin:0;" onsubmit="if (!confirm('Voulez-vous quitter cette kermesse ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn--sm btn--secondary">Quitter cette kermesse</button>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 </li>
             <?php endforeach; ?>

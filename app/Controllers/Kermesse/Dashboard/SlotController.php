@@ -1,11 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers\Kermesse\Dashboard;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\SlotModel;
 use App\Models\StandModel;
+use App\Services\CreateSlotDTO;
+use App\Services\SlotService;
 use CodeIgniter\I18n\Time;
 
 /**
@@ -20,55 +24,56 @@ class SlotController extends BaseController
         $id      = (int) $kermesseId;
         $standId = (int) $standId;
 
+        // Resolve kermesse to get event_date and timezone for time normalisation.
+        // The Service re-checks existence and stand ownership as the write invariant.
         $kermesse = model(KermesseModel::class)->find($id);
         if ($kermesse === null) {
             return $this->response->setStatusCode(404);
         }
 
-        $stand = model(StandModel::class)
-            ->where('kermesse_id', $id)
-            ->where('status', StandModel::STATUS_ACTIVE)
-            ->find($standId);
-            
-        if ($stand === null) {
-            return $this->response->setStatusCode(404);
+        $startsAt     = is_string($this->request->getPost('starts_at')) ? trim($this->request->getPost('starts_at')) : '';
+        $endsAt       = is_string($this->request->getPost('ends_at'))   ? trim($this->request->getPost('ends_at'))   : '';
+        $capacityPost = $this->request->getPost('capacity');
+
+        // Reject structured values (arrays) and non-integer strings (decimal, exponential, alpha).
+        if (! is_string($capacityPost)) {
+            $capacity = 0;
+        } else {
+            $capacityRaw = trim($capacityPost);
+            $capacity    = ctype_digit($capacityRaw) ? (int) $capacityRaw : 0;
         }
 
-        $startsAt = is_string($this->request->getPost('starts_at')) ? trim($this->request->getPost('starts_at')) : '';
-        $endsAt   = is_string($this->request->getPost('ends_at'))   ? trim($this->request->getPost('ends_at'))   : '';
-        $capacityPost = $this->request->getPost('capacity');
-        $capacity = is_numeric($capacityPost) ? (int) $capacityPost : 0;
-
         $eventDate = !empty($kermesse['event_date']) ? $kermesse['event_date'] : date('Y-m-d');
-        
+
         $fullStart = ($startsAt !== '') ? $eventDate . ' ' . $startsAt : '';
         $fullEnd   = ($endsAt !== '')   ? $eventDate . ' ' . $endsAt   : '';
 
         $timezone = $kermesse['timezone'] ?? date_default_timezone_get();
-        $errors = $this->validateSlot($fullStart, $fullEnd, $capacity, $timezone);
-        
+        $errors   = $this->validateSlot($fullStart, $fullEnd, $capacity, $timezone);
+
         if (!empty($errors)) {
-            // Restore original input keys to avoid returning full date to UI
             $errors_modified = $errors;
-            if (isset($errors['starts_at']) && $startsAt === '') $errors_modified['starts_at'] = 'L\'heure de début est obligatoire.';
-            if (isset($errors['ends_at']) && $endsAt === '') $errors_modified['ends_at'] = 'L\'heure de fin est obligatoire.';
-            
+            if (isset($errors['starts_at']) && $startsAt === '') {
+                $errors_modified['starts_at'] = 'L\'heure de début est obligatoire.';
+            }
+            if (isset($errors['ends_at']) && $endsAt === '') {
+                $errors_modified['ends_at'] = 'L\'heure de fin est obligatoire.';
+            }
+
             return $this->redirectWithErrors($errors_modified, 'add', $id, $standId);
         }
 
-        // Format to standard SQL DATETIME
         $startFormatted = Time::parse($fullStart, $timezone)->format('Y-m-d H:i:s');
         $endFormatted   = Time::parse($fullEnd, $timezone)->format('Y-m-d H:i:s');
 
-        $inserted = model(SlotModel::class)->insert([
-            'stand_id'  => $standId,
-            'starts_at' => $startFormatted,
-            'ends_at'   => $endFormatted,
-            'capacity'  => $capacity,
-            'status'    => SlotModel::STATUS_ACTIVE,
-        ]);
+        $dto    = new CreateSlotDTO($id, $standId, $startFormatted, $endFormatted, $capacity);
+        $result = (new SlotService())->create($dto);
 
-        if (!$inserted) {
+        if ($result === SlotService::RESULT_NOT_FOUND) {
+            return $this->response->setStatusCode(404);
+        }
+
+        if ($result !== SlotService::RESULT_CREATED) {
             return $this->redirectWithErrors(['general' => 'Erreur de sauvegarde.'], 'add', $id, $standId);
         }
 
@@ -207,6 +212,8 @@ class SlotController extends BaseController
     /**
      * Validates slot times and capacity.
      * Returns an array of field-specific error messages.
+     *
+     * @return array<string, string>
      */
     private function validateSlot(string $startsAt, string $endsAt, int $capacity, string $timezone): array
     {
@@ -214,6 +221,8 @@ class SlotController extends BaseController
 
         if ($capacity < 1) {
             $errors['capacity'] = 'La capacité doit être d\'au moins 1.';
+        } elseif ($capacity > 65535) {
+            $errors['capacity'] = 'La capacité ne peut pas dépasser 65 535.';
         }
 
         if ($startsAt === '') {
@@ -240,6 +249,8 @@ class SlotController extends BaseController
 
     /**
      * Redirects back with input and flashdata for the dashboard slots section.
+     *
+     * @param array<string, string> $errors
      */
     private function redirectWithErrors(
         array $errors,
@@ -252,7 +263,7 @@ class SlotController extends BaseController
             ->withInput()
             ->with('slot_errors', $errors)
             ->with('slot_form', $formContext)
-            ->with('slot_form_stand_id', $standId)
-            ->with('slot_form_slot_id', $slotId);
+            ->with('slot_form_stand_id', (string) $standId)
+            ->with('slot_form_slot_id', $slotId !== null ? (string) $slotId : '');
     }
 }

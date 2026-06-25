@@ -118,6 +118,10 @@ FORBIDDEN_ROOT_DIRS=(
   ".agents"
   ".agent"
   "deploy"
+  # Story 6.3 — E2E artefacts (never in production)
+  "e2e"
+  "playwright-report"
+  "test-results"
 )
 
 for dir in "${FORBIDDEN_ROOT_DIRS[@]}"; do
@@ -133,6 +137,10 @@ FORBIDDEN_ROOT_FILES=(
   ".env.next"
   ".env.local"
   "auth.json"
+  # Story 6.3 — E2E / Node artefacts
+  "package.json"
+  "package-lock.json"
+  "playwright.config.ts"
 )
 
 for file in "${FORBIDDEN_ROOT_FILES[@]}"; do
@@ -284,7 +292,7 @@ while IFS= read -r line; do
   # Vérification récursive (hors vendor)
   if [ $in_vendor -eq 0 ]; then
     filename="${clean_line##*/}"
-    if [[ "${filename}" == ".env" || "${filename}" == ".env.next" || "${filename}" == ".env.local" || "${filename}" == .env.*.local || "${filename}" == "auth.json" || "${filename}" == phpunit* || "${filename}" == *.key || "${filename}" == *.pem ]]; then
+    if [[ "${filename}" == ".env" || "${filename}" == ".env.next" || "${filename}" == ".env.local" || "${filename}" == .env.*.local || "${filename}" == "auth.json" || "${filename}" == phpunit* || "${filename}" == *.key || "${filename}" == *.pem || "${filename}" == "package.json" || "${filename}" == "package-lock.json" || "${filename}" == "playwright.config.ts" || "${filename}" == *.spec.ts || "${filename}" == *.spec.js ]]; then
       echo "ERREUR : Fichier interdit détecté dans l'archive tar.gz : ${line}"
       IS_ARCHIVE_INVALID=1
     fi

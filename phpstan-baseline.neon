@@ -1,0 +1,145 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Method App\\Controllers\\Kermesse\\KermesseController\:\:storeConnected\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Method App\\Controllers\\Kermesse\\KermesseController\:\:storeGuest\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Controllers/Kermesse/KermesseController.php
+
+		-
+			message: '#^Method App\\Filters\\OpsAuthFilter\:\:bootstrapNonceTable\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Filters/OpsAuthFilter.php
+
+		-
+			message: '#^PHPDoc tag @var for variable \$db contains generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/AccessTokenModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotModel\:\:findForCapacityCheck\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotModel\:\:forUpdateSuffix\(\) has parameter \$db with generic interface CodeIgniter\\Database\\ConnectionInterface but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotSignupModel\:\:countActiveForSlot\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotSignupModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotSignupModel\:\:findActiveByEmailOrUserAndSlot\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotSignupModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotSignupModel\:\:findOverlappingActiveByEmailOrUser\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotSignupModel.php
+
+		-
+			message: '#^Method App\\Models\\SlotSignupModel\:\:forUpdateSuffix\(\) has parameter \$db with generic interface CodeIgniter\\Database\\ConnectionInterface but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/SlotSignupModel.php
+
+		-
+			message: '#^Method App\\Models\\UserModel\:\:findByEmailHash\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/UserModel.php
+
+		-
+			message: '#^Method App\\Models\\UserModel\:\:forUpdateSuffix\(\) has parameter \$db with generic interface CodeIgniter\\Database\\ConnectionInterface but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/UserModel.php
+
+		-
+			message: '#^Method App\\Services\\MariaDBLockStrategy\:\:__construct\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/MariaDBLockStrategy.php
+
+		-
+			message: '#^Property App\\Services\\MariaDBLockStrategy\:\:\$db with generic class CodeIgniter\\Database\\BaseConnection does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/MariaDBLockStrategy.php
+
+		-
+			message: '#^Method App\\Services\\MigrationRunnerService\:\:__construct\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/MigrationRunnerService.php
+
+		-
+			message: '#^Method App\\Services\\MigrationRunnerService\:\:buildLockStrategy\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/MigrationRunnerService.php
+
+		-
+			message: '#^Property App\\Services\\MigrationRunnerService\:\:\$db with generic class CodeIgniter\\Database\\BaseConnection does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/MigrationRunnerService.php
+
+		-
+			message: '#^Method App\\Services\\ReleaseActivationService\:\:__construct\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/ReleaseActivationService.php
+
+		-
+			message: '#^Method App\\Services\\ReleaseActivationService\:\:buildLockStrategy\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/ReleaseActivationService.php
+
+		-
+			message: '#^Property App\\Services\\ReleaseActivationService\:\:\$db with generic class CodeIgniter\\Database\\BaseConnection does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/ReleaseActivationService.php
+
+		-
+			message: '#^Method App\\Services\\SlotSignupService\:\:__construct\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Method App\\Services\\SlotSignupService\:\:assertSharedConnection\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Method App\\Services\\SlotSignupService\:\:findUserByEmail\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/SlotSignupService.php
+
+		-
+			message: '#^Method App\\Services\\SlotSignupService\:\:signupWithinTransaction\(\) has parameter \$db with generic class CodeIgniter\\Database\\BaseConnection but does not specify its types\: TConnection, TResult$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Services/SlotSignupService.php

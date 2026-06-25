@@ -233,8 +233,8 @@ final class TokenServiceTest extends CIUnitTestCase
 
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnCallback(
@@ -329,8 +329,8 @@ final class TokenServiceTest extends CIUnitTestCase
     {
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnSelf();
@@ -613,8 +613,8 @@ final class TokenServiceTest extends CIUnitTestCase
 
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnCallback(
@@ -638,8 +638,8 @@ final class TokenServiceTest extends CIUnitTestCase
     {
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnSelf();
@@ -920,8 +920,8 @@ final class TokenServiceTest extends CIUnitTestCase
 
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnCallback(
@@ -945,8 +945,8 @@ final class TokenServiceTest extends CIUnitTestCase
     {
         $mockModel = $this->getMockBuilder(AccessTokenModel::class)
             ->disableOriginalConstructor()
-            ->addMethods(['where', 'affectedRows'])
-            ->onlyMethods(['set', 'update'])
+            ->addMethods(['where'])
+            ->onlyMethods(['set', 'update', 'affectedRows'])
             ->getMock();
         $mockModel->method('where')->willReturnSelf();
         $mockModel->method('set')->willReturnSelf();

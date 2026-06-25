@@ -77,10 +77,12 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
                 user_id      INTEGER NOT NULL,
                 role         TEXT    NOT NULL,
                 invited_by   INTEGER,
-                invited_at   DATETIME NULL DEFAULT NULL,
-                accepted_at  DATETIME NULL DEFAULT NULL,
-                created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                invited_at      DATETIME NULL DEFAULT NULL,
+                accepted_at     DATETIME NULL DEFAULT NULL,
+                first_access_at DATETIME NULL DEFAULT NULL,
+                last_access_at  DATETIME NULL DEFAULT NULL,
+                created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
         $db->query('
@@ -146,7 +148,8 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
     // AC1 — valid token: redirect + session + user creation/reuse
     // ------------------------------------------------------------------
 
-    public function testValidTokenRedirectsToHome(): void
+    // Story 5.10: first-login redirects to home (or kermesse dashboard if intent exists).
+    public function testValidTokenFirstLoginRedirectsToHome(): void
     {
         $rawToken = $this->insertMagicLinkToken('alice@example.com');
         $result   = $this->get('auth/magic-link/' . $rawToken);
@@ -160,11 +163,13 @@ final class MagicLinkVerifyTest extends CIUnitTestCase
         $email = 'owner-intent@example.com';
 
         $db->table('users')->insert([
-            'email'      => $email,
-            'email_hash' => hash('sha256', $email),
-            'first_name' => 'Owner',
-            'last_name'  => 'Intent',
-            'phone'      => '',
+            'email'        => $email,
+            'email_hash'   => hash('sha256', $email),
+            'first_name'   => 'Owner',
+            'last_name'    => 'Intent',
+            'phone'        => '',
+            // Returning user — last_login_at set so first-login confirmation is skipped.
+            'last_login_at' => '2026-01-01 08:00:00',
         ]);
         $userId = (int) $db->insertID();
 

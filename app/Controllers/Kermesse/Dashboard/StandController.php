@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\KermesseModel;
 use App\Models\StandModel;
 use App\Services\StandDeletionService;
+use App\Services\StandDuplicationService;
 
 /**
  * Gestion des stands d'une kermesse — Owner et Admin uniquement.
@@ -13,6 +14,9 @@ use App\Services\StandDeletionService;
  */
 class StandController extends BaseController
 {
+    /** Max stand name length — matches the `stands.name` VARCHAR(255) column. */
+    private const NAME_MAX_LENGTH = 255;
+
     /** POST /kermesse/{kermesse_id}/stands */
     public function store(string $kermesseId): mixed
     {
@@ -30,6 +34,10 @@ class StandController extends BaseController
             return $this->redirectWithError('Le nom du stand est obligatoire.', 'add', $name);
         }
 
+        if (mb_strlen($name) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'add', $name);
+        }
+
         $standModel = model(StandModel::class);
 
         if ($standModel->hasActiveDuplicate($id, $name)) {
@@ -45,7 +53,8 @@ class StandController extends BaseController
             return $this->redirectWithError('Erreur système lors de l\'ajout.', 'add', $name);
         }
 
-        session()->setFlashdata('success', 'Stand « ' . esc($name) . ' » ajouté avec succès.');
+        // The view escapes the flashdata (esc($success)); escaping here too would double-encode the name.
+        session()->setFlashdata('success', 'Stand « ' . $name . ' » ajouté avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -70,6 +79,10 @@ class StandController extends BaseController
             return $this->redirectWithError('Le nom du stand est obligatoire.', 'edit', $name, $standId);
         }
 
+        if (mb_strlen($name) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'edit', $name, $standId);
+        }
+
         if ($standModel->hasActiveDuplicate($id, $name, $standId)) {
             return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'edit', $name, $standId);
         }
@@ -78,7 +91,7 @@ class StandController extends BaseController
             return $this->redirectWithError('Erreur système lors de la modification.', 'edit', $name, $standId);
         }
 
-        session()->setFlashdata('success', 'Stand renommé en « ' . esc($name) . ' ».');
+        session()->setFlashdata('success', 'Stand renommé en « ' . $name . ' ».');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -137,7 +150,7 @@ class StandController extends BaseController
                 ->with('delete_error_' . $standId, 'Ce stand a déjà été modifié ou une erreur système est survenue.');
         }
 
-        session()->setFlashdata('success', 'Stand « ' . esc($stand['name']) . ' » supprimé avec succès.');
+        session()->setFlashdata('success', 'Stand « ' . $stand['name'] . ' » supprimé avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -145,7 +158,9 @@ class StandController extends BaseController
     /**
      * POST /kermesse/{kermesse_id}/stands/{stand_id}/duplicate
      *
-     * Duplicates a stand and all its active slots.
+     * Duplicates a stand and all its active slots under a name chosen by the user.
+     * The new stand starts with zero signups: only slot configuration (times +
+     * capacity) is copied — never any signup row.
      */
     public function duplicate(string $kermesseId, string $standId): mixed
     {
@@ -161,55 +176,32 @@ class StandController extends BaseController
             return $this->response->setStatusCode(404);
         }
 
-        $baseName = $stand['name'];
-        $newName = $baseName . ' (copie)';
-        $counter = 2;
+        $p       = $this->request->getPost('name');
+        $newName = is_string($p) ? trim($p) : '';
 
-        while ($standModel->hasActiveDuplicate($id, $newName)) {
-            $newName = $baseName . ' (copie ' . $counter . ')';
-            $counter++;
+        // The error form context 'duplicate' reopens the source stand's duplication
+        // modal with the entered value preserved (see dashboard.php).
+        if ($newName === '') {
+            return $this->redirectWithError('Le nom du nouveau stand est obligatoire.', 'duplicate', $newName, $standId);
         }
 
-        $db = db_connect();
-        $db->transBegin();
-
-        $newStandId = $standModel->insert([
-            'kermesse_id'   => $id,
-            'name'          => $newName,
-            'display_order' => $standModel->nextDisplayOrder($id),
-            'status'        => StandModel::STATUS_ACTIVE,
-        ]);
-
-        if (! $newStandId) {
-            $db->transRollback();
-            return redirect()->back()->with('error', 'Erreur système lors de la duplication du stand.');
+        if (mb_strlen($newName) > self::NAME_MAX_LENGTH) {
+            return $this->redirectWithError('Le nom du nouveau stand ne doit pas dépasser ' . self::NAME_MAX_LENGTH . ' caractères.', 'duplicate', $newName, $standId);
         }
 
-        $slotModel = model(\App\Models\SlotModel::class);
-        $slots = $slotModel->where('stand_id', $standId)
-            ->where('status', \App\Models\SlotModel::STATUS_ACTIVE)
-            ->findAll();
+        // The transactional copy (stand + slots, never signups) is a service-owned
+        // invariant — controllers must not write to the DB directly.
+        $result = (new StandDuplicationService())->duplicate($id, $standId, $newName);
 
-        foreach ($slots as $slot) {
-            $slotModel->insert([
-                'stand_id'  => $newStandId,
-                'starts_at' => $slot['starts_at'],
-                'ends_at'   => $slot['ends_at'],
-                'capacity'  => $slot['capacity'],
-                'status'    => \App\Models\SlotModel::STATUS_ACTIVE,
-            ]);
+        if ($result === StandDuplicationService::RESULT_DUPLICATE_NAME) {
+            return $this->redirectWithError('Un stand actif avec ce nom existe déjà.', 'duplicate', $newName, $standId);
         }
 
-        $db->transCommit();
-
-        if (! $db->transStatus()) {
-            return redirect()->back()->with('error', 'Erreur système lors de la duplication des créneaux.');
+        if ($result !== StandDuplicationService::RESULT_SUCCESS) {
+            return $this->redirectWithError('Erreur système lors de la duplication du stand.', 'duplicate', $newName, $standId);
         }
 
-        session()->setFlashdata('success', 'Stand dupliqué avec succès. Veuillez lui donner un nom définitif.');
-        session()->setFlashdata('stand_form', 'edit');
-        session()->setFlashdata('editing_stand_id', $newStandId);
-        session()->setFlashdata('stand_name', $newName);
+        session()->setFlashdata('success', 'Stand « ' . $newName . ' » dupliqué avec succès.');
 
         return redirect()->to(site_url("kermesse/{$id}") . '#stands');
     }
@@ -228,6 +220,6 @@ class StandController extends BaseController
             ->with('stand_error', $message)
             ->with('stand_form', $formContext)
             ->with('stand_name', $enteredName)
-            ->with('editing_stand_id', $editingStandId);
+            ->with('editing_stand_id', $editingStandId !== null ? (string) $editingStandId : '');
     }
 }

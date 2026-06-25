@@ -1,0 +1,27 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 6
+    paths:
+        - app
+    excludePaths:
+        - app/Views
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+    scanDirectories:
+        - vendor/codeigniter4/framework/system
+    # PHPStan needs extra memory to scan the full CI4 framework stubs
+    phpVersion: 80300
+    # ENVIRONMENT and CI_DEBUG are runtime constants — don't constant-fold them so all
+    # branches are analysed regardless of the bootstrap-defined values.
+    dynamicConstantNames:
+        - ENVIRONMENT
+        - CI_DEBUG
+    ignoreErrors:
+        # CI4's Model::insert() lacks @throws in its stubs, so PHPStan cannot see that
+        # DatabaseException is thrown at runtime when DBDebug=true. The catch is real and
+        # necessary to distinguish a unique-constraint violation from other insertion errors.
+        -
+            identifier: catch.neverThrown
+            path: app/Services/RoleService.php

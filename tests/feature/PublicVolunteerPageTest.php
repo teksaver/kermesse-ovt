@@ -71,14 +71,26 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
             )
         ');
         $db->query('
-            CREATE TABLE IF NOT EXISTS db_signups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                slot_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT \'active\',
-                deleted_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS db_slot_signups (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                slot_id                   INTEGER  NOT NULL,
+                user_id                   INTEGER  NULL,
+                deleted_at                DATETIME NULL DEFAULT NULL,
+                last_modified_by_user_id  INTEGER  NULL DEFAULT NULL,
+                last_modified_at          DATETIME NULL DEFAULT NULL,
+                first_name                TEXT     NULL DEFAULT NULL,
+                last_name                 TEXT     NULL DEFAULT NULL,
+                email                     TEXT     NULL DEFAULT NULL,
+                phone                     TEXT     NULL DEFAULT NULL,
+                admin_notes               TEXT     NULL DEFAULT NULL,
+                created_by                INTEGER  NULL DEFAULT NULL,
+                viewed_at                 DATETIME NULL DEFAULT NULL,
+                accepted_at               DATETIME NULL DEFAULT NULL,
+                rejected_at               DATETIME NULL DEFAULT NULL,
+                canceled_at               DATETIME NULL DEFAULT NULL,
+                canceled_by               INTEGER  NULL DEFAULT NULL,
+                created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         ');
     }
@@ -86,7 +98,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
     protected function tearDown(): void
     {
         $db = db_connect();
-        $db->query('DELETE FROM db_signups');
+        $db->query('DELETE FROM db_slot_signups');
         $db->query('DELETE FROM db_slots');
         $db->query('DELETE FROM db_stands');
         $db->query('DELETE FROM db_kermesses');
@@ -128,12 +140,25 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         return (int) $db->insertID();
     }
 
-    private function insertSignup(int $slotId, string $name = '', string $status = 'active', ?string $deletedAt = null): int
+    private function insertSignup(int $slotId, string $name = '', string $state = 'active', ?string $deletedAt = null): int
     {
-        $db = db_connect();
-        $deletedAtSql = $deletedAt === null ? 'NULL' : "'" . addslashes($deletedAt) . "'";
-        $db->query("INSERT INTO db_signups (slot_id, user_id, status, deleted_at, created_at, updated_at)
-            VALUES ({$slotId}, 0, '{$status}', {$deletedAtSql}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+        $db   = db_connect();
+        $cols = 'slot_id, user_id, created_at, updated_at';
+        $vals = "{$slotId}, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP";
+
+        if ($state === 'cancelled') {
+            $cols .= ', canceled_at, canceled_by';
+            $vals .= ", CURRENT_TIMESTAMP, 0";
+        } elseif ($state === 'refused') {
+            $cols .= ', rejected_at';
+            $vals .= ', CURRENT_TIMESTAMP';
+        } elseif ($deletedAt !== null || in_array($state, ['deactivated', 'deleted'], true)) {
+            $ts    = $deletedAt ?? date('Y-m-d H:i:s');
+            $cols .= ', deleted_at';
+            $vals .= ", '" . addslashes($ts) . "'";
+        }
+
+        $db->query("INSERT INTO db_slot_signups ({$cols}, first_name, last_name) VALUES ({$vals}, '" . addslashes($name) . "', '')");
         return (int) $db->insertID();
     }
 
@@ -185,7 +210,7 @@ final class PublicVolunteerPageTest extends CIUnitTestCase
         $this->assertStringContainsString('sur 6', $body);
         // Available slot rendered as a real <a> link to the signup form
         $this->assertStringContainsString('slot-row--available', $body);
-        $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/signup"#', $body);
+        $this->assertMatchesRegularExpression('#href="[^"]+/slots/\d+/slot-signup"#', $body);
         $this->assertStringContainsString('Déjà inscrit', $body);
         $this->assertMatchesRegularExpression('#href="[^"]*auth/login[^"]*"#', $body);
     }
