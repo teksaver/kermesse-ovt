@@ -9,7 +9,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
- * Story 6.1 — SlotService::create() against real MariaDB 10.11 schema.
+ * Story 6.1 — SlotService::create() against real MariaDB 11.8.6 schema.
  *
  * Validates that:
  *  - The nominal open-kermesse slot creation works with MariaDB ENUM status,

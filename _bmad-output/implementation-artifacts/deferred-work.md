@@ -306,3 +306,27 @@ The following issues were found by the review agents (Adversarial/Edge Case) in 
 - Hardcoded Playwright Docker Image Version [scripts/e2e.sh]
 - Missing path upload warning in CI [.github/workflows/ci.yml]
 - app container multiple networks [scripts/e2e.sh]
+
+## Deferred from: code review of 6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci.md (2026-06-25)
+- Extreme Schema Coupling via Raw Queries: Ripping out Fabricator in favor of raw INSERT INTO queries couples tests to exact schema.
+- Brittle Artifact Resolution Logic: The ternary operator for downloading the artifact in ci.yml is fragile.
+- Hardcoded Test Credentials in XML: phpunit.mariadb.xml hardcodes kermesse_ci and ci_password.
+- Inconsistent E2E Network Topologies: scripts/e2e.sh forces network: host in CI but uses Docker bridge locally.
+- Fragile Docker Network Guesswork: scripts/e2e.sh uses docker inspect | head -1.
+- Root Directory Pollution: Hardcoding app-logs-e2e.txt in the project root.
+- Information Leakage in Exceptions: Throwing DatabaseException with raw message exposes DB details.
+- False Positive on Missing Database: MigrationRunnerService.php returns success when schema_versions is missing.
+
+## Deferred from: code review (2026-06-26)
+- The 'Deferred Work' Graveyard: Dumping severe vulnerabilities into deferred-work.md without tracking IDs.
+- Blind Error Masking in CI: xargs -r docker logs 2>&1 || true in ci.yml swallows all errors.
+- Unverified Version String Format Risk: The version string in docs/architecture_infra_ouvaton.md is extremely verbose.
+- Manual Timestamp Redundancy: sprint-status.yaml has the exact same timestamp manually copy-pasted in two places.
+
+
+## Deferred from: code review of spec-ux-cleaning-pre-epic7 (2026-06-26)
+- Hardcoded UI strings ignoring i18n [app/Controllers/Home/HomeController.php]
+- Lazy fallback logic using ucfirst($status) [app/Controllers/Home/HomeController.php]
+- Redundant condition checking with in_array [app/Controllers/Home/HomeController.php]
+- Brittle URL fragment concatenation (redirect with #equipe) [app/Controllers/Kermesse/Dashboard/KermesseAdminController.php]
+- Hardcoded hex colors ignoring design tokens [public/assets/css/app.css]

@@ -96,13 +96,22 @@ C'est une **dette d'infrastructure de test pré-existante**, sans rapport avec l
 - [ ] [Review][Patch] Fuite d'état (innodb_lock_wait_timeout) sans restauration [tests/database/SlotSignupInvariantsMariaDBTest.php]
 - [ ] [Review][Patch] Purge statique des tables fragile (DROP TABLE) [tests/database/ManageSlotsMariaDBTest.php]
 - [ ] [Review][Patch] Absence de validation de succès sur les inserts bruts [tests/database/RoleServiceMariaDBTest.php]
+- [ ] [Review][Patch] Use of 2>/dev/null Masks Failures [scripts/e2e.sh]
+- [ ] [Review][Patch] Unhandled Exception in reconcileChecksum [app/Services/MigrationRunnerService.php]
 - [x] [Review][Defer] Duplication de configuration ($migrate = false) [tests] — deferred, pre-existing
 - [x] [Review][Defer] Exceptions SQL génériques pour lock timeout [app/Models/SlotModel.php] — deferred, pre-existing
 - [x] [Review][Defer] Horodatages hardcodés (2099, 2026) dans les inserts [tests/database/RoleServiceMariaDBTest.php] — deferred, pre-existing
 - [x] [Review][Defer] Test TOCTOU basé sur modification synchrone [tests/database/MigrationDriftReconcileMariaDBTest.php] — deferred, pre-existing
 - [x] [Review][Defer] Couplage instanciation models avec $db2 [tests/database/SlotSignupInvariantsMariaDBTest.php] — deferred, pre-existing
 - [x] [Review][Defer] Configuration via .env temporaire pour repro locale [project-context] — deferred, pre-existing
-
+- [x] [Review][Defer] Extreme Schema Coupling via Raw Queries [tests] — deferred, pre-existing
+- [x] [Review][Defer] Brittle Artifact Resolution Logic [.github/workflows/ci.yml] — deferred, pre-existing
+- [x] [Review][Defer] Hardcoded Test Credentials in XML [phpunit.mariadb.xml] — deferred, pre-existing
+- [x] [Review][Defer] Inconsistent E2E Network Topologies [scripts/e2e.sh] — deferred, pre-existing
+- [x] [Review][Defer] Fragile Docker Network Guesswork [scripts/e2e.sh] — deferred, pre-existing
+- [x] [Review][Defer] Root Directory Pollution [scripts/e2e.sh] — deferred, pre-existing
+- [x] [Review][Defer] Information Leakage in Exceptions [app/Models/SlotModel.php] — deferred, pre-existing
+- [x] [Review][Defer] False Positive on Missing Database [app/Services/MigrationRunnerService.php] — deferred, pre-existing
 
 ## Dev Notes — Guardrails
 

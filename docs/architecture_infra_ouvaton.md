@@ -182,9 +182,8 @@ Trois changements : alignement MariaDB, exposition des nouveaux secrets ops loca
 
     db:
 -     image: mariadb:10.11
-+     # MariaDB 10.11 = version managée Ouvaton (confirmée manuellement par
-+     # Sylvain le 2026-06-06 ; la sonde /ops/probe la confirmera définitivement).
-+     image: mariadb:${KERMESSE_MARIADB_VERSION:-10.11}
++     # MariaDB 11.8.6 = version observee dans le dump Ouvaton du 2026-06-25.
++     image: mariadb:${KERMESSE_MARIADB_VERSION:-11.8.6}
       environment:
         MARIADB_ROOT_PASSWORD: root_password
         MARIADB_DATABASE: kermesse
@@ -219,7 +218,7 @@ Nouveau contrôleur `App\Controllers\Ops\ProbeController::probe()`, derrière `O
   "post_max_size": "8M",
   "upload_max_filesize": "8M",
   "extensions": ["intl", "mysqli", "pdo_mysql", "zip", "..."],
-  "mariadb_version": "10.11.x"
+  "mariadb_version": "11.8.6-MariaDB-0+deb13u1 from Debian-log"
 }
 ```
 
@@ -601,7 +600,7 @@ Aucune de ces décisions n'est rouverte ; elles cadrent le découpage en stories
 Ce ne sont pas des arbitrages d'architecture, seulement des valeurs à relever via `/ops/probe` puis à reporter :
 
 1. **Version PHP exacte Ouvaton** → `ARG PHP_VERSION_OUVATON` (point de départ `8.3`).
-2. **Version MariaDB Ouvaton** → **`10.11`, confirmée manuellement par Sylvain le 2026-06-06** (la sonde ne fera que la reconfirmer). L'incohérence `11.4` de `docs/local-orbstack.md` est corrigée vers `10.11` ; le compose épingle `10.11`.
+2. **Version MariaDB Ouvaton** → **`11.8.6-MariaDB-0+deb13u1 from Debian-log`**, observée dans le dump phpMyAdmin du 2026-06-25. La sonde `/ops/probe` doit confirmer cette valeur côté runtime ; le compose épingle `11.8.6` par défaut.
 3. **Limites PHP réelles** (`memory_limit`, `max_execution_time`, tailles d'upload) → `docker/app/php.ini`.
 4. **Liste d'extensions** réellement chargées → alignement `Dockerfile` (FR-4).
 5. **Support `symlink()` / `rename()` sur lien côté Ouvaton** → confirme la bascule par symlink, sinon fallback fichier pointeur `CURRENT_RELEASE` (R-4). Tous deux déjà spécifiés en §3.1.

@@ -42,6 +42,8 @@ assert_contains "cleanup bootstrap always" 'if: always()'
 assert_contains "cleanup cible le script temporaire" 'remote_script="${OUVATON_HTTPDOCS_FOLDER}/ops-bootstrap-activate.php"'
 assert_contains "cleanup ignoré avant génération bootstrap" 'Aucun script bootstrap généré dans ce run ; cleanup distant ignoré.'
 assert_contains "cleanup reste conditionné au token bootstrap" 'if [ -z "${BOOTSTRAP_ACTIVATE_TOKEN:-}" ]; then'
+assert_not_contains "cleanup ne masque pas les erreurs lftp" "set cmd:fail-exit no"
+assert_contains "cleanup suppression idempotente" 'rm -f %s'
 assert_contains "premier déploiement amorce le env absent" 'Ensure production .env exists for first install'
 assert_contains "deploy utilise le mode ensure-present" 'SYNC_ENV_MODE: ensure-present'
 assert_contains "deploy appelle le sync env partagé" 'bash scripts/sync-production-env.sh'

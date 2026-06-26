@@ -1,5 +1,5 @@
 # generated: 2026-06-19T18:32:48+0200
-# last_updated: 2026-06-22T23:30:00+0200
+# last_updated: 2026-06-26T00:00:00+0200
 # project: Kermesse
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-19T18:32:48+0200
-last_updated: 2026-06-24T15:00:00+0200
+last_updated: 2026-06-26T00:00:00+0200
 project: Kermesse
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   5-13-renommer-le-concept-signup-slotsignup-ubiquitous-language-defere-candidat-epic-7-tech-debt: done
   5-14-tracabilite-et-validation-des-inscriptions-stateless: done
   epic-5-retrospective: optional
-  epic-6: in-progress
+  epic-6: done
   6-1-corriger-l-ajout-d-un-creneau-sur-une-kermesse-ouverte: done
   6-2-cartographier-les-parcours-critiques-et-leur-couverture: done
   6-3-automatiser-les-trois-regressions-connues-avec-playwright: done
@@ -98,11 +98,11 @@ development_status:
   6-8-gerer-l-expiration-de-session-avec-redirection-gracieuse: done
   6-8bis-resoudre-la-dette-technique-ci-deferred-findings-de-la-story-6-7: done
   6-9-qualifier-et-deployer-la-release-candidate: done
-  6-10-securiser-le-deploiement-des-migrations-incompatibles: in-progress
-  6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci: review
+  6-10-securiser-le-deploiement-des-migrations-incompatibles: done
+  6-11-restaurer-l-execution-reelle-des-tests-d-integration-mariadb-en-ci: done
   6-12-restaurer-le-job-e2e-playwright-en-ci: done
   6-13-corriger-le-drift-fix-en-repetition-de-deploiement-sur-base-vierge: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
   epic-7: backlog
   7-1-inscription-de-tiers-guests: backlog
   7-2-nettoyage-du-code-zombie-de-resolution-de-profil-defere-candidat-epic-7-tech-debt: backlog

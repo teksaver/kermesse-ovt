@@ -67,7 +67,8 @@ services:
         condition: service_healthy
 
   db:
-    image: mariadb:10.11
+    # Alignee sur la version observee dans le dump Ouvaton du 2026-06-25.
+    image: mariadb:${KERMESSE_MARIADB_VERSION:-11.8.6}
     environment:
       MARIADB_ROOT_PASSWORD: root_password
       MARIADB_DATABASE: *db-name

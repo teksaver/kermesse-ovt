@@ -1,12 +1,12 @@
 ---
 baseline_commit: 6ea8a9147e03cd998b30edbbd806a8e801b702ef
 story_key: 6-10-securiser-le-deploiement-des-migrations-incompatibles
-status: in-review
+status: done
 ---
 
 # Story 6.10 : Sécuriser le déploiement des migrations incompatibles
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -165,4 +165,4 @@ La stratégie expand/contract implémentée ne crée **aucune fenêtre de compat
 
 ## Completion Status
 
-Status: in-review — 13 patches appliqués le 2026-06-22
+Status: done — 13 patches appliqués le 2026-06-22

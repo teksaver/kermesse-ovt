@@ -10,7 +10,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
- * Story 6.6 — Role protection invariants on real MariaDB 10.11.
+ * Story 6.6 — Role protection invariants on real MariaDB 11.8.6.
  *
  * Ports the SQLite-backed RoleServiceRemoveRoleTest and
  * RoleServiceLeaveKermesseTest scenarios to run against the real

@@ -11,7 +11,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
- * Story 6.6 — Signup invariants on real MariaDB 10.11.
+ * Story 6.6 — Signup invariants on real MariaDB 11.8.6.
  *
  * Validates that capacity, duplicate, and overlap constraints hold on the
  * production engine with the actual SQL schema. SQLite cannot prove these

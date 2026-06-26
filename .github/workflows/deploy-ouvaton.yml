@@ -484,14 +484,14 @@ jobs:
 
           echo "Suppression du script d'activation temporaire sur le serveur..."
           {
-            printf 'set cmd:fail-exit no\n'
+            printf 'set cmd:fail-exit yes\n'
             printf 'set net:max-retries 2\n'
             printf 'set net:timeout 30\n'
             printf 'open -u %s,%s -p 115 sftp://%s\n' \
               "$(lftp_quote "${OUVATON_DEPLOY_USERNAME}")" \
               "$(lftp_quote "${OUVATON_DEPLOY_PASSWORD}")" \
               "${OUVATON_DEPLOY_HOST}"
-            printf 'rm %s\n' "$(lftp_quote "${remote_script}")"
+            printf 'rm -f %s\n' "$(lftp_quote "${remote_script}")"
             printf 'bye\n'
           } | lftp || { echo "::error::Impossible de supprimer le script temporaire."; exit 1; }
 

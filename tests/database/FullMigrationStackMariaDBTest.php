@@ -7,7 +7,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
- * Story 6.6 — Validate full migration stack on MariaDB 10.11.
+ * Story 6.6 — Validate full migration stack on MariaDB 11.8.6.
  *
  * Applies every SQL file under database/migrations_sql/ in lexicographic
  * order (matching the MigrationRunnerService ordering) and verifies the

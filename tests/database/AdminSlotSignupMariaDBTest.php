@@ -11,7 +11,7 @@ use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
- * Story 6.6 — Admin slot-signup operations atomicity on real MariaDB 10.11.
+ * Story 6.6 — Admin slot-signup operations atomicity on real MariaDB 11.8.6.
  *
  * Validates that adminCancelSlotSignup and moveSlotSignup are atomic on the
  * production engine: either the full operation commits or no state changes.

@@ -344,8 +344,10 @@ formulaire. Si la mesure Ouvaton autorise un plafond POST supérieur, augmenter
 
 Versions de base de données et d'extensions épinglées :
 
-- **MariaDB `10.11`** (`docker-compose.yml`, service `db`) — confirmée
-  manuellement sur Ouvaton ; la sonde la reconfirme via `SELECT VERSION()`.
+- **MariaDB `11.8.6`** (`docker-compose.yml`, service `db`) — mesurée
+  dans le dump phpMyAdmin Ouvaton du 2026-06-25
+  (`11.8.6-MariaDB-0+deb13u1 from Debian-log`). À reconfirmer après chaque
+  mesure `/ops/probe` ou nouveau dump de production.
 - **Extensions PHP** installées dans le `Dockerfile` : `intl`, `mysqli`,
   `pdo_mysql`, `zip`. Outils de packaging garantis présents : `tar`, `gzip`
   (requis par l'empaquetage de l'artefact, story 2.1).

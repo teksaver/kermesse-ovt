@@ -11,6 +11,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MARIADB_VERSION: '11.8.6'
 
 jobs:
   # ─── Gate 1 : PHPUnit (SQLite) ────────────────────────────────────────────
@@ -96,7 +97,7 @@ jobs:
 
     services:
       mariadb:
-        image: mariadb:10.11
+        image: mariadb:${{ env.MARIADB_VERSION }}
         env:
           MARIADB_ROOT_PASSWORD: ci_root_password
           MARIADB_DATABASE: kermesse_test
@@ -188,7 +189,7 @@ jobs:
 
       - name: Dump MariaDB logs on failure
         if: failure()
-        run: docker ps -a -q --filter ancestor=mariadb:10.11 | xargs -r docker logs 2>&1 || true
+        run: docker ps -a -q --filter ancestor=mariadb:${{ env.MARIADB_VERSION }} | xargs -r docker logs 2>&1 || true
 
   # ─── Gate 4 : Playwright E2E — smoke tests (6.3) + parcours critiques ─────
   #

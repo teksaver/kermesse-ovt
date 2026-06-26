@@ -43,15 +43,17 @@ Le secret HMAC et la desactivation de la protection production-only sont pre-con
 ```bash
 HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
 BASE_URL="http://localhost:8080"
+BASE_URL="${BASE_URL%/}"
+ROUTE_PATH="ops/migrate"
 
 TIMESTAMP=$(date +%s)
-NONCE=$(php -r "echo bin2hex(random_bytes(16));")
+NONCE=$(openssl rand -hex 16)
 BODY='{}'
 BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
-PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/migrate\n${BODY_HASH}"
+PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\n${ROUTE_PATH}\n${BODY_HASH}"
 SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
 
-curl -s -X POST "${BASE_URL}/ops/migrate" \
+curl -s -X POST "${BASE_URL}/${ROUTE_PATH}" \
   -H "Content-Type: application/json" \
   -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
   -H "X-Kermesse-Nonce: ${NONCE}" \
@@ -59,10 +61,42 @@ curl -s -X POST "${BASE_URL}/ops/migrate" \
   -d "$BODY"
 ```
 
-Reponse attendue : `{"ok":true,"applied":1,"skipped":0,"failed":0}`.
+Reponse attendue : `"ok": true` et `"failed": 0`. Les compteurs `applied` et `skipped` dependent de l'etat initial de la base.
 Relancer la commande apres ajout d'une migration : le runner applique uniquement les migrations absentes ou precedemment echouees.
 
 Si le port HTTP est different de 8080, adapter `BASE_URL` en consequence.
+
+#### Cas backup production recent
+
+Si `kermesse` a ete restauree depuis `backup_prod.sql`, executer d'abord la reconciliation du drift connu sur la migration `20260614121500_add_last_login_at_to_users`. Le dump de production contient cette migration deja appliquee avec un ancien checksum ; `ops/migrate` refuse alors de continuer tant que le drift n'est pas explicitement reconcilie.
+
+```bash
+HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
+BASE_URL="http://localhost:8080"
+BASE_URL="${BASE_URL%/}"
+
+sign_and_post() {
+  ROUTE_PATH="$1"
+  BODY_DEFAULT='{}'
+  BODY="${2:-${BODY_DEFAULT}}"
+  TIMESTAMP=$(date +%s)
+  NONCE=$(openssl rand -hex 16)
+  BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
+  PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\n${ROUTE_PATH}\n${BODY_HASH}"
+  SIGNATURE=$(printf "%b" "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | cut -d' ' -f2)
+
+  curl -s -X POST "${BASE_URL}/${ROUTE_PATH}" \
+    -H "Content-Type: application/json" \
+    -H "X-Kermesse-Timestamp: ${TIMESTAMP}" \
+    -H "X-Kermesse-Nonce: ${NONCE}" \
+    -H "X-Kermesse-Signature: ${SIGNATURE}" \
+    -d "$BODY"
+}
+
+sign_and_post "ops/fix-drift" '{"version":"20260614121500_add_last_login_at_to_users"}'
+sign_and_post "ops/migrate/status" '{}'
+sign_and_post "ops/migrate" '{}'
+```
 
 ### Mesurer le runtime via ops/probe
 
@@ -73,9 +107,10 @@ Elle signe son propre `routePath` (`ops/probe`) avec le meme secret de dev que `
 ```bash
 HMAC_SECRET="local_dev_ops_secret_32_bytes_minimum"
 BASE_URL="http://localhost:8080"
+BASE_URL="${BASE_URL%/}"
 
 TIMESTAMP=$(date +%s)
-NONCE=$(php -r "echo bin2hex(random_bytes(16));")
+NONCE=$(openssl rand -hex 16)
 BODY=''
 BODY_HASH=$(printf "%s" "$BODY" | sha256sum | cut -d' ' -f1)
 PAYLOAD="${TIMESTAMP}\n${NONCE}\nPOST\nops/probe\n${BODY_HASH}"
@@ -106,7 +141,7 @@ Cette methode s'utilise aussi si l'application n'est pas encore accessible (serv
 | Service | Role | Acces local |
 |---------|------|-------------|
 | `app` | PHP 8.3, Apache, Composer, CodeIgniter | `http://localhost:8080/` |
-| `db` | MariaDB 10.11 locale (alignee sur Ouvaton) | `127.0.0.1:3307` par defaut |
+| `db` | MariaDB 11.8.6 locale (alignee sur le dump Ouvaton du 2026-06-25) | `127.0.0.1:3307` par defaut |
 | `phpmyadmin` | Interface web d'inspection MariaDB (dev local uniquement) | `http://127.0.0.1:8082/` |
 
 ### phpMyAdmin
