@@ -1661,7 +1661,7 @@ body {
 .participants-list__vol-header {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     gap: 4px 6px;
     flex: 1;
     min-width: 0;
