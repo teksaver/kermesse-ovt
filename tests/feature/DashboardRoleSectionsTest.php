@@ -32,7 +32,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
     private int $kermesseId = 0;
 
     // Marqueurs stables de chaque section dans le HTML rendu.
-    private const MARKER_MODIFICATION = 'Gestion des stands et des créneaux';
+    private const MARKER_MODIFICATION = 'Stands et créneaux';
     private const MARKER_PARTICIPANTS = 'Gestion des inscrits';
     private const MARKER_TEAM         = 'Gestion de l\'équipe d\'organisation';
     private const MARKER_MY_SIGNUPS   = 'Mes participations';
@@ -47,7 +47,7 @@ final class DashboardRoleSectionsTest extends CIUnitTestCase
     // « Modification ». Seuls les outils d'édition ci-dessous restent réservés à
     // Owner/Admin.
     private const MODIFICATION_TOOLS = [
-        'Gestion des stands et des créneaux',            // titre de section
+        'Stands et créneaux',                            // titre de section
         'Ajouter un stand',        // gestion des stands
         'Modifier la kermesse',    // édition des caractéristiques (bouton + modale)
         'Fermer les inscriptions', // action lifecycle (kermesse fixée à « open »)

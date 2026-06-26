@@ -135,7 +135,7 @@ class KermesseAdminController extends BaseController
         // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
         // Onglets non autorisés absents du tableau → absents du DOM.
         $tabs = [];
-        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Gestion des stands']; }
+        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Stands et créneaux']; }
         if ($canManageParticipants) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
         if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe d\'organisation']; }
         $tabs[] =                               ['id' => 'participations', 'label' => 'Mes participations'];

@@ -42,6 +42,29 @@
         </div>
     </div>
 
+    <!-- Actions admin (Owner/Admin) : ⚙️ Paramètres + cycle de vie — dans le header, hors onglets. -->
+    <?php if (! empty($canModify)): ?>
+    <div class="kermesse-header-actions">
+        <button type="button" class="btn btn--secondary btn--sm" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres</button>
+
+        <?php if ($kermesse['status'] === 'open'): ?>
+        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn--warning btn--sm">Fermer les inscriptions</button>
+        </form>
+        <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
+        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+            <?= csrf_field() ?>
+            <button type="submit" class="btn btn--primary btn--sm"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
+        </form>
+        <?php endif; ?>
+    </div>
+    <?php $lifecycleErrorHeader = session()->getFlashdata('lifecycle_error'); ?>
+    <?php if ($lifecycleErrorHeader !== null): ?>
+    <p class="form-error" role="alert" style="margin-top:8px;"><?= esc($lifecycleErrorHeader) ?></p>
+    <?php endif; ?>
+    <?php endif; ?>
+
     <!-- Modales kermesse — rendues ici pour accessibilité DOM (hors flux onglets). -->
     <?php if (! empty($canModify)): ?>
     <?php
@@ -114,40 +137,14 @@
     >
         <?php if ($hasSidebar): ?>
         <button type="button" class="accordion-header" data-tab="modification" aria-expanded="<?= $defaultTab === 'modification' ? 'true' : 'false' ?>" aria-controls="tab-panel-modification">
-            <span class="accordion-icon"><?= $defaultTab === 'modification' ? '▼' : '▶' ?></span> Gestion des stands
+            <span class="accordion-icon"><?= $defaultTab === 'modification' ? '▼' : '▶' ?></span> Stands et créneaux
         </button>
         <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
         <?php endif; ?>
 
-        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
-        <?php if ($lifecycleError !== null): ?>
-        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
-        <?php endif; ?>
-
-        <div class="section-toolbar" style="margin-bottom:16px;">
-            <h2 class="section-title">Gestion des stands</h2>
-        </div>
-
-        <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: center;">
-            <button type="button" class="btn btn--secondary" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres de l'événement</button>
-
-            <!-- Actions lifecycle (UX-DR17) -->
-            <?php if ($kermesse['status'] === 'open'): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
-            </form>
-            <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
-            </form>
-            <?php endif; ?>
-        </div>
-
-        <h2 class="section-title">Gestion des stands et des créneaux</h2>
+        <h2 class="section-title">Stands et créneaux</h2>
         <h3 class="subsection-title">Stands</h3>
 
         <?php
