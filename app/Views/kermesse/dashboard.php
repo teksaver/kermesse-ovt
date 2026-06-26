@@ -483,46 +483,7 @@
                     <li class="participants-list__item participants-list__item--admin">
                         <div class="participants-list__vol-header">
                             <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
-                            <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
-                            <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
-                            <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <span class="participants-list__contact">
-                            <?php if ($vol['phone'] !== ''): ?>
-                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
-                            <?php endif; ?>
-                            <?php if ($vol['email'] !== ''): ?>
-                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
-                            <?php endif; ?>
-                        </span>
-
-                        <!-- Actions admin : éditer, déplacer et annuler (Story 5.10/5.12) -->
-                        <div class="participants-list__actions">
-                            <!-- Annuler l'inscription -->
-                            <details class="admin-cancel-details">
-                                <summary class="btn-icon btn-icon--danger" title="Annuler l'inscription" aria-label="Annuler l'inscription de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">🗑️</summary>
-                                <div class="admin-cancel-details__panel">
-                                    <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
-                                    <form method="post"
-                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-cancel") ?>"
-                                          class="admin-cancel-form">
-                                        <?= csrf_field() ?>
-                                        <label class="admin-cancel__notify-label">
-                                            <input type="checkbox" name="notify" value="1" class="admin-cancel__notify-checkbox">
-                                            Notifier <?= esc($vol['email']) ?>
-                                        </label>
-                                        <div class="admin-form__buttons">
-                                            <button type="submit" class="btn btn--danger btn--sm">Confirmer</button>
-                                            <button type="button" class="btn btn--secondary btn--sm"
-                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </details>
-
-                            <!-- Modifier la fiche -->
+                            <!-- Modifier la fiche — icône collée au nom -->
                             <details class="admin-edit-details">
                                 <summary class="btn-icon" title="Modifier la fiche" aria-label="Modifier la fiche de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">✏️</summary>
                                 <div class="admin-edit-details__panel">
@@ -580,6 +541,44 @@
 
                                         <div class="admin-form__buttons">
                                             <button type="submit" class="btn btn--primary btn--sm">Enregistrer</button>
+                                            <button type="button" class="btn btn--secondary btn--sm"
+                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </details>
+                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
+                            <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
+                            <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
+                            <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <span class="participants-list__contact">
+                            <?php if ($vol['phone'] !== ''): ?>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <?php endif; ?>
+                            <?php if ($vol['email'] !== ''): ?>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <?php endif; ?>
+                        </span>
+
+                        <!-- Actions admin : déplacer et annuler (Story 5.10/5.12) — édition déplacée dans vol-header -->
+                        <div class="participants-list__actions">
+                            <!-- Annuler l'inscription -->
+                            <details class="admin-cancel-details">
+                                <summary class="btn-icon btn-icon--danger" title="Annuler l'inscription" aria-label="Annuler l'inscription de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">🗑️</summary>
+                                <div class="admin-cancel-details__panel">
+                                    <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
+                                    <form method="post"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-cancel") ?>"
+                                          class="admin-cancel-form">
+                                        <?= csrf_field() ?>
+                                        <label class="admin-cancel__notify-label">
+                                            <input type="checkbox" name="notify" value="1" class="admin-cancel__notify-checkbox">
+                                            Notifier <?= esc($vol['email']) ?>
+                                        </label>
+                                        <div class="admin-form__buttons">
+                                            <button type="submit" class="btn btn--danger btn--sm">Confirmer</button>
                                             <button type="button" class="btn btn--secondary btn--sm"
                                                     onclick="this.closest('details').removeAttribute('open')">Annuler</button>
                                         </div>
