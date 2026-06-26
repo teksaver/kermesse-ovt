@@ -140,6 +140,19 @@ class KermesseAdminController extends BaseController
         if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe d\'organisation']; }
         $tabs[] =                               ['id' => 'participations', 'label' => 'Mes participations'];
 
+        // Onglet ouvert par défaut selon le statut de la kermesse :
+        // — préparation → "Gestion des stands" (si disponible)
+        // — ouvert / clôturé → "Gestion des inscrits" (si disponible)
+        // — sinon : premier onglet disponible
+        $status = (string) ($kermesse['status'] ?? '');
+        if ($canModify && $status === KermesseModel::STATUS_PREPARATION) {
+            $defaultTab = 'modification';
+        } elseif ($canManageParticipants && $status !== KermesseModel::STATUS_PREPARATION) {
+            $defaultTab = 'inscrits';
+        } else {
+            $defaultTab = $tabs[0]['id'];
+        }
+
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
             'kermesse'              => $kermesse,
@@ -153,6 +166,7 @@ class KermesseAdminController extends BaseController
             'myParticipations'      => $myParticipations,
             'teamMembers'           => $teamMembers,
             'tabs'                  => $tabs,
+            'defaultTab'            => $defaultTab,
             // Passed to the team view so the UI can detect "c'est moi" and show badge/leave button.
             'currentUserId'         => $userId,
             // Décision métier préparée pour la vue : l'annulation d'une participation

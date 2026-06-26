@@ -92,9 +92,9 @@
             <?php foreach ($tabs as $i => $tab): ?>
             <button
                 type="button"
-                class="sidebar-nav__btn<?= $i === 0 ? ' is-active' : '' ?>"
+                class="sidebar-nav__btn<?= $tab['id'] === $defaultTab ? ' is-active' : '' ?>"
                 data-tab="<?= esc($tab['id']) ?>"
-                aria-expanded="<?= $i === 0 ? 'true' : 'false' ?>"
+                aria-expanded="<?= $tab['id'] === $defaultTab ? 'true' : 'false' ?>"
                 aria-controls="tab-panel-<?= esc($tab['id']) ?>"
             ><?= esc($tab['label']) ?></button>
             <?php endforeach; ?>
@@ -113,8 +113,8 @@
         data-tab-content="modification"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="modification" aria-expanded="true" aria-controls="tab-panel-modification">
-            <span class="accordion-icon">▼</span> Gestion des stands
+        <button type="button" class="accordion-header" data-tab="modification" aria-expanded="<?= $defaultTab === 'modification' ? 'true' : 'false' ?>" aria-controls="tab-panel-modification">
+            <span class="accordion-icon"><?= $defaultTab === 'modification' ? '▼' : '▶' ?></span> Gestion des stands
         </button>
         <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
@@ -439,7 +439,7 @@
         data-tab-content="inscrits"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="inscrits" aria-expanded="false" aria-controls="tab-panel-inscrits">
+        <button type="button" class="accordion-header" data-tab="inscrits" aria-expanded="<?= $defaultTab === 'inscrits' ? 'true' : 'false' ?>" aria-controls="tab-panel-inscrits">
             <span class="accordion-icon">▶</span> Gestion des inscrits
         </button>
         <?php endif; ?>
@@ -816,7 +816,7 @@
         data-tab-content="equipe"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="false" aria-controls="tab-panel-equipe">
+        <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="<?= $defaultTab === 'equipe' ? 'true' : 'false' ?>" aria-controls="tab-panel-equipe">
             <span class="accordion-icon">▶</span> Équipe d'organisation
         </button>
         <?php endif; ?>
@@ -1069,7 +1069,7 @@
         data-tab-content="participations"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="participations" aria-expanded="false" aria-controls="tab-panel-participations">
+        <button type="button" class="accordion-header" data-tab="participations" aria-expanded="<?= $defaultTab === 'participations' ? 'true' : 'false' ?>" aria-controls="tab-panel-participations">
             <span class="accordion-icon">▶</span> Mes participations
         </button>
         <?php endif; ?>
