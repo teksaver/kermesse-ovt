@@ -180,7 +180,12 @@ echo "=== Fixtures chargées. ==="
 # ----------------------------------------------------------------
 echo "=== Lancement des tests Playwright ==="
 
-COMPOSE_PROJECT=$(docker compose "${COMPOSE_FILES[@]}" config 2>/dev/null | awk '/^name:/{print $2; exit}')
+COMPOSE_PROJECT=$(docker compose "${COMPOSE_FILES[@]}" config | awk '/^name:/{print $2; exit}')
+if [ -z "${COMPOSE_PROJECT}" ]; then
+  echo "=== ERREUR : impossible de dériver le nom du projet Docker Compose ===" >&2
+  echo "Vérifier que docker compose config fonctionne correctement." >&2
+  exit 1
+fi
 E2E_VOLUME="${COMPOSE_PROJECT}_e2e-node-modules"
 docker volume create "${E2E_VOLUME}" 2>/dev/null || true
 

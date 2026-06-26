@@ -220,17 +220,19 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
         $db1->query('SELECT id FROM `slots` WHERE id = ? FOR UPDATE', [$this->slotId]);
 
         // Connection 2 attempts to signup but will block on capacity check lock
-        $db2->query('SET innodb_lock_wait_timeout=1');
+        $db2->query('SET SESSION innodb_lock_wait_timeout=1');
 
         $service2 = new SlotSignupService(
             new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
-        
+
         $start = microtime(true);
         $result = $service2->signup($this->slotId, $this->kermesseId, $this->volunteerFields());
         $duration = microtime(true) - $start;
 
         $db1->transRollback();
+        // Restore SESSION var before closing to prevent state leak if the connection is reused.
+        $db2->query('SET SESSION innodb_lock_wait_timeout = @@GLOBAL.innodb_lock_wait_timeout');
         $db2->close();
 
         $this->assertFalse($result->success);
@@ -252,16 +254,17 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
         $db1->query('SELECT id FROM `slot_signups` WHERE slot_id = ? AND email = ? FOR UPDATE', [$this->slotId, 'marie@kermesse.test']);
 
         // Connection 2 attempts a duplicate signup
-        $db2->query('SET innodb_lock_wait_timeout=1');
+        $db2->query('SET SESSION innodb_lock_wait_timeout=1');
         $service2 = new SlotSignupService(
             new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
-        
+
         $start = microtime(true);
         $result = $service2->signup($this->slotId, $this->kermesseId, $this->volunteerFields());
         $duration = microtime(true) - $start;
 
         $db1->transRollback();
+        $db2->query('SET SESSION innodb_lock_wait_timeout = @@GLOBAL.innodb_lock_wait_timeout');
         $db2->close();
 
         $this->assertFalse($result->success);
@@ -290,16 +293,17 @@ final class SlotSignupInvariantsMariaDBTest extends CIUnitTestCase
         $db1->query('SELECT id FROM `slot_signups` WHERE email = ? FOR UPDATE', ['marie@kermesse.test']);
 
         // Connection 2 attempts to signup to the overlapping slot
-        $db2->query('SET innodb_lock_wait_timeout=1');
+        $db2->query('SET SESSION innodb_lock_wait_timeout=1');
         $service2 = new SlotSignupService(
             new UserModel($db2), new SlotSignupModel($db2), null, null, $db2
         );
-        
+
         $start = microtime(true);
         $result = $service2->signup($overlappingSlotId, $this->kermesseId, $this->volunteerFields());
         $duration = microtime(true) - $start;
 
         $db1->transRollback();
+        $db2->query('SET SESSION innodb_lock_wait_timeout = @@GLOBAL.innodb_lock_wait_timeout');
         $db2->close();
 
         $this->assertFalse($result->success);
