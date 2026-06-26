@@ -28,9 +28,11 @@
             <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-top:8px;">
                 <?php if (empty($isBenevole)): ?>
                 <p class="kermesse-dashboard__public-link" style="margin:0; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">🔗 <strong>Lien public :</strong>
-                    <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
-                    <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; padding:0 4px; display:inline-flex; align-items:center;">📋</button>
-                    <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
+                    <span style="display:inline-flex; align-items:center; gap:4px; min-width:0;">
+                        <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:min(280px,60vw);"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
+                        <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; padding:0 4px; flex-shrink:0; display:inline-flex; align-items:center;">📋</button>
+                        <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
+                    </span>
                 </p>
                 <?php endif; ?>
 
@@ -39,31 +41,31 @@
                    rel="noopener noreferrer"
                    class="btn btn--secondary btn--sm"><?= empty($isBenevole) ? 'Accéder à la page' : 'Nouvelle inscription' ?></a>
             </div>
+
+            <!-- Actions admin (Owner/Admin) : ⚙️ Paramètres + cycle de vie — dans le jumbotron. -->
+            <?php if (! empty($canModify)): ?>
+            <div class="kermesse-header-actions">
+                <button type="button" class="btn btn--secondary btn--sm" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres</button>
+
+                <?php if ($kermesse['status'] === 'open'): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--warning btn--sm">Fermer les inscriptions</button>
+                </form>
+                <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--primary btn--sm"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
+                </form>
+                <?php endif; ?>
+            </div>
+            <?php $lifecycleErrorHeader = session()->getFlashdata('lifecycle_error'); ?>
+            <?php if ($lifecycleErrorHeader !== null): ?>
+            <p class="form-error" role="alert" style="margin-top:8px;"><?= esc($lifecycleErrorHeader) ?></p>
+            <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
-
-    <!-- Actions admin (Owner/Admin) : ⚙️ Paramètres + cycle de vie — dans le header, hors onglets. -->
-    <?php if (! empty($canModify)): ?>
-    <div class="kermesse-header-actions">
-        <button type="button" class="btn btn--secondary btn--sm" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres</button>
-
-        <?php if ($kermesse['status'] === 'open'): ?>
-        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-            <?= csrf_field() ?>
-            <button type="submit" class="btn btn--warning btn--sm">Fermer les inscriptions</button>
-        </form>
-        <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
-        <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-            <?= csrf_field() ?>
-            <button type="submit" class="btn btn--primary btn--sm"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
-        </form>
-        <?php endif; ?>
-    </div>
-    <?php $lifecycleErrorHeader = session()->getFlashdata('lifecycle_error'); ?>
-    <?php if ($lifecycleErrorHeader !== null): ?>
-    <p class="form-error" role="alert" style="margin-top:8px;"><?= esc($lifecycleErrorHeader) ?></p>
-    <?php endif; ?>
-    <?php endif; ?>
 
     <!-- Modales kermesse — rendues ici pour accessibilité DOM (hors flux onglets). -->
     <?php if (! empty($canModify)): ?>
