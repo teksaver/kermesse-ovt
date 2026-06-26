@@ -26,12 +26,12 @@
             <?php foreach ($kermesses as $k): ?>
                 <li class="kermesse-card kermesse-card--stacked">
                     <div class="kermesse-card__header">
-                        <span class="kermesse-card__name" style="flex:1; overflow:hidden; text-overflow:ellipsis;"><?= esc($k['name']) ?></span>
-                        <span class="kermesse-status-badge" style="flex-shrink:0;"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
+                        <span class="kermesse-card__name"><?= esc($k['name']) ?></span>
+                        <span class="kermesse-status-badge kermesse-card__role-badge"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
                     </div>
 
                     <div class="kermesse-card__meta-row">
-                        <span class="kermesse-status-badge <?= esc($k['status_badge_class'] ?? '') ?>"><?= esc($k['status_label'] ?? $k['status']) ?></span>
+                        <span class="kermesse-status-badge kermesse-status-badge--<?= esc($k['status']) ?>"><?= esc($k['status_label'] ?? $k['status']) ?></span>
                     </div>
 
                     <?php if (!empty($k['event_date']) || !empty($k['location'])): ?>
@@ -44,11 +44,11 @@
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
-                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <div class="kermesse-card__actions">
                         <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary"><?= $k['role'] === 'benevole' ? 'Mes inscriptions' : 'Administration' ?></a>
                         <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary"><?= $k['role'] === 'benevole' ? 'Nouvelle inscription' : 'Page publique' ?></a>
                         <?php if (! empty($k['canLeave'])): ?>
-                        <form method="post" action="<?= site_url("kermesse/{$k['id']}/leave") ?>" style="margin:0;" onsubmit="if (!confirm('Voulez-vous quitter cette kermesse ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
+                        <form method="post" action="<?= site_url("kermesse/{$k['id']}/leave") ?>" onsubmit="if (!confirm('Voulez-vous quitter cette kermesse ?')) { return false; } this.querySelector('button[type=submit]').disabled = true;">
                             <?= csrf_field() ?>
                             <button type="submit" class="btn btn--sm btn--secondary">Quitter cette kermesse</button>
                         </form>

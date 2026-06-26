@@ -319,6 +319,18 @@ p {
     color: #721c24;
 }
 
+.kermesse-status-badge--pending {
+    background: #fff3cd;
+    border-color: #ffeeba;
+    color: #856404;
+}
+
+.kermesse-status-badge--vous {
+    background: #e3f2fd;
+    border-color: #b6d7f5;
+    color: #1565c0;
+}
+
 /* ----- Admin header ----- */
 
 .admin-header {
@@ -1020,6 +1032,13 @@ p {
 .kermesse-card__name {
     font-weight: 600;
     font-size: 15px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.kermesse-card__role-badge {
+    flex-shrink: 0;
 }
 
 .kermesse-card__meta-row,
@@ -1029,6 +1048,16 @@ p {
     gap: 8px 12px;
     color: var(--color-text-muted);
     font-size: 14px;
+}
+
+.kermesse-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.kermesse-card__actions form {
+    margin: 0;
 }
 
 .home-connected__actions {
@@ -1615,11 +1644,22 @@ body {
 @media (min-width: 980px) {
     .participants-list__item--admin {
         display: grid;
-        grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr);
+        grid-template-columns: 1fr 1fr;
         align-items: start;
+        column-gap: 16px;
     }
 
-    .participants-list__item--admin .participants-list__contact,
+    .participants-list__item--admin .participants-list__vol-header {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .participants-list__item--admin .participants-list__contact {
+        grid-column: 2;
+        grid-row: 1;
+        margin-top: 0;
+    }
+
     .participants-list__item--admin .participants-list__actions {
         grid-column: 1 / -1;
     }

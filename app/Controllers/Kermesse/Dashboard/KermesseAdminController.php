@@ -208,9 +208,12 @@ class KermesseAdminController extends BaseController
             // with a linked user, apply the Story 5.10 lock logic.
             $computedStatus = \App\Models\SlotSignupModel::getStatus($p);
             $isOrphan       = ($p['user_id'] === null);
-            $statusBadge    = ($isOrphan || $computedStatus === 'unconfirmed')
-                ? ['label' => 'À confirmer', 'class' => 'badge--signup-pending']
-                : ['label' => 'Confirmé', 'class' => 'badge--signup-confirmed'];
+            // Explicit allow-list: only certified/active signups get the "Confirmé" label.
+            // Any unexpected status (e.g. cancelled slipping through) safely falls to "À confirmer".
+            $isConfirmed = ! $isOrphan && in_array($computedStatus, ['certified', 'active'], true);
+            $statusBadge = $isConfirmed
+                ? ['label' => 'Confirmé',    'class' => 'badge--signup-confirmed']
+                : ['label' => 'À confirmer', 'class' => 'badge--signup-pending'];
 
             if ($isOrphan || $computedStatus === 'unconfirmed') {
                 // Orphan or unconfirmed: rely solely on signup snapshot

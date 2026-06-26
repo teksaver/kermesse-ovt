@@ -41,13 +41,8 @@ class HomeController extends BaseController
         foreach ($kermesses as &$k) {
             $status = (string) ($k['status'] ?? '');
 
-            $k['canLeave']          = $roleService->canLeaveKermesse((int) $k['id'], $userId);
-            $k['status_label']      = $statusLabels[$status] ?? ucfirst($status);
-            $k['status_badge_class'] = in_array($status, [
-                KermesseModel::STATUS_PREPARATION,
-                KermesseModel::STATUS_OPEN,
-                KermesseModel::STATUS_CLOSED,
-            ], true) ? 'kermesse-status-badge--' . $status : '';
+            $k['canLeave']     = $roleService->canLeaveKermesse((int) $k['id'], $userId);
+            $k['status_label'] = $statusLabels[$status] ?? ucfirst($status);
         }
         unset($k);
 

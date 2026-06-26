@@ -483,10 +483,10 @@
                     <li class="participants-list__item participants-list__item--admin">
                         <div class="participants-list__vol-header">
                             <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="note" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
+                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
                             <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
                             <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
-                            <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
+                            <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
                             <?php endif; ?>
                         </div>
                         <span class="participants-list__contact">
@@ -862,7 +862,7 @@
                                         <?php if ($member['role'] !== 'owner'): ?>
                                             <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
                                             <?php if ($isSelf): ?>
-                                                <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                                <span class="kermesse-status-badge kermesse-status-badge--vous">Vous</span>
                                             <?php endif; ?>
                                             <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>" aria-label="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>">✏️</button>
                                             <?php if ($isSelf && $canLeave): ?>
@@ -905,14 +905,14 @@
                                 </div>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
+                                <span class="kermesse-status-badge kermesse-status-badge--pending">Invitation envoyée</span>
                                 <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
                                 <!-- Defense in depth: an Owner is never "pending" (no invited_at), but the
                                      management actions stay gated on role exactly like the active section. -->
                                 <?php if ($member['role'] !== 'owner'): ?>
                                 <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
                                 <?php if ($isSelf): ?>
-                                    <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                    <span class="kermesse-status-badge kermesse-status-badge--vous">Vous</span>
                                 <?php endif; ?>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>
