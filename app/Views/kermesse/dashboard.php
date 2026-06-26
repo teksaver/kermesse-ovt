@@ -480,9 +480,9 @@
                 <ul class="participants-list">
                     <?php foreach ($pSlot['volunteers'] as $vol): ?>
                     <li class="participants-list__item participants-list__item--admin">
-                        <div class="participants-list__vol-header">
-                            <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                            <!-- Modifier la fiche — icône collée au nom -->
+                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <div class="participants-list__icon-bar">
+                            <!-- Modifier la fiche -->
                             <details class="admin-edit-details">
                                 <summary class="btn-icon" title="Modifier la fiche" aria-label="Modifier la fiche de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">✏️</summary>
                                 <div class="admin-edit-details__panel">
@@ -554,7 +554,6 @@
                             <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
                             <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
                             <?php endif; ?>
-                        </div>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>
                             <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>" title="<?= esc($vol['phone']) ?>"><span aria-hidden="true">📞</span><span class="contact-text"> <?= esc($vol['phone']) ?></span></a>
@@ -630,7 +629,8 @@
                                 </div>
                             </details>
                             <?php endif; ?>
-                        </div>
+                        </div><!-- /.participants-list__actions -->
+                        </div><!-- /.participants-list__icon-bar -->
                     </li>
                     <?php endforeach; ?>
                 </ul>

@@ -1651,41 +1651,51 @@ body {
     min-height: 36px;
 }
 
-/* Admin participant row — single flex line (wraps on mobile) */
+/* Admin participant row — colonne sur mobile, ligne unique ≥600px */
 .participants-list__item--admin {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 12px;
+    flex-direction: column;
+    gap: 4px;
     padding: 8px 4px;
     border-top: none;
     border-bottom: 1px solid var(--color-border, #e9ecef);
 }
 .participants-list__item--admin:first-child { border-top: 1px solid var(--color-border, #e9ecef); }
-/* Mobile : icône seule pour téléphone/email ; texte visible dès 600px */
-.contact-text { display: none; }
-@media (min-width: 600px) {
-    .participants-list__item--admin { flex-wrap: nowrap; }
-    .contact-text { display: inline; }
-}
-.participants-list__vol-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 6px;
-    flex: 1;
-    min-width: 0;
-}
-.participants-list__vol-header .participants-list__name {
+.participants-list__item--admin .participants-list__name {
     min-width: 0;
     overflow-wrap: break-word;
     word-break: break-word;
     line-height: 1.4;
-    padding: 4px 0;
+    padding: 2px 0;
 }
-/* Edit panel takes full row width when open */
-.participants-list__vol-header .admin-edit-details[open] {
+/* Barre d'icônes : statut + contact + actions sur une seule ligne */
+.participants-list__icon-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px 8px;
+}
+/* Panneau d'édition prend toute la largeur quand ouvert */
+.participants-list__icon-bar .admin-edit-details[open] {
     flex-basis: 100%;
+    flex-wrap: wrap;
+}
+/* Mobile : icône seule pour téléphone/email ; texte visible dès 600px */
+.contact-text { display: none; }
+@media (min-width: 600px) {
+    .participants-list__item--admin {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px 12px;
+    }
+    .participants-list__item--admin .participants-list__name {
+        flex: 1;
+        min-width: 0;
+    }
+    .participants-list__icon-bar {
+        flex-shrink: 0;
+    }
+    .contact-text { display: inline; }
 }
 .participants-list__contact {
     display: flex;
