@@ -558,10 +558,10 @@
                         </div>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>
-                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>" title="<?= esc($vol['phone']) ?>"><span aria-hidden="true">📞</span><span class="contact-text"> <?= esc($vol['phone']) ?></span></a>
                             <?php endif; ?>
                             <?php if ($vol['email'] !== ''): ?>
-                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>" title="<?= esc($vol['email']) ?>"><span aria-hidden="true">✉️</span><span class="contact-text"> <?= esc($vol['email']) ?></span></a>
                             <?php endif; ?>
                         </span>
 

@@ -1652,8 +1652,11 @@ body {
     border-bottom: 1px solid var(--color-border, #e9ecef);
 }
 .participants-list__item--admin:first-child { border-top: 1px solid var(--color-border, #e9ecef); }
+/* Mobile : icône seule pour téléphone/email ; texte visible dès 600px */
+.contact-text { display: none; }
 @media (min-width: 600px) {
     .participants-list__item--admin { flex-wrap: nowrap; }
+    .contact-text { display: inline; }
 }
 .participants-list__vol-header {
     display: flex;
@@ -1664,11 +1667,11 @@ body {
     min-width: 0;
 }
 .participants-list__vol-header .participants-list__name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     min-width: 0;
-    line-height: 44px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.4;
+    padding: 4px 0;
 }
 /* Edit panel takes full row width when open */
 .participants-list__vol-header .admin-edit-details[open] {
