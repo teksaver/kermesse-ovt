@@ -49,7 +49,7 @@ class KermesseAdminController extends BaseController
         }
 
         // Story 4.1 — rendu du tableau de bord par rôle (UX-DR16 / NFR4).
-        // "Modification"            : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
+        // "Gestion des stands"      : Owner/Admin           → édition kermesse, lifecycle, stands/créneaux.
         // "Gestion des participants": Owner/Admin/Gestionnaire.
         // "Mes participations"      : tout rôle.
         $canModify             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
@@ -58,7 +58,7 @@ class KermesseAdminController extends BaseController
         // les participants mais ne peut pas constituer l'équipe d'administration (Dev Notes 4.5).
         $canInvite             = in_array($userRole, [UserRoleModel::ROLE_OWNER, UserRoleModel::ROLE_ADMIN], true);
 
-        // Charger stands + créneaux dès qu'une section en a besoin : « Modification »
+        // Charger stands + créneaux dès qu'une section en a besoin : « Gestion des stands »
         // (Owner/Admin) ET « Gestion des participants » (Owner/Admin/Gestionnaire).
         // Minimisation des données : un Bénévole ne déclenche aucun de ces chargements.
         $stands = [];
@@ -78,7 +78,7 @@ class KermesseAdminController extends BaseController
             }
             unset($stand);
 
-            // Augmentation propre à « Modification » : confirmation forte de suppression.
+            // Augmentation propre à « Gestion des stands » : confirmation forte de suppression.
             if ($canModify) {
                 $requiresStrong = (new StandDeletionService())->strongConfirmationByStand($standIds);
                 foreach ($stands as &$stand) {
@@ -135,9 +135,9 @@ class KermesseAdminController extends BaseController
         // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
         // Onglets non autorisés absents du tableau → absents du DOM.
         $tabs = [];
-        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Modification']; }
+        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Gestion des stands']; }
         if ($canManageParticipants) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
-        if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe']; }
+        if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe d\'organisation']; }
         $tabs[] =                               ['id' => 'participations', 'label' => 'Mes participations'];
 
         return view('kermesse/dashboard', [
@@ -175,7 +175,7 @@ class KermesseAdminController extends BaseController
      * the discrete "Modifié par [Prénom] le [date]" badge in the view.
      *
      * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
-     * @return list<array{name: string, slots: list<array{slot_id: int, date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{signup_id: int, first_name: string, last_name: string, phone: string, email: string, admin_notes: string, locked: bool, modifier_first_name: string|null, modifier_date: string|null}>, history: list<array{first_name: string, last_name: string, status: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
+     * @return list<array{name: string, slots: list<array{slot_id: int, date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{signup_id: int, first_name: string, last_name: string, phone: string, email: string, admin_notes: string, locked: bool, status_badge_label: string, status_badge_class: string, modifier_first_name: string|null, modifier_date: string|null}>, history: list<array{first_name: string, last_name: string, status: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
@@ -208,6 +208,9 @@ class KermesseAdminController extends BaseController
             // with a linked user, apply the Story 5.10 lock logic.
             $computedStatus = \App\Models\SlotSignupModel::getStatus($p);
             $isOrphan       = ($p['user_id'] === null);
+            $statusBadge    = ($isOrphan || $computedStatus === 'unconfirmed')
+                ? ['label' => 'À confirmer', 'class' => 'badge--signup-pending']
+                : ['label' => 'Confirmé', 'class' => 'badge--signup-confirmed'];
 
             if ($isOrphan || $computedStatus === 'unconfirmed') {
                 // Orphan or unconfirmed: rely solely on signup snapshot
@@ -250,6 +253,8 @@ class KermesseAdminController extends BaseController
                 'email'               => $displayEmail,
                 'admin_notes'         => (string) $p['admin_notes'],
                 'locked'              => $locked,
+                'status_badge_label'  => $statusBadge['label'],
+                'status_badge_class'  => $statusBadge['class'],
                 'modifier_first_name' => $modifierFirstName,
                 'modifier_date'       => $modifierDate,
             ];
@@ -546,7 +551,7 @@ class KermesseAdminController extends BaseController
             session()->setFlashdata('invite_success', 'Invitation envoyée à ' . $email . '.');
         }
 
-        return redirect()->to(site_url("kermesse/{$id}#participants"));
+        return redirect()->to(site_url("kermesse/{$id}") . '#equipe');
     }
 
     public function updateTeamMember(int $kermesseId, int $userId): mixed
@@ -617,7 +622,7 @@ class KermesseAdminController extends BaseController
             }
         }
 
-        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+        return redirect()->to(site_url("kermesse/{$kermesseId}") . '#equipe')
                          ->with('invite_success', 'Membre mis à jour avec succès.');
     }
 
@@ -631,11 +636,11 @@ class KermesseAdminController extends BaseController
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
 
         if ($roleService->resendInvitation($kermesseId, $userId)) {
-            return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+            return redirect()->to(site_url("kermesse/{$kermesseId}") . '#equipe')
                              ->with('invite_success', 'Invitation relancée avec succès.');
         }
 
-        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"))
+        return redirect()->to(site_url("kermesse/{$kermesseId}") . '#equipe')
                          ->with('invite_error', 'Impossible de relancer l\'invitation.');
     }
 
@@ -661,6 +666,6 @@ class KermesseAdminController extends BaseController
             session()->setFlashdata('invite_success', 'Membre révoqué avec succès.');
         }
 
-        return redirect()->to(site_url("kermesse/{$kermesseId}#participants"));
+        return redirect()->to(site_url("kermesse/{$kermesseId}") . '#equipe');
     }
 }

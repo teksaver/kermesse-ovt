@@ -24,14 +24,18 @@
 
         <ul class="kermesse-list" role="list">
             <?php foreach ($kermesses as $k): ?>
-                <li class="kermesse-card" style="display:flex; flex-direction:column; gap:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <li class="kermesse-card kermesse-card--stacked">
+                    <div class="kermesse-card__header">
                         <span class="kermesse-card__name" style="flex:1; overflow:hidden; text-overflow:ellipsis;"><?= esc($k['name']) ?></span>
                         <span class="kermesse-status-badge" style="flex-shrink:0;"><?= esc($roleLabels[$k['role']] ?? $k['role']) ?></span>
                     </div>
 
+                    <div class="kermesse-card__meta-row">
+                        <span class="kermesse-status-badge <?= esc($k['status_badge_class'] ?? '') ?>"><?= esc($k['status_label'] ?? $k['status']) ?></span>
+                    </div>
+
                     <?php if (!empty($k['event_date']) || !empty($k['location'])): ?>
-                    <div style="font-size:14px; color:var(--color-text-muted); display:flex; flex-direction:column; gap:4px;">
+                    <div class="kermesse-card__details">
                         <?php if (!empty($k['event_date'])): ?>
                         <span>📅 <?= esc($k['event_date']) ?></span>
                         <?php endif; ?>

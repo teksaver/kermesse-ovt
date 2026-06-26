@@ -104,7 +104,7 @@
         <div class="dashboard-content">
 
     <!-- ================================================================== -->
-    <!-- Onglet : Modification (Owner/Admin uniquement — Story 4.1 / 5.2).  -->
+    <!-- Onglet : Gestion des stands (Owner/Admin uniquement — Story 4.1 / 5.2). -->
     <!-- ================================================================== -->
     <?php if (! empty($canModify)): ?>
     <section
@@ -114,7 +114,7 @@
     >
         <?php if ($hasSidebar): ?>
         <button type="button" class="accordion-header" data-tab="modification" aria-expanded="true" aria-controls="tab-panel-modification">
-            <span class="accordion-icon">▼</span> Modification de la kermesse
+            <span class="accordion-icon">▼</span> Gestion des stands
         </button>
         <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
@@ -127,7 +127,7 @@
         <?php endif; ?>
 
         <div class="section-toolbar" style="margin-bottom:16px;">
-            <h2 class="section-title">Modification de la kermesse</h2>
+            <h2 class="section-title">Gestion des stands</h2>
         </div>
 
         <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: center;">
@@ -464,6 +464,7 @@
             <?php if (empty($pStand['slots'])): ?>
             <p class="section-placeholder">Aucun créneau pour ce stand.</p>
             <?php else: ?>
+            <div class="participants-stand__slots">
             <?php foreach ($pStand['slots'] as $pSlot): ?>
             <div class="participants-slot">
                 <div class="participants-slot__header">
@@ -482,6 +483,7 @@
                     <li class="participants-list__item participants-list__item--admin">
                         <div class="participants-list__vol-header">
                             <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="note" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
                             <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
                             <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
                             <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
@@ -790,6 +792,7 @@
                 <?php endif; ?>
             </div>
             <?php endforeach; ?>
+            </div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -798,7 +801,7 @@
     <?php endif; ?>
 
     <!-- ================================================================== -->
-    <!-- Onglet : Équipe (Owner/Admin — Story 4.5 / 5.2)                    -->
+    <!-- Onglet : Équipe d'organisation (Owner/Admin — Story 4.5 / 5.2)     -->
     <!-- ================================================================== -->
     <?php if (! empty($canInvite)): ?>
     <section
@@ -808,7 +811,7 @@
     >
         <?php if ($hasSidebar): ?>
         <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="false" aria-controls="tab-panel-equipe">
-            <span class="accordion-icon">▶</span> Équipe
+            <span class="accordion-icon">▶</span> Équipe d'organisation
         </button>
         <?php endif; ?>
         <h2 class="section-title">Gestion de l'équipe d'organisation</h2>

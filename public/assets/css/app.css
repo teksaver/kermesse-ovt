@@ -1004,9 +1004,31 @@ p {
     word-break: break-word;
 }
 
+.kermesse-card--stacked {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.kermesse-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
 .kermesse-card__name {
     font-weight: 600;
     font-size: 15px;
+}
+
+.kermesse-card__meta-row,
+.kermesse-card__details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    color: var(--color-text-muted);
+    font-size: 14px;
 }
 
 .home-connected__actions {
@@ -1271,6 +1293,11 @@ body {
     width: 100%;
     margin-top: 24px;
 }
+.dashboard-content {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+}
 @media (min-width: 769px) {
     .dashboard-layout {
         flex-direction: row;
@@ -1505,6 +1532,17 @@ body {
 }
 .invite-form .form-group { margin-bottom: 12px; }
 .participants-stand { margin: 8px 0 24px; }
+.participants-stand__slots {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+@media (min-width: 980px) {
+    .participants-stand__slots {
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        align-items: start;
+    }
+}
 .participants-slot {
     border: 1px solid #e9ecef;
     border-radius: 8px;
@@ -1574,6 +1612,18 @@ body {
     align-items: flex-start;
     gap: 8px;
 }
+@media (min-width: 980px) {
+    .participants-list__item--admin {
+        display: grid;
+        grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr);
+        align-items: start;
+    }
+
+    .participants-list__item--admin .participants-list__contact,
+    .participants-list__item--admin .participants-list__actions {
+        grid-column: 1 / -1;
+    }
+}
 .participants-list__vol-header {
     display: flex;
     flex-wrap: wrap;
@@ -1586,6 +1636,25 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 4px;
+}
+.badge--signup-confirmed,
+.badge--signup-pending {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 2px 8px;
+    vertical-align: middle;
+}
+.badge--signup-confirmed {
+    color: #155724;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+.badge--signup-pending {
+    color: #856404;
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
 }
 
 /* <details> expand panels — hide the default marker */

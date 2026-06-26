@@ -168,14 +168,14 @@ final class ConnectedHomeTest extends CIUnitTestCase
         return $this->post($url, $data);
     }
 
-    private function insertKermesse(string $name, string $slug, int $ownerId): int
+    private function insertKermesse(string $name, string $slug, int $ownerId, string $status = 'preparation'): int
     {
         $db = db_connect();
         $db->table('kermesses')->insert([
             'created_by'  => $ownerId,
             'public_slug' => $slug,
             'name'        => $name,
-            'status'      => 'preparation',
+            'status'      => $status,
         ]);
 
         return (int) $db->insertID();
@@ -269,6 +269,19 @@ final class ConnectedHomeTest extends CIUnitTestCase
 
         $this->assertStringContainsString('Gestionnaire', $body,
             'Gestionnaire role must be displayed as "Gestionnaire"');
+    }
+
+    public function testConnectedUserSeesKermesseStatusLabel(): void
+    {
+        $kId = $this->insertKermesse('Kermesse ouverte', 'kermesse-ouverte', $this->testUserId, 'open');
+        $this->assignRole($kId, $this->testUserId, 'owner');
+
+        $result = $this->withSession($this->connectedSession())->get('/');
+        $body   = $result->response()->getBody();
+
+        $result->assertStatus(200);
+        $this->assertStringContainsString('Inscriptions ouvertes', $body);
+        $this->assertStringContainsString('kermesse-status-badge--open', $body);
     }
 
     public function testConnectedHomeHasLogoutButton(): void

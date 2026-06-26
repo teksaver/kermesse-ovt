@@ -31,9 +31,9 @@ final class DashboardTabNavigationTest extends CIUnitTestCase
     private int $kermesseId  = 0;
 
     // Labels des boutons d'onglet (côté serveur — absents du DOM si non autorisé).
-    private const TAB_MODIFICATION    = 'Modification';
+    private const TAB_MODIFICATION    = 'Gestion des stands';
     private const TAB_INSCRITS        = 'Gestion des inscrits';
-    private const TAB_EQUIPE          = 'Équipe';
+    private const TAB_EQUIPE          = 'Équipe d\'organisation';
     private const TAB_PARTICIPATIONS  = 'Mes participations';
 
     protected function setUp(): void
@@ -263,7 +263,7 @@ final class DashboardTabNavigationTest extends CIUnitTestCase
         $result->assertSee(self::TAB_PARTICIPATIONS);
 
         // Onglets non autorisés : ABSENTS du DOM (UX-DR16).
-        // Note: le bouton "Modification" est distinct de la section h2 "Modification de la kermesse"
+        // Note: le bouton "Gestion des stands" est distinct de la section h2 de gestion.
         // (celle-ci est aussi absente car dans if($canModify)).
         $result->assertDontSee('data-tab="modification"');
         $result->assertDontSee('data-tab="equipe"');
