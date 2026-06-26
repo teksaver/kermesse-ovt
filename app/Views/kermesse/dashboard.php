@@ -1220,12 +1220,26 @@
         });
     });
 
-    /* Event listeners Accordéon */
+    /* Event listeners Accordéon — toggle : cliquer une section ouverte la replie */
     accHeaders.forEach(function (hdr) {
         hdr.addEventListener('click', function () {
-            activateSection(hdr.getAttribute('data-tab'));
-            // Scroll to the header so the user sees the opened section
-            hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var targetId = hdr.getAttribute('data-tab');
+            if (hdr.getAttribute('aria-expanded') === 'true') {
+                // Repli : retire is-open de tous les panneaux → seuls les en-têtes restent visibles
+                sidebarBtns.forEach(function (b) {
+                    b.classList.remove('is-active');
+                    b.setAttribute('aria-expanded', 'false');
+                });
+                accHeaders.forEach(function (h) {
+                    h.setAttribute('aria-expanded', 'false');
+                    var icon = h.querySelector('.accordion-icon');
+                    if (icon) { icon.textContent = '▶'; }
+                });
+                panels.forEach(function (p) { p.classList.remove('is-open'); });
+            } else {
+                activateSection(targetId);
+                hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
     });
 }());
