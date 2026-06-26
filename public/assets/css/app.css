@@ -1423,6 +1423,9 @@ body {
 /* Desktop : On masque la section entière si elle n'est pas ouverte */
 @media (min-width: 769px) {
     body.js-active .tab-panel:not(.is-open) { display: none !important; }
+    /* Aligne le titre de section avec le bord supérieur du menu sidebar */
+    .tab-panel { padding-top: 0; }
+    h2.section-title { margin-top: 0; }
 }
 
 /* Mobile : On laisse la section visible (pour voir le bouton accordéon), mais on masque son contenu */
