@@ -241,20 +241,19 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertDontSee('Modifié par');
     }
 
-    public function testSignupConfirmationBadgesDistinguishConfirmedAndPendingParticipants(): void
+    public function testSignupStatusIconsDistinguishConfirmedAndPendingParticipants(): void
     {
         $result = $this->getDashboard($this->adminId);
 
         $result->assertStatus(200);
-        $result->assertSee('Confirmé');
-        $result->assertSee('À confirmer');
-
         $body = (string) $result->response()->getBody();
-        $this->assertStringContainsString('badge--signup-confirmed', $body);
-        $this->assertStringContainsString('badge--signup-pending', $body);
+        // Confirmed signup → ✅, pending signup → ⏳
+        $this->assertStringContainsString('✅', $body, 'Confirmed signup must show ✅');
+        $this->assertStringContainsString('⏳', $body, 'Pending signup must show ⏳');
+        $this->assertStringContainsString('signup-status-icon', $body);
     }
 
-    public function testAdminCreatedOrphanSignupStillNeedsConfirmationBadge(): void
+    public function testAdminCreatedOrphanSignupStillShowsPendingIcon(): void
     {
         $db = db_connect();
         $db->table('slot_signups')
@@ -275,21 +274,20 @@ final class ManageParticipantsTest extends CIUnitTestCase
 
         $result->assertStatus(200);
         $result->assertSee('Bernard');
-        $result->assertSee('À confirmer');
-        $this->assertStringContainsString('badge--signup-pending', $body);
-        $this->assertStringNotContainsString('badge--signup-confirmed', $body);
+        $this->assertStringContainsString('⏳', $body, 'Orphan signup must show ⏳');
+        $this->assertStringContainsString('Inscription par un tiers', $body);
     }
 
-    public function testCancelledSignupDoesNotReceiveActiveConfirmationBadge(): void
+    public function testCancelledSignupDoesNotReceiveConfirmedIcon(): void
     {
         // The fixture has 2 active signups (Camille=certified, Hugo=pending) + 1 cancelled (Lefebvre).
-        // Exactly 1 confirmed badge and 1 pending badge must appear — Lefebvre must not add a third.
+        // Exactly 1 ✅ and 1 ⏳ must appear — Lefebvre must not add a third icon.
         $result = $this->getDashboard($this->adminId);
         $body   = (string) $result->response()->getBody();
 
         $result->assertStatus(200);
-        $this->assertSame(1, substr_count($body, 'badge--signup-confirmed'), 'Exactly one confirmed badge expected.');
-        $this->assertSame(1, substr_count($body, 'badge--signup-pending'), 'Exactly one pending badge expected.');
+        $this->assertSame(1, substr_count($body, '✅'), 'Exactly one confirmed icon expected.');
+        $this->assertSame(1, substr_count($body, '⏳'), 'Exactly one pending icon expected.');
     }
 
     // ------------------------------------------------------------------

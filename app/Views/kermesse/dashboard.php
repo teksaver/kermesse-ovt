@@ -547,7 +547,10 @@
                                     </form>
                                 </div>
                             </details>
-                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
+                            <span role="img"
+                                  title="<?= esc($vol['status_label']) ?>"
+                                  aria-label="Statut : <?= esc($vol['status_label']) ?>"
+                                  class="signup-status-icon"><?= $vol['status_icon'] ?></span>
                             <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
                             <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
                             <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>

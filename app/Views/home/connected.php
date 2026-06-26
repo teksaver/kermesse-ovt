@@ -44,6 +44,16 @@
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
+                    <?php if ($k['active_signup_count'] !== null): ?>
+                    <p class="kermesse-card__signup-summary">
+                        <?php if ($k['active_signup_count'] > 0): ?>
+                            Vous êtes inscrit(e) à <?= (int) $k['active_signup_count'] ?> créneau<?= $k['active_signup_count'] > 1 ? 'x' : '' ?>.
+                            Cliquez sur <strong>Mes inscriptions</strong> pour modifier ou <strong>Nouvelle inscription</strong> pour ajouter.
+                        <?php else: ?>
+                            Vous n'avez pas encore d'inscription pour cette kermesse.
+                        <?php endif; ?>
+                    </p>
+                    <?php endif; ?>
                     <div class="kermesse-card__actions">
                         <a href="<?= site_url("kermesse/{$k['id']}") ?>" class="btn btn--sm btn--primary"><?= $k['role'] === 'benevole' ? 'Mes inscriptions' : 'Administration' ?></a>
                         <a href="<?= site_url("k/{$k['public_slug']}") ?>" class="btn btn--sm btn--secondary"><?= $k['role'] === 'benevole' ? 'Nouvelle inscription' : 'Page publique' ?></a>
