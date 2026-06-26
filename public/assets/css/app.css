@@ -1637,11 +1637,12 @@ body {
 
 /* Admin participant row — single flex line (wraps on mobile) */
 .participants-list__item--admin {
-    display: flex;
+    flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px 12px;
     padding: 8px 4px;
+    border-top: none;
     border-bottom: 1px solid var(--color-border, #e9ecef);
 }
 .participants-list__item--admin:first-child { border-top: 1px solid var(--color-border, #e9ecef); }
