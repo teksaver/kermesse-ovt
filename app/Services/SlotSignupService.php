@@ -765,16 +765,19 @@ class SlotSignupService
     {
         $db = $this->db ?? db_connect();
         $ss = $db->prefixTable('slot_signups');
+        // N'auto-accepte que les inscriptions orphelines (créées hors session, created_by IS NULL).
+        // Les inscriptions créées par un admin (created_by != userId) restent "En attente de
+        // confirmation" pour que le bénévole puisse les valider ou refuser explicitement (Story 5.14).
         $db->query(
             "UPDATE {$ss}
              SET    accepted_at = NOW()
              WHERE  user_id     = ?
                AND  accepted_at IS NULL
-               AND  (created_by IS NULL OR created_by != ?)
+               AND  created_by  IS NULL
                AND  canceled_at IS NULL
                AND  rejected_at IS NULL
                AND  deleted_at  IS NULL",
-            [$userId, $userId]
+            [$userId]
         );
     }
 

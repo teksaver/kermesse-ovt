@@ -79,7 +79,7 @@ class SlotController extends BaseController
 
         session()->setFlashdata('success', 'Créneau ajouté avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#slots-stand-' . $standId);
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /** POST /kermesse/{kermesse_id}/slots/{slot_id} */
@@ -144,7 +144,7 @@ class SlotController extends BaseController
 
         session()->setFlashdata('success', 'Créneau modifié avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#slots-stand-' . $slot['stand_id']);
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /**
@@ -206,7 +206,7 @@ class SlotController extends BaseController
 
         session()->setFlashdata('success', 'Créneau supprimé avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#slots-stand-' . $stand['id']);
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /**
@@ -259,7 +259,7 @@ class SlotController extends BaseController
         int $standId,
         ?int $slotId = null,
     ): mixed {
-        return redirect()->to(site_url("kermesse/{$kermesseId}") . '#slots-stand-' . $standId)
+        return redirect()->to(site_url("kermesse/{$kermesseId}") . '#modification')
             ->withInput()
             ->with('slot_errors', $errors)
             ->with('slot_form', $formContext)

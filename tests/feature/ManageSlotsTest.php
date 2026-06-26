@@ -529,8 +529,8 @@ final class ManageSlotsTest extends CIUnitTestCase
                 'capacity'  => '3',
             ]);
 
-        // PRG exact avec ancre de stand (AC1)
-        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#slots-stand-' . $this->standId);
+        // PRG exact vers l'onglet modification (AC1)
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#modification');
 
         // Ligne persistée avec tous les champs attendus (AC1)
         $row = db_connect()
@@ -570,7 +570,7 @@ final class ManageSlotsTest extends CIUnitTestCase
                 'capacity'  => '5',
             ]);
 
-        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#slots-stand-' . $this->standId);
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#modification');
 
         $row = db_connect()
             ->query("SELECT starts_at, ends_at, capacity, status FROM db_slots WHERE stand_id = {$this->standId}")

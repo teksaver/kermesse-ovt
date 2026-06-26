@@ -26,7 +26,10 @@ async function openModificationTab(page: Page): Promise<void> {
   await adminLink.click();
   await page.waitForLoadState('networkidle');
 
-  /* For owner, the first active tab is "Modification" — it opens by default */
+  /* Explicitly activate the modification tab — default tab depends on kermesse status. */
+  const modBtn = page.locator('[data-tab="modification"]:visible').first();
+  await expect(modBtn).toBeVisible();
+  await modBtn.click();
   await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
 }
 

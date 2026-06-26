@@ -56,7 +56,7 @@ class StandController extends BaseController
         // The view escapes the flashdata (esc($success)); escaping here too would double-encode the name.
         session()->setFlashdata('success', 'Stand « ' . $name . ' » ajouté avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#stands');
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /** POST /kermesse/{kermesse_id}/stands/{stand_id} */
@@ -93,7 +93,7 @@ class StandController extends BaseController
 
         session()->setFlashdata('success', 'Stand renommé en « ' . $name . ' ».');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#stands');
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /**
@@ -152,7 +152,7 @@ class StandController extends BaseController
 
         session()->setFlashdata('success', 'Stand « ' . $stand['name'] . ' » supprimé avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#stands');
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /**
@@ -203,7 +203,7 @@ class StandController extends BaseController
 
         session()->setFlashdata('success', 'Stand « ' . $newName . ' » dupliqué avec succès.');
 
-        return redirect()->to(site_url("kermesse/{$id}") . '#stands');
+        return redirect()->to(site_url("kermesse/{$id}") . '#modification');
     }
 
     /**
