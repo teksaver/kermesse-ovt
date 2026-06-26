@@ -104,7 +104,7 @@
         <div class="dashboard-content">
 
     <!-- ================================================================== -->
-    <!-- Onglet : Modification (Owner/Admin uniquement — Story 4.1 / 5.2).  -->
+    <!-- Onglet : Gestion des stands (Owner/Admin uniquement — Story 4.1 / 5.2). -->
     <!-- ================================================================== -->
     <?php if (! empty($canModify)): ?>
     <section
@@ -114,7 +114,7 @@
     >
         <?php if ($hasSidebar): ?>
         <button type="button" class="accordion-header" data-tab="modification" aria-expanded="true" aria-controls="tab-panel-modification">
-            <span class="accordion-icon">▼</span> Modification de la kermesse
+            <span class="accordion-icon">▼</span> Gestion des stands
         </button>
         <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
@@ -127,7 +127,7 @@
         <?php endif; ?>
 
         <div class="section-toolbar" style="margin-bottom:16px;">
-            <h2 class="section-title">Modification de la kermesse</h2>
+            <h2 class="section-title">Gestion des stands</h2>
         </div>
 
         <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: center;">
@@ -464,6 +464,7 @@
             <?php if (empty($pStand['slots'])): ?>
             <p class="section-placeholder">Aucun créneau pour ce stand.</p>
             <?php else: ?>
+            <div class="participants-stand__slots">
             <?php foreach ($pStand['slots'] as $pSlot): ?>
             <div class="participants-slot">
                 <div class="participants-slot__header">
@@ -482,47 +483,9 @@
                     <li class="participants-list__item participants-list__item--admin">
                         <div class="participants-list__vol-header">
                             <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                            <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
-                            <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
-                            <span class="badge badge--modified" role="note" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
-                            <?php endif; ?>
-                        </div>
-                        <span class="participants-list__contact">
-                            <?php if ($vol['phone'] !== ''): ?>
-                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
-                            <?php endif; ?>
-                            <?php if ($vol['email'] !== ''): ?>
-                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
-                            <?php endif; ?>
-                        </span>
-
-                        <!-- Actions admin : éditer, déplacer et annuler (Story 5.10/5.12) -->
-                        <div class="participants-list__actions">
-                            <!-- Annuler l'inscription -->
-                            <details class="admin-cancel-details">
-                                <summary class="btn btn--danger btn--sm">Annuler l'inscription</summary>
-                                <div class="admin-cancel-details__panel">
-                                    <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
-                                    <form method="post"
-                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-cancel") ?>"
-                                          class="admin-cancel-form">
-                                        <?= csrf_field() ?>
-                                        <label class="admin-cancel__notify-label">
-                                            <input type="checkbox" name="notify" value="1" class="admin-cancel__notify-checkbox">
-                                            Notifier <?= esc($vol['email']) ?>
-                                        </label>
-                                        <div class="admin-form__buttons">
-                                            <button type="submit" class="btn btn--danger btn--sm">Confirmer</button>
-                                            <button type="button" class="btn btn--secondary btn--sm"
-                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </details>
-
-                            <!-- Modifier la fiche -->
+                            <!-- Modifier la fiche — icône collée au nom -->
                             <details class="admin-edit-details">
-                                <summary class="btn btn--secondary btn--sm">Modifier la fiche</summary>
+                                <summary class="btn-icon" title="Modifier la fiche" aria-label="Modifier la fiche de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">✏️</summary>
                                 <div class="admin-edit-details__panel">
                                     <form method="post"
                                           action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-edit") ?>"
@@ -584,12 +547,50 @@
                                     </form>
                                 </div>
                             </details>
+                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
+                            <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
+                            <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
+                            <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <span class="participants-list__contact">
+                            <?php if ($vol['phone'] !== ''): ?>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <?php endif; ?>
+                            <?php if ($vol['email'] !== ''): ?>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <?php endif; ?>
+                        </span>
+
+                        <!-- Actions admin : déplacer et annuler (Story 5.10/5.12) — édition déplacée dans vol-header -->
+                        <div class="participants-list__actions">
+                            <!-- Annuler l'inscription -->
+                            <details class="admin-cancel-details">
+                                <summary class="btn-icon btn-icon--danger" title="Annuler l'inscription" aria-label="Annuler l'inscription de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">🗑️</summary>
+                                <div class="admin-cancel-details__panel">
+                                    <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
+                                    <form method="post"
+                                          action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-cancel") ?>"
+                                          class="admin-cancel-form">
+                                        <?= csrf_field() ?>
+                                        <label class="admin-cancel__notify-label">
+                                            <input type="checkbox" name="notify" value="1" class="admin-cancel__notify-checkbox">
+                                            Notifier <?= esc($vol['email']) ?>
+                                        </label>
+                                        <div class="admin-form__buttons">
+                                            <button type="submit" class="btn btn--danger btn--sm">Confirmer</button>
+                                            <button type="button" class="btn btn--secondary btn--sm"
+                                                    onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </details>
 
                             <!-- Déplacer l'inscription (Story 5.12) -->
                             <?php $moveTargets = $vol['move_targets']; ?>
                             <?php if (! empty($moveTargets)): ?>
                             <details class="admin-move-details">
-                                <summary class="btn btn--secondary btn--sm">Déplacer</summary>
+                                <summary class="btn-icon" title="Déplacer vers un autre créneau" aria-label="Déplacer <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?> vers un autre créneau">↗️</summary>
                                 <div class="admin-move-details__panel">
                                     <form method="post"
                                           action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-move-slot-signup") ?>"
@@ -639,10 +640,14 @@
                 <?php $addBtnId   = 'btn-add-signup-'   . (int) $pSlot['slot_id']; ?>
                 <?php $errorSlot  = (old('_error_slot_id') === (string) $pSlot['slot_id']); ?>
                 <div class="participants-slot__add-action">
+                    <?php if ((int) $pSlot['remaining'] > 0): ?>
                     <button type="button" class="btn btn--sm btn--secondary"
                             onclick="document.getElementById('<?= esc($addModalId, 'attr') ?>').showModal()">
                         + Ajouter un bénévole
                     </button>
+                    <?php else: ?>
+                    <span class="participants-slot__full">Créneau complet</span>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Modale Ajouter un bénévole (Story 5.11) -->
@@ -790,6 +795,7 @@
                 <?php endif; ?>
             </div>
             <?php endforeach; ?>
+            </div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -798,7 +804,7 @@
     <?php endif; ?>
 
     <!-- ================================================================== -->
-    <!-- Onglet : Équipe (Owner/Admin — Story 4.5 / 5.2)                    -->
+    <!-- Onglet : Équipe d'organisation (Owner/Admin — Story 4.5 / 5.2)     -->
     <!-- ================================================================== -->
     <?php if (! empty($canInvite)): ?>
     <section
@@ -808,7 +814,7 @@
     >
         <?php if ($hasSidebar): ?>
         <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="false" aria-controls="tab-panel-equipe">
-            <span class="accordion-icon">▶</span> Équipe
+            <span class="accordion-icon">▶</span> Équipe d'organisation
         </button>
         <?php endif; ?>
         <h2 class="section-title">Gestion de l'équipe d'organisation</h2>
@@ -859,7 +865,7 @@
                                         <?php if ($member['role'] !== 'owner'): ?>
                                             <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
                                             <?php if ($isSelf): ?>
-                                                <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                                <span class="kermesse-status-badge kermesse-status-badge--vous">Vous</span>
                                             <?php endif; ?>
                                             <button type="button" class="btn btn--secondary btn--sm" data-member="<?= esc(json_encode($member)) ?>" onclick="openEditMemberModal(JSON.parse(this.dataset.member))" title="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>" aria-label="<?= $isSelf ? 'Modifier mon compte' : 'Éditer le membre' ?>">✏️</button>
                                             <?php if ($isSelf && $canLeave): ?>
@@ -902,14 +908,14 @@
                                 </div>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="kermesse-status-badge" style="background:#fff3cd; color:#856404; font-size:12px;">Invitation envoyée</span>
+                                <span class="kermesse-status-badge kermesse-status-badge--pending">Invitation envoyée</span>
                                 <span class="kermesse-status-badge"><?= esc(ucfirst($member['role'])) ?></span>
                                 <!-- Defense in depth: an Owner is never "pending" (no invited_at), but the
                                      management actions stay gated on role exactly like the active section. -->
                                 <?php if ($member['role'] !== 'owner'): ?>
                                 <?php $isSelf = (int)$member['user_id'] === $currentUserId; ?>
                                 <?php if ($isSelf): ?>
-                                    <span class="kermesse-status-badge" style="background:#e3f2fd;color:#1565c0;font-size:12px;">Vous</span>
+                                    <span class="kermesse-status-badge kermesse-status-badge--vous">Vous</span>
                                 <?php endif; ?>
                                 <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/team/{$member['user_id']}/resend") ?>" style="margin:0;">
                                     <?= csrf_field() ?>

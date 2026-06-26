@@ -153,7 +153,7 @@ final class InviteRoleTest extends CIUnitTestCase
             \Config\Services::resetSingle('email');
         }
 
-        $result->assertRedirect();
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#equipe');
 
         // 1) Un compte utilisateur global est créé pour l'email inconnu.
         $user = db_connect()->query(
@@ -204,7 +204,7 @@ final class InviteRoleTest extends CIUnitTestCase
                 'role'  => 'gestionnaire',
             ]));
 
-        $result->assertRedirect();
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#equipe');
 
         // L'utilisateur existant n'est pas dupliqué.
         $count = (int) db_connect()->query(
@@ -354,7 +354,7 @@ final class InviteRoleTest extends CIUnitTestCase
         $result = $this->withSession($this->session($this->ownerId))
             ->post("kermesse/{$this->kermesseId}/team/{$this->adminId}/delete", $this->csrf([]));
 
-        $result->assertRedirect();
+        $result->assertRedirectTo(site_url("kermesse/{$this->kermesseId}") . '#equipe');
         $this->assertSame('benevole', $this->roleForUser($this->adminId),
             'Un membre actif sans inscriptions doit être rétrogradé en bénévole (pas supprimé).');
     }

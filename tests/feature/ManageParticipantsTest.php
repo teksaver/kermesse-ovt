@@ -208,7 +208,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $result->assertSee('Modifié par Admin');
         $result->assertSee('le 10/10/2026 à 15:00');
         $body = (string) $result->response()->getBody();
-        $this->assertStringContainsString('role="note"', $body);
+        $this->assertStringContainsString('role="status"', $body);
         $this->assertStringContainsString('aria-label="Modifié par Admin le 10/10/2026 à 15:00"', $body);
     }
 
@@ -239,6 +239,57 @@ final class ManageParticipantsTest extends CIUnitTestCase
 
         $result->assertStatus(200);
         $result->assertDontSee('Modifié par');
+    }
+
+    public function testSignupConfirmationBadgesDistinguishConfirmedAndPendingParticipants(): void
+    {
+        $result = $this->getDashboard($this->adminId);
+
+        $result->assertStatus(200);
+        $result->assertSee('Confirmé');
+        $result->assertSee('À confirmer');
+
+        $body = (string) $result->response()->getBody();
+        $this->assertStringContainsString('badge--signup-confirmed', $body);
+        $this->assertStringContainsString('badge--signup-pending', $body);
+    }
+
+    public function testAdminCreatedOrphanSignupStillNeedsConfirmationBadge(): void
+    {
+        $db = db_connect();
+        $db->table('slot_signups')
+            ->where('slot_id', $this->buvetteSlot)
+            ->delete();
+        $db->table('slot_signups')->insert([
+            'slot_id'    => $this->buvetteSlot,
+            'user_id'    => null,
+            'created_by' => $this->adminId,
+            'first_name' => 'Hugo',
+            'last_name'  => 'Bernard',
+            'email'      => 'hugo.bernard@participant.test',
+            'phone'      => '0655667788',
+        ]);
+
+        $result = $this->getDashboard($this->adminId);
+        $body   = (string) $result->response()->getBody();
+
+        $result->assertStatus(200);
+        $result->assertSee('Bernard');
+        $result->assertSee('À confirmer');
+        $this->assertStringContainsString('badge--signup-pending', $body);
+        $this->assertStringNotContainsString('badge--signup-confirmed', $body);
+    }
+
+    public function testCancelledSignupDoesNotReceiveActiveConfirmationBadge(): void
+    {
+        // The fixture has 2 active signups (Camille=certified, Hugo=pending) + 1 cancelled (Lefebvre).
+        // Exactly 1 confirmed badge and 1 pending badge must appear — Lefebvre must not add a third.
+        $result = $this->getDashboard($this->adminId);
+        $body   = (string) $result->response()->getBody();
+
+        $result->assertStatus(200);
+        $this->assertSame(1, substr_count($body, 'badge--signup-confirmed'), 'Exactly one confirmed badge expected.');
+        $this->assertSame(1, substr_count($body, 'badge--signup-pending'), 'Exactly one pending badge expected.');
     }
 
     // ------------------------------------------------------------------
@@ -330,7 +381,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
         $this->buvetteSlot = (int) $db->insertID();
 
         // Deux inscriptions actives + une annulée sur le même créneau.
-        $this->insertSignup($this->buvetteSlot, $this->camilleId, 'active');
+        $this->insertSignup($this->buvetteSlot, $this->camilleId, 'certified');
         $this->insertSignup($this->buvetteSlot, $this->hugoId, 'active');
         $this->insertSignup($this->buvetteSlot, $this->annuleId, 'cancelled');
     }
@@ -342,6 +393,7 @@ final class ManageParticipantsTest extends CIUnitTestCase
             'cancelled'              => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => $userId],
             'removed'                => ['canceled_at' => '2026-01-01 00:00:00', 'canceled_by' => 9999],
             'refused'                => ['rejected_at' => '2026-01-01 00:00:00'],
+            'certified'              => ['created_by' => $userId, 'accepted_at' => '2026-01-01 00:00:00'],
             'deactivated', 'deleted' => ['deleted_at' => '2026-01-01 00:00:00'],
             default                  => [],
         };
