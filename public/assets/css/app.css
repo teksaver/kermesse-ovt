@@ -1635,47 +1635,83 @@ body {
     min-height: 36px;
 }
 
-/* Admin participant row — column layout with expanded header + actions */
+/* Admin participant row — single flex line (wraps on mobile) */
 .participants-list__item--admin {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--color-border, #e9ecef);
 }
-@media (min-width: 980px) {
-    .participants-list__item--admin {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        align-items: start;
-        column-gap: 16px;
-    }
-
-    .participants-list__item--admin .participants-list__vol-header {
-        grid-column: 1;
-        grid-row: 1;
-    }
-
-    .participants-list__item--admin .participants-list__contact {
-        grid-column: 2;
-        grid-row: 1;
-        margin-top: 0;
-    }
-
-    .participants-list__item--admin .participants-list__actions {
-        grid-column: 1 / -1;
-    }
+.participants-list__item--admin:first-child { border-top: 1px solid var(--color-border, #e9ecef); }
+@media (min-width: 600px) {
+    .participants-list__item--admin { flex-wrap: nowrap; }
 }
 .participants-list__vol-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    width: 100%;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+.participants-list__vol-header .participants-list__name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.participants-list__contact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 .participants-list__actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 4px;
+    flex-wrap: nowrap;
+    gap: 2px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+/* Emoji icon action buttons */
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    font-size: 18px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    list-style: none;
+    transition: background 0.15s;
+}
+.btn-icon::-webkit-details-marker { display: none; }
+.btn-icon:hover { background: #f0f0f0; }
+.btn-icon--danger:hover { background: #fdecea; }
+/* "Ajouter un bénévole" row */
+.participants-slot__add-action {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--color-border, #e9ecef);
+}
+.participants-slot__full {
+    display: inline-block;
+    font-size: 13px;
+    color: #555;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px 10px;
 }
 .badge--signup-confirmed,
 .badge--signup-pending {
@@ -1699,12 +1735,14 @@ body {
 
 /* <details> expand panels — hide the default marker */
 .admin-cancel-details > summary,
-.admin-edit-details   > summary {
+.admin-edit-details   > summary,
+.admin-move-details   > summary {
     cursor: pointer;
     list-style: none;
 }
 .admin-cancel-details > summary::-webkit-details-marker,
-.admin-edit-details   > summary::-webkit-details-marker {
+.admin-edit-details   > summary::-webkit-details-marker,
+.admin-move-details   > summary::-webkit-details-marker {
     display: none;
 }
 

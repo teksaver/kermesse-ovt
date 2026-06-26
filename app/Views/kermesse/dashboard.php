@@ -502,7 +502,7 @@
                         <div class="participants-list__actions">
                             <!-- Annuler l'inscription -->
                             <details class="admin-cancel-details">
-                                <summary class="btn btn--danger btn--sm">Annuler l'inscription</summary>
+                                <summary class="btn-icon btn-icon--danger" title="Annuler l'inscription" aria-label="Annuler l'inscription de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">🗑️</summary>
                                 <div class="admin-cancel-details__panel">
                                     <p class="admin-cancel__confirm-text">Annuler l'inscription de <strong><?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?></strong> ?</p>
                                     <form method="post"
@@ -524,7 +524,7 @@
 
                             <!-- Modifier la fiche -->
                             <details class="admin-edit-details">
-                                <summary class="btn btn--secondary btn--sm">Modifier la fiche</summary>
+                                <summary class="btn-icon" title="Modifier la fiche" aria-label="Modifier la fiche de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">✏️</summary>
                                 <div class="admin-edit-details__panel">
                                     <form method="post"
                                           action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-edit") ?>"
@@ -591,7 +591,7 @@
                             <?php $moveTargets = $vol['move_targets']; ?>
                             <?php if (! empty($moveTargets)): ?>
                             <details class="admin-move-details">
-                                <summary class="btn btn--secondary btn--sm">Déplacer</summary>
+                                <summary class="btn-icon" title="Déplacer vers un autre créneau" aria-label="Déplacer <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?> vers un autre créneau">↗️</summary>
                                 <div class="admin-move-details__panel">
                                     <form method="post"
                                           action="<?= site_url("kermesse/{$kermesse['id']}/slot-signups/{$vol['signup_id']}/admin-move-slot-signup") ?>"
@@ -641,10 +641,14 @@
                 <?php $addBtnId   = 'btn-add-signup-'   . (int) $pSlot['slot_id']; ?>
                 <?php $errorSlot  = (old('_error_slot_id') === (string) $pSlot['slot_id']); ?>
                 <div class="participants-slot__add-action">
+                    <?php if ((int) $pSlot['remaining'] > 0): ?>
                     <button type="button" class="btn btn--sm btn--secondary"
                             onclick="document.getElementById('<?= esc($addModalId, 'attr') ?>').showModal()">
                         + Ajouter un bénévole
                     </button>
+                    <?php else: ?>
+                    <span class="participants-slot__full">Créneau complet</span>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Modale Ajouter un bénévole (Story 5.11) -->
