@@ -33,7 +33,9 @@ Les validations MariaDB de CI utilisent un service MariaDB GitHub Actions isolé
 
 ### Étape 2 : Déploiement et configuration (automatique)
 
-Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main`. Il peut aussi être lancé manuellement via `workflow_dispatch` en fournissant un `ci_run_id` correspondant à un run CI réussi sur `main`.
+Le workflow `.github/workflows/deploy-ouvaton.yml` se déclenche automatiquement quand le workflow CI termine avec succès sur `main` **et que la variable `DEPLOY_PRODUCTION_GO` vaut `true`** dans l'environnement GitHub `production`. Sans cette variable, le `workflow_run` est ignoré — aucun déploiement ne part même si la CI est verte. Il peut aussi être lancé manuellement via `workflow_dispatch` en fournissant un `ci_run_id` correspondant à un run CI réussi sur `main` (le `workflow_dispatch` est toujours autorisé, indépendamment de `DEPLOY_PRODUCTION_GO`).
+
+> **Gate de déploiement** : positionner `DEPLOY_PRODUCTION_GO = true` dans `Settings → Environments → production → Variables` pour autoriser le prochain déploiement automatique. **Remettre à `false` immédiatement après** pour éviter un déploiement involontaire au prochain push sur `main`. La variable `STORY_610_DONE` est un second garde-fou documenté plus bas — elle bloque l'étape de déploiement effective même pour les `workflow_dispatch`.
 
 **Principe fondamental : promotion sans rebuild.** Le workflow de déploiement ne réinstalle pas Composer, ne rejoue pas PHPUnit et ne repackage pas l'archive. Il télécharge l'artefact exact produit par la CI et vérifie son identité avant de le déployer.
 
@@ -135,6 +137,8 @@ Les entrées de configuration sont réparties en deux catégories dans l'environ
 | `KERMESSE_EMAIL_SMTP_CRYPTO` | Optionnel ; chiffrement SMTP. Défaut : `tls` |
 | `KERMESSE_OPS_PROBE_ENABLED` | Optionnel ; `true` active la sonde `POST /ops/probe` (mesure runtime, écrit `kermesse.opsProbeEnabled`). Défaut : `false`. Ne passer à `true` que le temps d'une mesure |
 | `KERMESSE_ALLOW_INSECURE_TLS` | Optionnel ; `true` autorise temporairement l'appel post-déploiement `/ops/migrate` avec vérification TLS désactivée |
+| `DEPLOY_PRODUCTION_GO` | **Gate de déploiement automatique.** Doit valoir `true` pour que `workflow_run` déclenche un déploiement. Remettre à `false` après chaque déploiement. Absent = bloqué. |
+| `STORY_610_DONE` | **Gate de précondition Story 6.10.** Doit valoir `true` (migration `signups → slot_signups` validée et verte en CI) avant tout déploiement, y compris `workflow_dispatch`. |
 
 ### Secrets à configurer (`Settings → Environments → production → Secrets`)
 
@@ -181,6 +185,13 @@ Toutes les entrées sont à configurer dans l'**environnement GitHub `production
 | 12 | `KERMESSE_EMAIL_FROM_EMAIL` | `no-reply@monasso.fr` |
 
 Variables optionnelles (défauts appliqués si absentes) : `KERMESSE_APP_TIMEZONE` (`Europe/Paris`), `KERMESSE_EMAIL_FROM_NAME` (`Kermesse`), `KERMESSE_EMAIL_SMTP_PORT` (`587`), `KERMESSE_EMAIL_SMTP_CRYPTO` (`tls`), `KERMESSE_OPS_PROBE_ENABLED` (`false`).
+
+**Variables de gate de déploiement** (à positionner dans `production → Variables` avant chaque déploiement) :
+
+| # | Variable | Valeur | Quand |
+|---|----------|--------|-------|
+| 13 | `DEPLOY_PRODUCTION_GO` | `true` | Avant le Go — remettre à `false` immédiatement après le déploiement |
+| 14 | `STORY_610_DONE` | `true` | Une fois Story 6.10 marquée `done` et verte en CI (positionner une seule fois, ne pas remettre à `false`) |
 
 Variable de secours temporaire : `KERMESSE_ALLOW_INSECURE_TLS=true` permet au workflow de terminer l'étape post-déploiement même si le certificat HTTPS ne correspond pas au nom d'hôte. Ne l'activer que le temps de corriger le certificat, puis supprimer la variable ou la remettre à `false`.
 
