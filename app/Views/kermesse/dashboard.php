@@ -129,7 +129,7 @@
         <div class="dashboard-content">
 
     <!-- ================================================================== -->
-    <!-- Onglet : Gestion des stands (Owner/Admin uniquement — Story 4.1 / 5.2). -->
+    <!-- Onglet : Stands et créneaux (Owner/Admin uniquement — Story 4.1 / 5.2). -->
     <!-- ================================================================== -->
     <?php if (! empty($canModify)): ?>
     <section
