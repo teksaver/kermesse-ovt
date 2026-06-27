@@ -45,27 +45,41 @@ async function goToDashboard(page: Page, kermesseName: string): Promise<void> {
 
 async function openModificationTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
-  const modBtn = page.locator('[data-tab="modification"]:visible').first();
-  await expect(modBtn).toBeVisible();
-  await modBtn.click();
-  await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
+  const panel = page.locator('#tab-panel-modification');
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const modBtn = page.locator('[data-tab="modification"]:visible').first();
+    await expect(modBtn).toBeVisible();
+    await modBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
 }
 
 async function openInscritsTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
-  // Always assert visibility before clicking — avoids racy conditional isVisible() patterns.
-  const inscritsBtn = page.locator('[data-tab="inscrits"]:visible').first();
-  await expect(inscritsBtn).toBeVisible();
-  await inscritsBtn.click();
-  await expect(page.locator('#tab-panel-inscrits')).toHaveClass(/is-open/);
+  const panel = page.locator('#tab-panel-inscrits');
+  // On mobile the navigation uses accordion toggles: clicking an already-open section
+  // closes it. When the kermesse is open, 'inscrits' is the default tab and the panel
+  // starts open — skip the click in that case to avoid toggling it shut.
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const inscritsBtn = page.locator('[data-tab="inscrits"]:visible').first();
+    await expect(inscritsBtn).toBeVisible();
+    await inscritsBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
 }
 
 async function openEquipeTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
-  const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
-  await expect(equipeBtn).toBeVisible();
-  await equipeBtn.click();
-  await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
+  const panel = page.locator('#tab-panel-equipe');
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
+    await expect(equipeBtn).toBeVisible();
+    await equipeBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
 }
 
 // ---------------------------------------------------------------------------

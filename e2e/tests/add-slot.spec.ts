@@ -26,11 +26,15 @@ async function openModificationTab(page: Page): Promise<void> {
   await adminLink.click();
   await page.waitForLoadState('networkidle');
 
-  /* Explicitly activate the modification tab — default tab depends on kermesse status. */
-  const modBtn = page.locator('[data-tab="modification"]:visible').first();
-  await expect(modBtn).toBeVisible();
-  await modBtn.click();
-  await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/, { timeout: 10_000 });
+  /* Activate the modification tab — skip click if already open (accordion toggle would close it). */
+  const modPanel = page.locator('#tab-panel-modification');
+  const alreadyOpen = await modPanel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const modBtn = page.locator('[data-tab="modification"]:visible').first();
+    await expect(modBtn).toBeVisible();
+    await modBtn.click();
+  }
+  await expect(modPanel).toHaveClass(/is-open/, { timeout: 10_000 });
 }
 
 /** Locator for the Jeux E2E stand section — re-evaluate after navigation. */
