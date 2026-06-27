@@ -312,3 +312,7 @@ The following issues were found by the review agents (Adversarial/Edge Case) in 
 - Hardcoded Playwright Docker Image Version [scripts/e2e.sh]
 - Missing path upload warning in CI [.github/workflows/ci.yml]
 - app container multiple networks [scripts/e2e.sh]
+
+## Deferred from: post-merge Epic 6 (2026-06-27)
+
+- **`STORY_610_DONE` — gate de déploiement one-shot devenu code mort** [`deploy-ouvaton.yml:217`] — Cette variable conditionnelle était un garde-fou temporaire pour s'assurer que la Story 6.10 (migration `signups → slot_signups`) était validée avant le premier déploiement post-Epic 6. Ce déploiement a eu lieu. La condition et la variable GitHub sont désormais du code mort. À retirer : le `if [ "${STORY_610_DONE:-false}" != "true" ]` dans le job `deploy`, la variable `STORY_610_DONE` de l'environnement GitHub `production`, et les références dans le runbook. **Véhicule : story 7-2.**
