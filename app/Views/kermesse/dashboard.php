@@ -28,9 +28,11 @@
             <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-top:8px;">
                 <?php if (empty($isBenevole)): ?>
                 <p class="kermesse-dashboard__public-link" style="margin:0; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">🔗 <strong>Lien public :</strong>
-                    <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
-                    <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; padding:0 4px; display:inline-flex; align-items:center;">📋</button>
-                    <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
+                    <span style="display:inline-flex; align-items:center; gap:4px; min-width:0;">
+                        <a href="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" target="_blank" rel="noopener noreferrer" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:min(280px,60vw);"><?= esc(site_url("k/{$kermesse['public_slug']}")) ?></a>
+                        <button type="button" class="btn btn--icon" title="Copier le lien" data-copy-url="<?= esc(site_url("k/{$kermesse['public_slug']}")) ?>" id="copy-link-btn" style="background:transparent; border:none; cursor:pointer; font-size:1.2em; padding:0 4px; flex-shrink:0; display:inline-flex; align-items:center;">📋</button>
+                        <span id="copy-link-feedback" class="copy-feedback" aria-live="polite" style="color: #155724; background: #d4edda; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; display: none;">Copié !</span>
+                    </span>
                 </p>
                 <?php endif; ?>
 
@@ -39,6 +41,29 @@
                    rel="noopener noreferrer"
                    class="btn btn--secondary btn--sm"><?= empty($isBenevole) ? 'Accéder à la page' : 'Nouvelle inscription' ?></a>
             </div>
+
+            <!-- Actions admin (Owner/Admin) : ⚙️ Paramètres + cycle de vie — dans le jumbotron. -->
+            <?php if (! empty($canModify)): ?>
+            <div class="kermesse-header-actions">
+                <button type="button" class="btn btn--secondary btn--sm" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres</button>
+
+                <?php if ($kermesse['status'] === 'open'): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--warning btn--sm">Fermer les inscriptions</button>
+                </form>
+                <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
+                <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn--primary btn--sm"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
+                </form>
+                <?php endif; ?>
+            </div>
+            <?php $lifecycleErrorHeader = session()->getFlashdata('lifecycle_error'); ?>
+            <?php if ($lifecycleErrorHeader !== null): ?>
+            <p class="form-error" role="alert" style="margin-top:8px;"><?= esc($lifecycleErrorHeader) ?></p>
+            <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -92,9 +117,9 @@
             <?php foreach ($tabs as $i => $tab): ?>
             <button
                 type="button"
-                class="sidebar-nav__btn<?= $i === 0 ? ' is-active' : '' ?>"
+                class="sidebar-nav__btn<?= $tab['id'] === $defaultTab ? ' is-active' : '' ?>"
                 data-tab="<?= esc($tab['id']) ?>"
-                aria-expanded="<?= $i === 0 ? 'true' : 'false' ?>"
+                aria-expanded="<?= $tab['id'] === $defaultTab ? 'true' : 'false' ?>"
                 aria-controls="tab-panel-<?= esc($tab['id']) ?>"
             ><?= esc($tab['label']) ?></button>
             <?php endforeach; ?>
@@ -104,7 +129,7 @@
         <div class="dashboard-content">
 
     <!-- ================================================================== -->
-    <!-- Onglet : Gestion des stands (Owner/Admin uniquement — Story 4.1 / 5.2). -->
+    <!-- Onglet : Stands et créneaux (Owner/Admin uniquement — Story 4.1 / 5.2). -->
     <!-- ================================================================== -->
     <?php if (! empty($canModify)): ?>
     <section
@@ -113,41 +138,15 @@
         data-tab-content="modification"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="modification" aria-expanded="true" aria-controls="tab-panel-modification">
-            <span class="accordion-icon">▼</span> Gestion des stands
+        <button type="button" class="accordion-header" data-tab="modification" aria-expanded="<?= $defaultTab === 'modification' ? 'true' : 'false' ?>" aria-controls="tab-panel-modification">
+            <span class="accordion-icon"><?= $defaultTab === 'modification' ? '▼' : '▶' ?></span> Stands et créneaux
         </button>
         <?php endif; ?>
         <?php if (! empty($success = session()->getFlashdata('success'))): ?>
         <p class="form-success"><?= esc($success) ?></p>
         <?php endif; ?>
 
-        <?php $lifecycleError = session()->getFlashdata('lifecycle_error'); ?>
-        <?php if ($lifecycleError !== null): ?>
-        <p class="form-error" role="alert"><?= esc($lifecycleError) ?></p>
-        <?php endif; ?>
-
-        <div class="section-toolbar" style="margin-bottom:16px;">
-            <h2 class="section-title">Gestion des stands</h2>
-        </div>
-
-        <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; align-items: center;">
-            <button type="button" class="btn btn--secondary" title="Paramètres généraux" onclick="document.getElementById('modal-kermesse-edit').showModal()">⚙️ Paramètres de l'événement</button>
-
-            <!-- Actions lifecycle (UX-DR17) -->
-            <?php if ($kermesse['status'] === 'open'): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/close") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--warning">Fermer les inscriptions</button>
-            </form>
-            <?php elseif (in_array($kermesse['status'], ['preparation', 'closed'], true)): ?>
-            <form method="post" action="<?= site_url("kermesse/{$kermesse['id']}/open") ?>" onsubmit="this.querySelector('button').disabled = true;" style="margin:0;">
-                <?= csrf_field() ?>
-                <button type="submit" class="btn btn--primary"><?= $kermesse['status'] === 'closed' ? 'Rouvrir les inscriptions' : 'Ouvrir les inscriptions' ?></button>
-            </form>
-            <?php endif; ?>
-        </div>
-
-        <h2 class="section-title">Gestion des stands et des créneaux</h2>
+        <h2 class="section-title">Stands et créneaux</h2>
         <h3 class="subsection-title">Stands</h3>
 
         <?php
@@ -439,7 +438,7 @@
         data-tab-content="inscrits"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="inscrits" aria-expanded="false" aria-controls="tab-panel-inscrits">
+        <button type="button" class="accordion-header" data-tab="inscrits" aria-expanded="<?= $defaultTab === 'inscrits' ? 'true' : 'false' ?>" aria-controls="tab-panel-inscrits">
             <span class="accordion-icon">▶</span> Gestion des inscrits
         </button>
         <?php endif; ?>
@@ -481,9 +480,9 @@
                 <ul class="participants-list">
                     <?php foreach ($pSlot['volunteers'] as $vol): ?>
                     <li class="participants-list__item participants-list__item--admin">
-                        <div class="participants-list__vol-header">
-                            <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
-                            <!-- Modifier la fiche — icône collée au nom -->
+                        <span class="participants-list__name"><strong><?= esc($vol['last_name']) ?> <?= esc($vol['first_name']) ?></strong></span>
+                        <div class="participants-list__icon-bar">
+                            <!-- Modifier la fiche -->
                             <details class="admin-edit-details">
                                 <summary class="btn-icon" title="Modifier la fiche" aria-label="Modifier la fiche de <?= esc($vol['first_name']) ?> <?= esc($vol['last_name']) ?>">✏️</summary>
                                 <div class="admin-edit-details__panel">
@@ -547,18 +546,20 @@
                                     </form>
                                 </div>
                             </details>
-                            <span class="badge <?= esc($vol['status_badge_class']) ?>" role="status" aria-label="Statut inscription : <?= esc($vol['status_badge_label']) ?>"><?= esc($vol['status_badge_label']) ?></span>
+                            <span role="img"
+                                  title="<?= esc($vol['status_label']) ?>"
+                                  aria-label="Statut : <?= esc($vol['status_label']) ?>"
+                                  class="signup-status-icon"><?= $vol['status_icon'] ?></span>
                             <?php if ($vol['modifier_first_name'] !== null && $vol['modifier_date'] !== null): ?>
                             <?php $badgeLabel = 'Modifié par ' . esc($vol['modifier_first_name']) . ' le ' . esc($vol['modifier_date']); ?>
                             <span class="badge badge--modified" role="status" aria-label="<?= $badgeLabel ?>"><?= $badgeLabel ?></span>
                             <?php endif; ?>
-                        </div>
                         <span class="participants-list__contact">
                             <?php if ($vol['phone'] !== ''): ?>
-                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>"><span aria-hidden="true">📞</span> <?= esc($vol['phone']) ?></a>
+                            <a class="participants-list__phone" href="tel:<?= esc($vol['phone'], 'attr') ?>" title="<?= esc($vol['phone']) ?>"><span aria-hidden="true">📞</span><span class="contact-text"> <?= esc($vol['phone']) ?></span></a>
                             <?php endif; ?>
                             <?php if ($vol['email'] !== ''): ?>
-                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>"><span aria-hidden="true">✉️</span> <?= esc($vol['email']) ?></a>
+                            <a class="participants-list__email" href="mailto:<?= esc($vol['email'], 'attr') ?>" title="<?= esc($vol['email']) ?>"><span aria-hidden="true">✉️</span><span class="contact-text"> <?= esc($vol['email']) ?></span></a>
                             <?php endif; ?>
                         </span>
 
@@ -628,7 +629,8 @@
                                 </div>
                             </details>
                             <?php endif; ?>
-                        </div>
+                        </div><!-- /.participants-list__actions -->
+                        </div><!-- /.participants-list__icon-bar -->
                     </li>
                     <?php endforeach; ?>
                 </ul>
@@ -813,7 +815,7 @@
         data-tab-content="equipe"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="false" aria-controls="tab-panel-equipe">
+        <button type="button" class="accordion-header" data-tab="equipe" aria-expanded="<?= $defaultTab === 'equipe' ? 'true' : 'false' ?>" aria-controls="tab-panel-equipe">
             <span class="accordion-icon">▶</span> Équipe d'organisation
         </button>
         <?php endif; ?>
@@ -1066,7 +1068,7 @@
         data-tab-content="participations"
     >
         <?php if ($hasSidebar): ?>
-        <button type="button" class="accordion-header" data-tab="participations" aria-expanded="false" aria-controls="tab-panel-participations">
+        <button type="button" class="accordion-header" data-tab="participations" aria-expanded="<?= $defaultTab === 'participations' ? 'true' : 'false' ?>" aria-controls="tab-panel-participations">
             <span class="accordion-icon">▶</span> Mes participations
         </button>
         <?php endif; ?>
@@ -1217,12 +1219,26 @@
         });
     });
 
-    /* Event listeners Accordéon */
+    /* Event listeners Accordéon — toggle : cliquer une section ouverte la replie */
     accHeaders.forEach(function (hdr) {
         hdr.addEventListener('click', function () {
-            activateSection(hdr.getAttribute('data-tab'));
-            // Scroll to the header so the user sees the opened section
-            hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var targetId = hdr.getAttribute('data-tab');
+            if (hdr.getAttribute('aria-expanded') === 'true') {
+                // Repli : retire is-open de tous les panneaux → seuls les en-têtes restent visibles
+                sidebarBtns.forEach(function (b) {
+                    b.classList.remove('is-active');
+                    b.setAttribute('aria-expanded', 'false');
+                });
+                accHeaders.forEach(function (h) {
+                    h.setAttribute('aria-expanded', 'false');
+                    var icon = h.querySelector('.accordion-icon');
+                    if (icon) { icon.textContent = '▶'; }
+                });
+                panels.forEach(function (p) { p.classList.remove('is-open'); });
+            } else {
+                activateSection(targetId);
+                hdr.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
     });
 }());

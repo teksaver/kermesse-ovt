@@ -135,10 +135,23 @@ class KermesseAdminController extends BaseController
         // Story 5.2 — onglets autorisés, ordre canonique (UX-DR16 / NFR4).
         // Onglets non autorisés absents du tableau → absents du DOM.
         $tabs = [];
-        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Gestion des stands']; }
+        if ($canModify)             { $tabs[] = ['id' => 'modification',   'label' => 'Stands et créneaux']; }
         if ($canManageParticipants) { $tabs[] = ['id' => 'inscrits',       'label' => 'Gestion des inscrits']; }
         if ($canInvite)             { $tabs[] = ['id' => 'equipe',         'label' => 'Équipe d\'organisation']; }
         $tabs[] =                               ['id' => 'participations', 'label' => 'Mes participations'];
+
+        // Onglet ouvert par défaut selon le statut de la kermesse :
+        // — préparation → "Gestion des stands" (si disponible)
+        // — ouvert / clôturé → "Gestion des inscrits" (si disponible)
+        // — sinon : premier onglet disponible
+        $status = (string) ($kermesse['status'] ?? '');
+        if ($canModify && $status === KermesseModel::STATUS_PREPARATION) {
+            $defaultTab = 'modification';
+        } elseif ($canManageParticipants && $status !== KermesseModel::STATUS_PREPARATION) {
+            $defaultTab = 'inscrits';
+        } else {
+            $defaultTab = $tabs[0]['id'];
+        }
 
         return view('kermesse/dashboard', [
             'title'                 => esc($kermesse['name']),
@@ -153,6 +166,7 @@ class KermesseAdminController extends BaseController
             'myParticipations'      => $myParticipations,
             'teamMembers'           => $teamMembers,
             'tabs'                  => $tabs,
+            'defaultTab'            => $defaultTab,
             // Passed to the team view so the UI can detect "c'est moi" and show badge/leave button.
             'currentUserId'         => $userId,
             // Décision métier préparée pour la vue : l'annulation d'une participation
@@ -175,7 +189,7 @@ class KermesseAdminController extends BaseController
      * the discrete "Modifié par [Prénom] le [date]" badge in the view.
      *
      * @param array<int, array<string, mixed>> $stands Active stands already loaded with their 'slots'.
-     * @return list<array{name: string, slots: list<array{slot_id: int, date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{signup_id: int, first_name: string, last_name: string, phone: string, email: string, admin_notes: string, locked: bool, status_badge_label: string, status_badge_class: string, modifier_first_name: string|null, modifier_date: string|null}>, history: list<array{first_name: string, last_name: string, status: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
+     * @return list<array{name: string, slots: list<array{slot_id: int, date: string, start_time: string, end_time: string, capacity: int, occupied: int, remaining: int, volunteers: list<array{signup_id: int, first_name: string, last_name: string, phone: string, email: string, admin_notes: string, locked: bool, status_icon: string, status_label: string, modifier_first_name: string|null, modifier_date: string|null}>, history: list<array{first_name: string, last_name: string, status: string, modifier_first_name: string|null, modifier_date: string|null}>}>}>
      */
     private function buildParticipantStands(int $kermesseId, array $stands, string $timezone): array
     {
@@ -208,12 +222,19 @@ class KermesseAdminController extends BaseController
             // with a linked user, apply the Story 5.10 lock logic.
             $computedStatus = \App\Models\SlotSignupModel::getStatus($p);
             $isOrphan       = ($p['user_id'] === null);
-            // Explicit allow-list: only certified/active signups get the "Confirmé" label.
-            // Any unexpected status (e.g. cancelled slipping through) safely falls to "À confirmer".
-            $isConfirmed = ! $isOrphan && in_array($computedStatus, ['certified', 'active'], true);
-            $statusBadge = $isConfirmed
-                ? ['label' => 'Confirmé',    'class' => 'badge--signup-confirmed']
-                : ['label' => 'À confirmer', 'class' => 'badge--signup-pending'];
+            $isConfirmed    = ! $isOrphan && in_array($computedStatus, ['certified', 'active'], true);
+
+            // computeStatus() returns 'active' for orphan signups (user_id IS NULL, created_by != null)
+            // because its unconfirmed branch requires userId !== null. The $isOrphan flag is the gate.
+            if (! $isOrphan && $computedStatus === 'active') {
+                $statusIcon = ['emoji' => '✅', 'label' => 'Inscription authentifiée'];
+            } elseif (! $isOrphan && $computedStatus === 'certified') {
+                $statusIcon = ['emoji' => '✅', 'label' => 'Inscription vue par l\'utilisateur'];
+            } elseif ($p['created_by'] !== null) {
+                $statusIcon = ['emoji' => '⏳', 'label' => 'Inscription par un tiers'];
+            } else {
+                $statusIcon = ['emoji' => '⏳', 'label' => 'Inscription en mode visiteur'];
+            }
 
             if ($isOrphan || $computedStatus === 'unconfirmed') {
                 // Orphan or unconfirmed: rely solely on signup snapshot
@@ -256,8 +277,8 @@ class KermesseAdminController extends BaseController
                 'email'               => $displayEmail,
                 'admin_notes'         => (string) $p['admin_notes'],
                 'locked'              => $locked,
-                'status_badge_label'  => $statusBadge['label'],
-                'status_badge_class'  => $statusBadge['class'],
+                'status_icon'         => $statusIcon['emoji'],
+                'status_label'        => $statusIcon['label'],
                 'modifier_first_name' => $modifierFirstName,
                 'modifier_date'       => $modifierDate,
             ];

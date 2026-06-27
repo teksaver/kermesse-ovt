@@ -1060,6 +1060,12 @@ p {
     margin: 0;
 }
 
+.kermesse-card__signup-summary {
+    font-size: 13px;
+    color: var(--color-text-muted, #6c757d);
+    margin: 6px 0 4px;
+}
+
 .home-connected__actions {
     margin-top: 8px;
 }
@@ -1417,6 +1423,9 @@ body {
 /* Desktop : On masque la section entière si elle n'est pas ouverte */
 @media (min-width: 769px) {
     body.js-active .tab-panel:not(.is-open) { display: none !important; }
+    /* Aligne le titre de section avec le bord supérieur du menu sidebar */
+    .tab-panel { padding-top: 0; }
+    h2.section-title { margin-top: 0; }
 }
 
 /* Mobile : On laisse la section visible (pour voir le bouton accordéon), mais on masque son contenu */
@@ -1434,6 +1443,16 @@ body {
     border: 1px solid var(--color-border, #e9ecef);
     margin-top: 16px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.kermesse-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--color-border, #e9ecef);
 }
 
 /* ---- Desktop Grid ---- */
@@ -1635,38 +1654,51 @@ body {
     min-height: 36px;
 }
 
-/* Admin participant row — single flex line (wraps on mobile) */
+/* Admin participant row — colonne sur mobile, ligne unique ≥600px */
 .participants-list__item--admin {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 12px;
+    flex-direction: column;
+    gap: 4px;
     padding: 8px 4px;
     border-top: none;
     border-bottom: 1px solid var(--color-border, #e9ecef);
 }
 .participants-list__item--admin:first-child { border-top: 1px solid var(--color-border, #e9ecef); }
-@media (min-width: 600px) {
-    .participants-list__item--admin { flex-wrap: nowrap; }
+.participants-list__item--admin .participants-list__name {
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.4;
+    padding: 2px 0;
 }
-.participants-list__vol-header {
+/* Barre d'icônes : statut + contact + actions sur une seule ligne */
+.participants-list__icon-bar {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 4px 6px;
-    flex: 1;
-    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px 8px;
 }
-.participants-list__vol-header .participants-list__name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    line-height: 44px;
-}
-/* Edit panel takes full row width when open */
-.participants-list__vol-header .admin-edit-details[open] {
+/* Panneau d'édition prend toute la largeur quand ouvert */
+.participants-list__icon-bar .admin-edit-details[open] {
     flex-basis: 100%;
+    flex-wrap: wrap;
+}
+/* Mobile : icône seule pour téléphone/email ; texte visible dès 600px */
+.contact-text { display: none; }
+@media (min-width: 600px) {
+    .participants-list__item--admin {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px 12px;
+    }
+    .participants-list__item--admin .participants-list__name {
+        flex: 1;
+        min-width: 0;
+    }
+    .participants-list__icon-bar {
+        flex-shrink: 0;
+    }
+    .contact-text { display: inline; }
 }
 .participants-list__contact {
     display: flex;
@@ -1719,24 +1751,11 @@ body {
     border-radius: 4px;
     padding: 4px 10px;
 }
-.badge--signup-confirmed,
-.badge--signup-pending {
-    display: inline-block;
-    font-size: 13px;
-    font-weight: 700;
-    border-radius: 4px;
-    padding: 2px 8px;
+.signup-status-icon {
+    font-size: 18px;
+    line-height: 1;
     vertical-align: middle;
-}
-.badge--signup-confirmed {
-    color: #155724;
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-}
-.badge--signup-pending {
-    color: #856404;
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
+    cursor: default;
 }
 
 /* <details> expand panels — hide the default marker */

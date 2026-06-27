@@ -4,6 +4,7 @@ namespace App\Controllers\Home;
 
 use App\Controllers\BaseController;
 use App\Models\KermesseModel;
+use App\Models\SlotSignupModel;
 use App\Models\UserModel;
 use App\Models\UserRoleModel;
 use App\Services\RoleService;
@@ -38,11 +39,24 @@ class HomeController extends BaseController
         $kermesses   = model(UserRoleModel::class)->findKermessesForUser($userId);
         $roleService = new RoleService(model(UserRoleModel::class), model(UserModel::class));
 
+        $benevoleIds = [];
+        foreach ($kermesses as $k) {
+            if ($k['role'] === UserRoleModel::ROLE_BENEVOLE) {
+                $benevoleIds[] = (int) $k['id'];
+            }
+        }
+        $signupCounts = empty($benevoleIds)
+            ? []
+            : model(SlotSignupModel::class)->countActiveByUserAndKermesses($userId, $benevoleIds);
+
         foreach ($kermesses as &$k) {
             $status = (string) ($k['status'] ?? '');
 
-            $k['canLeave']     = $roleService->canLeaveKermesse((int) $k['id'], $userId);
-            $k['status_label'] = $statusLabels[$status] ?? ucfirst($status);
+            $k['canLeave']          = $roleService->canLeaveKermesse((int) $k['id'], $userId);
+            $k['status_label']      = $statusLabels[$status] ?? ucfirst($status);
+            $k['active_signup_count'] = $k['role'] === UserRoleModel::ROLE_BENEVOLE
+                ? ($signupCounts[(int) $k['id']] ?? 0)
+                : null;
         }
         unset($k);
 

@@ -43,21 +43,43 @@ async function goToDashboard(page: Page, kermesseName: string): Promise<void> {
   await expect(page.locator('[data-tab]:visible').first()).toBeVisible();
 }
 
+async function openModificationTab(page: Page, kermesseName: string): Promise<void> {
+  await goToDashboard(page, kermesseName);
+  const panel = page.locator('#tab-panel-modification');
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const modBtn = page.locator('[data-tab="modification"]:visible').first();
+    await expect(modBtn).toBeVisible();
+    await modBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
+}
+
 async function openInscritsTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
-  // Always assert visibility before clicking — avoids racy conditional isVisible() patterns.
-  const inscritsBtn = page.locator('[data-tab="inscrits"]:visible').first();
-  await expect(inscritsBtn).toBeVisible();
-  await inscritsBtn.click();
-  await expect(page.locator('#tab-panel-inscrits')).toHaveClass(/is-open/);
+  const panel = page.locator('#tab-panel-inscrits');
+  // On mobile the navigation uses accordion toggles: clicking an already-open section
+  // closes it. When the kermesse is open, 'inscrits' is the default tab and the panel
+  // starts open — skip the click in that case to avoid toggling it shut.
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const inscritsBtn = page.locator('[data-tab="inscrits"]:visible').first();
+    await expect(inscritsBtn).toBeVisible();
+    await inscritsBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
 }
 
 async function openEquipeTab(page: Page, kermesseName: string): Promise<void> {
   await goToDashboard(page, kermesseName);
-  const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
-  await expect(equipeBtn).toBeVisible();
-  await equipeBtn.click();
-  await expect(page.locator('#tab-panel-equipe')).toHaveClass(/is-open/);
+  const panel = page.locator('#tab-panel-equipe');
+  const alreadyOpen = await panel.evaluate((el) => el.classList.contains('is-open'));
+  if (!alreadyOpen) {
+    const equipeBtn = page.locator('[data-tab="equipe"]:visible').first();
+    await expect(equipeBtn).toBeVisible();
+    await equipeBtn.click();
+  }
+  await expect(panel).toHaveClass(/is-open/);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,8 +241,7 @@ test.describe('Owner — cycle de vie de la kermesse (AC2)', () => {
     const errors = watchConsoleErrors(page);
 
     /* Step 1: Open kermesse-e2e-lifecycle from 'preparation' → 'open'. */
-    await goToDashboard(page, LIFECYCLE_NAME);
-    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
+    await openModificationTab(page, LIFECYCLE_NAME);
 
     const openBtn = page.getByRole('button', { name: 'Ouvrir les inscriptions' });
     await expect(openBtn).toBeVisible();
@@ -235,8 +256,7 @@ test.describe('Owner — cycle de vie de la kermesse (AC2)', () => {
     await expect(page.locator('.slot-row--available').first()).toBeVisible();
 
     /* Step 2: Close the kermesse → 'closed'. */
-    await goToDashboard(page, LIFECYCLE_NAME);
-    await expect(page.locator('#tab-panel-modification')).toHaveClass(/is-open/);
+    await openModificationTab(page, LIFECYCLE_NAME);
 
     const closeBtn = page.getByRole('button', { name: 'Fermer les inscriptions' });
     await expect(closeBtn).toBeVisible();

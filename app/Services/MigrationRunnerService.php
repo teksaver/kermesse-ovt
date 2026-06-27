@@ -500,6 +500,22 @@ class MigrationRunnerService
      */
     public function reconcileChecksum(string $version, string $currentChecksum): array
     {
+        try {
+            return $this->doReconcileChecksum($version, $currentChecksum);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                "reconcileChecksum failed for version '{$version}': " . $e->getMessage(),
+                (int) $e->getCode(),
+                $e
+            );
+        }
+    }
+
+    /**
+     * @return array{ok: bool, action: string, error?: string}
+     */
+    private function doReconcileChecksum(string $version, string $currentChecksum): array
+    {
         // Blank DB: schema_versions not yet created — no drift to reconcile.
         if (!$this->db->tableExists('schema_versions')) {
             return ['ok' => true, 'action' => 'nothing_to_reconcile'];

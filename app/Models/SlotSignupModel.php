@@ -237,6 +237,46 @@ class SlotSignupModel extends Model
     }
 
     /**
+     * Count active signups per kermesse for a given user.
+     * One aggregated query — no N+1. Used by HomeController to display the volunteer summary.
+     *
+     * @param  list<int>       $kermesseIds
+     * @return array<int, int> kermesse_id => count
+     */
+    public function countActiveByUserAndKermesses(int $userId, array $kermesseIds): array
+    {
+        if (empty($kermesseIds)) {
+            return [];
+        }
+
+        $ss = $this->db->prefixTable('slot_signups');
+        $sl = $this->db->prefixTable('slots');
+        $st = $this->db->prefixTable('stands');
+
+        $placeholders = implode(',', array_fill(0, count($kermesseIds), '?'));
+        $rows = $this->db->query(
+            "SELECT st.kermesse_id, COUNT(*) AS cnt
+             FROM   {$ss} ss
+             JOIN   {$sl} sl ON sl.id = ss.slot_id
+             JOIN   {$st} st ON st.id = sl.stand_id
+             WHERE  ss.user_id     = ?
+               AND  st.kermesse_id IN ({$placeholders})
+               AND  ss.canceled_at IS NULL
+               AND  ss.rejected_at IS NULL
+               AND  ss.deleted_at  IS NULL
+             GROUP BY st.kermesse_id",
+            array_merge([$userId], $kermesseIds)
+        )->getResultArray();
+
+        $counts = [];
+        foreach ($rows as $row) {
+            $counts[(int) $row['kermesse_id']] = (int) $row['cnt'];
+        }
+
+        return $counts;
+    }
+
+    /**
      * Return a connected user's ACTIVE slot-signups for one kermesse, joined to the slot
      * and stand for the dashboard "Mes participations" section (Story 4.2).
      *

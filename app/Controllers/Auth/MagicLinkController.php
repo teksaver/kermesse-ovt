@@ -147,6 +147,15 @@ class MagicLinkController extends BaseController
             log_message('error', 'MagicLink: login timestamp update failed for user ' . $userId);
         }
 
+        // Auto-confirm unconfirmed signups created before this login: the homepage now surfaces
+        // pending signups, so a login implicitly means the user has seen the information.
+        // Must run after resolveOrphanSlotSignups (user_id attached) and recordReturningLogin (last_login_at fresh).
+        try {
+            $slotSignupService->autoAcceptUnconfirmedAfterLogin($userId);
+        } catch (\Throwable $e) {
+            log_message('error', 'MagicLink: auto-accept of unconfirmed signups failed for user ' . $userId . ': ' . $e->getMessage());
+        }
+
         if ($kermesseId > 0) {
             (new RoleService(new UserRoleModel(), $userModel))->recordAccess($kermesseId, $userId);
         }
