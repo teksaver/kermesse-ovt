@@ -295,6 +295,12 @@ The following issues were found by the review agents (Adversarial/Edge Case) in 
 - **Problème** : Pas de `$migrate = false` ni `$refresh = false`. Masqué par le filtre `--group mariadb` dans `composer test:mariadb`, mais si on exécute `phpunit --configuration phpunit.mariadb.xml --testsuite Database` sans le filtre `--group`, CI4 tentera de migrer via son runner natif et échouera (table `factories` absente du schéma SQL).
 - **Priorité** : Faible — pré-existant, hors périmètre story 6.11.
 
+## Deferred from: checkpoint spec/test-stabilization-post-epic6 (2026-06-27)
+
+- **Test unitaire manquant — `SlotSignupService::autoAcceptUnconfirmedAfterLogin`** [`app/Services/SlotSignupService.php:764`] — L'invariant orphan-only (`created_by IS NULL`) de Story 5.14 n'est couvert par aucun test PHPUnit. Le bug original (auto-confirmation des inscriptions admin au login) a été attrapé par les E2E, pas par la suite unitaire. Un test feature sur `MagicLinkVerifyTest` avec deux cas (inscription `created_by IS NULL` → confirmée, inscription `created_by = adminId` → non confirmée) protégerait cet invariant. **Véhicule : story 7-2.**
+
+- **Double surface `$canModify` pour les boutons lifecycle** [`app/Views/kermesse/dashboard.php:45` et `app/Views/kermesse/dashboard.php:134`] — Les boutons Ouvrir/Fermer/Paramètres existent désormais dans deux zones : le header persistent (depuis `8eea3e6`) et potentiellement dans l'onglet si `$canModify` est mal passé. Pas un bug actuel, mais deux surfaces à maintenir en cohérence. À consolider si la logique de visibilité évolue. **Priorité : faible.**
+
 ## Deferred from: code review of 6-12-restaurer-le-job-e2e-playwright-en-ci.md (2026-06-23)
 - Contradiction in Readiness Fix for automated runs — deferred: aucun changement de code. La readiness est garantie correctement par la boucle bash. La "contradiction" est une redondance saine : si on supprimait le healthcheck Compose, on perdrait la visibilité health et le support docker compose run manuel sans rien gagner en CI.
 - Excessive healthcheck start period (120s) [docker-compose.yml]
