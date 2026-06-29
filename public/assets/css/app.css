@@ -1670,10 +1670,10 @@ body {
     line-height: 1.4;
     padding: 2px 0;
 }
-/* Barre d'icônes : statut + contact + actions sur une seule ligne */
+/* Barre d'icônes : statut + contact + actions sur une seule ligne (ou wrapped) */
 .participants-list__icon-bar {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
 }
@@ -1697,6 +1697,7 @@ body {
     }
     .participants-list__icon-bar {
         flex-shrink: 0;
+        margin-left: auto;
     }
     .contact-text { display: inline; }
 }
