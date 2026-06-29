@@ -1673,17 +1673,26 @@ body {
     line-height: 1.4;
     padding: 2px 0;
 }
-/* Barre d'icônes : statut + contact + actions sur une seule ligne (ou wrapped) */
-.participants-list__icon-bar {
+.participants-list__block-1 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.participants-list__block-2 {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 4px 8px;
+    gap: 4px 12px;
     min-width: 0;
+    flex: 1 1 auto;
 }
 /* Panneau d'édition prend toute la largeur quand ouvert */
-.participants-list__icon-bar .admin-edit-details[open] {
+.participants-list__block-1 .admin-edit-details[open] {
     flex-basis: 100%;
     flex-wrap: wrap;
 }
@@ -1694,15 +1703,10 @@ body {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
+        justify-content: space-between;
         gap: 6px 12px;
     }
     .participants-list__item--admin .participants-list__name {
-        flex: 1 1 150px;
-        min-width: 0;
-    }
-    .participants-list__icon-bar {
-        flex-shrink: 1;
-        margin-left: auto;
         min-width: 0;
     }
     .contact-text { 
