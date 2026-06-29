@@ -1634,6 +1634,8 @@ body {
     align-items: center;
     min-height: 44px;
     overflow-wrap: anywhere;
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* =========================================================================
@@ -1701,7 +1703,11 @@ body {
         flex-shrink: 0;
         margin-left: auto;
     }
-    .contact-text { display: inline; }
+    .contact-text { 
+        display: inline; 
+        min-width: 0; 
+        word-break: break-all;
+    }
 }
 .participants-list__contact {
     display: flex;
