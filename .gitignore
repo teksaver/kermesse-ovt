@@ -141,11 +141,13 @@ auth.json
 #-------------------------
 .agent/
 .agents/
+.claude/
+.github/agents/
 _bmad-output/
 _bmad/*
 !_bmad/custom/
 _bmad/custom/*.user.toml
-claude.md
+CLAUDE.md
 
 #-------------------------
 # Playwright E2E (Story 6.3)

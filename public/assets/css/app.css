@@ -1633,6 +1633,9 @@ body {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* =========================================================================
@@ -1654,10 +1657,14 @@ body {
     min-height: 36px;
 }
 
-/* Admin participant row — colonne sur mobile, ligne unique ≥600px */
+/* Admin participant row — ligne unique ou wrapped */
 .participants-list__item--admin {
-    flex-direction: column;
-    gap: 4px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px 8px;
     padding: 8px 4px;
     border-top: none;
     border-bottom: 1px solid var(--color-border, #e9ecef);
@@ -1670,15 +1677,26 @@ body {
     line-height: 1.4;
     padding: 2px 0;
 }
-/* Barre d'icônes : statut + contact + actions sur une seule ligne */
-.participants-list__icon-bar {
+.participants-list__block-1 {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-start;
     gap: 4px 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.participants-list__block-2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px 12px;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 /* Panneau d'édition prend toute la largeur quand ouvert */
-.participants-list__icon-bar .admin-edit-details[open] {
+.participants-list__block-1 .admin-edit-details[open] {
     flex-basis: 100%;
     flex-wrap: wrap;
 }
@@ -1686,33 +1704,29 @@ body {
 .contact-text { display: none; }
 @media (min-width: 600px) {
     .participants-list__item--admin {
-        flex-direction: row;
-        flex-wrap: nowrap;
-        align-items: center;
         gap: 6px 12px;
     }
-    .participants-list__item--admin .participants-list__name {
-        flex: 1;
-        min-width: 0;
+    .contact-text { 
+        display: inline; 
+        min-width: 0; 
+        word-break: break-all;
     }
-    .participants-list__icon-bar {
-        flex-shrink: 0;
-    }
-    .contact-text { display: inline; }
 }
 .participants-list__contact {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 4px 12px;
     font-size: 13px;
-    flex-shrink: 0;
-    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
 }
 .participants-list__actions {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 2px;
-    flex-shrink: 0;
+    flex-shrink: 1;
     margin-left: auto;
 }
 /* Emoji icon action buttons */
