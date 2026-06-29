@@ -627,6 +627,64 @@ test.describe('Admin — corriger une inscription (AC4)', () => {
 
     expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
   });
+
+  test('l\'interface (flex-wrap) ne casse pas avec des données de contact extrêmement longues', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name.includes('mobile'), 'State-mutating — runs once on desktop only');
+    const errors = watchConsoleErrors(page);
+
+    await openInscritsTab(page, KERMESSE_NAME);
+
+    const panel = page.locator('#tab-panel-inscrits');
+    const orgStand = panel.locator('.participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
+
+    // Grab a slot to add our extreme volunteer
+    const addSlot = orgStand.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: /17:00.+18:00/ }),
+    }).first();
+    await expect(addSlot).toBeVisible();
+
+    const addBtn = addSlot.getByRole('button', { name: '+ Ajouter un bénévole' });
+    await expect(addBtn).toBeVisible();
+    await addBtn.click();
+
+    const dialog = page.locator('dialog[open]').filter({ has: page.getByText('Ajouter un bénévole') });
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const extremeName = 'De La Péninsule-Bourgogne';
+    await dialog.locator('input[name="first_name"]').fill('Jean-Christophe-Alexandre');
+    await dialog.locator('input[name="last_name"]').fill(extremeName);
+    await dialog.locator('input[name="email"]').fill('jean.christophe.alexandre.de.la.peninsule@tres-long-domaine.com');
+    
+    // Fill phone if input exists
+    const phoneInput = dialog.locator('input[name="phone"]');
+    if (await phoneInput.count() > 0) {
+      await phoneInput.fill('+33 6 12 34 56 78 90 12 34');
+    }
+
+    await dialog.getByRole('button', { name: 'Inscrire' }).click();
+
+    await expect(page.locator('.form-success[role="status"]')).toContainText('a été inscrit(e) au créneau.');
+
+    // Verify the newly inserted row doesn't break the edit button
+    const orgStandAfter = page.locator('#tab-panel-inscrits .participants-stand').filter({ has: page.locator('h3.subsection-title', { hasText: ORG_STAND_NAME }) });
+    const addSlotAfter = orgStandAfter.locator('.participants-slot').filter({
+      has: page.locator('.participants-slot__when', { hasText: /17:00.+18:00/ }),
+    }).first();
+    
+    const extremeRow = addSlotAfter.locator('.participants-list__item', { hasText: extremeName });
+    await expect(extremeRow).toBeVisible();
+
+    // Since flex-wrap is applied, this button should remain accessible and clickable
+    // Playwright will fail to click if it's rendered with 0 width due to extreme text overflow
+    const editDetails = extremeRow.locator('details.admin-edit-details');
+    await expect(editDetails.locator('summary')).toBeVisible();
+    await editDetails.locator('summary').click();
+    
+    const editPanel = editDetails.locator('.admin-edit-details__panel');
+    await expect(editPanel).toBeVisible();
+
+    expect(errors, 'Unexpected JS/console errors').toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
