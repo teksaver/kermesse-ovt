@@ -1657,10 +1657,14 @@ body {
     min-height: 36px;
 }
 
-/* Admin participant row — colonne sur mobile, ligne unique ≥600px */
+/* Admin participant row — ligne unique ou wrapped */
 .participants-list__item--admin {
-    flex-direction: column;
-    gap: 4px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px 8px;
     padding: 8px 4px;
     border-top: none;
     border-bottom: 1px solid var(--color-border, #e9ecef);
@@ -1700,14 +1704,7 @@ body {
 .contact-text { display: none; }
 @media (min-width: 600px) {
     .participants-list__item--admin {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
         gap: 6px 12px;
-    }
-    .participants-list__item--admin .participants-list__name {
-        min-width: 0;
     }
     .contact-text { 
         display: inline; 
