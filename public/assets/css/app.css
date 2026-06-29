@@ -1633,6 +1633,7 @@ body {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    overflow-wrap: anywhere;
 }
 
 /* =========================================================================
@@ -1676,6 +1677,7 @@ body {
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
+    min-width: 0;
 }
 /* Panneau d'édition prend toute la largeur quand ouvert */
 .participants-list__icon-bar .admin-edit-details[open] {
@@ -1706,14 +1708,14 @@ body {
     flex-wrap: wrap;
     gap: 4px 12px;
     font-size: 13px;
-    flex-shrink: 0;
-    white-space: nowrap;
+    flex-shrink: 1;
+    min-width: 0;
 }
 .participants-list__actions {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 2px;
-    flex-shrink: 0;
+    flex-shrink: 1;
     margin-left: auto;
 }
 /* Emoji icon action buttons */
